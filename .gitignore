@@ -1,0 +1,20 @@
+# Rust
+/target/
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 環境変数
+.env
+
+# AI
+.mcp.json
+CLAUDE.md
+/.sophon-mcp
