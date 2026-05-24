@@ -17,4 +17,8 @@ Thumbs.db
 # AI
 .mcp.json
 CLAUDE.md
-/.sophon-mcp
+/.sophon
+
+# Added by cargo
+
+/target
