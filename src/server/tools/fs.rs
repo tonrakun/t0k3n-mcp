@@ -119,5 +119,21 @@ pub fn search_file(root: &Path, params: SearchFileParams) -> anyhow::Result<Sear
 }
 
 pub fn estimate_tokens(text: &str) -> usize {
-    (text.len() / 4).max(1)
+    // CJK/Japanese chars are 3 UTF-8 bytes but ~1 token each (len/4 underestimates 40-60%).
+    // Split by character class for better accuracy across Latin, CJK, and mixed content.
+    let mut ascii = 0usize;
+    let mut cjk = 0usize;
+    let mut other = 0usize;
+    for ch in text.chars() {
+        let cp = ch as u32;
+        if ch.is_ascii() {
+            ascii += 1;
+        } else if matches!(cp, 0x3000..=0x9FFF | 0xF900..=0xFAFF | 0x20000..=0x2FA1F) {
+            cjk += 1;
+        } else {
+            other += 1;
+        }
+    }
+    // ASCII ~4 chars/token, CJK ~1 char/token, other ~2 chars/token
+    (ascii / 4 + cjk + other / 2).max(1)
 }
