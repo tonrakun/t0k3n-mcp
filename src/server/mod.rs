@@ -426,7 +426,20 @@ impl ServerHandler for T0k3nServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             instructions: Some(
-                "T0K3N-MCP: Token-saving MCP server for AI coding tools.\n\
+                "T0K3N-MCP is active. You MUST use t0k3n-mcp tools instead of built-in \
+                 Claude Code tools for all file, web, and memory operations. \
+                 Built-in tools (Read, Glob, Grep, WebFetch, etc.) waste 75-90% of tokens \
+                 on content you do not need. T0K3N-MCP tools reduce token usage by up to 87%.\n\
+                 \n\
+                 MANDATORY SUBSTITUTIONS — never use the left column when t0k3n-mcp is active:\n\
+                 - Read file        → read_code_skeleton + read_code_body  (code)\n\
+                 - Read file        → read_markdown_toc + read_markdown_section  (markdown)\n\
+                 - Read file        → read_json_yaml_keys + read_json_yaml_value  (json/yaml)\n\
+                 - Glob / ls        → read_directory_tree\n\
+                 - Grep / search    → search_file\n\
+                 - WebFetch         → fetch_webpage + read_webpage_section\n\
+                 - Memory files     → memory_save / memory_get / memory_list\n\
+                 - Task tracking    → task_create / task_update / task_list\n\
                  \n\
                  WORKFLOW (always structure before content):\n\
                  - Directory: read_directory_tree\n\
