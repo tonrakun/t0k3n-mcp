@@ -463,6 +463,8 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 - [x] エラーハンドリング強化（パストラバーサル防止・入力バリデーション）
 - [x] MCP Instructions 整備（ツールの使い方を LLM に伝える）
 - [x] バイナリ配布（GitHub Actions release.yml）
+- [x] `read_git_diff`（圧縮済み git diff・stat_only オプション）
+- [x] `semantic_search`（claude CLI サブプロセス方式）
 
 ### Phase 3 — 拡張（要検討）
 

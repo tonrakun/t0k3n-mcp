@@ -1,9 +1,11 @@
 pub mod code;
 pub mod document;
 pub mod fs;
+pub mod git;
 pub mod json_yaml;
 pub mod markdown;
 pub mod memory;
+pub mod search;
 pub mod session;
 pub mod task;
 pub mod text;

@@ -19,9 +19,11 @@ use tools::{
     code::{ReadCodeBodyParams, ReadCodeSkeletonParams, read_code_body, read_code_skeleton},
     document::{ConvertDocumentParams, convert_document},
     fs::{ReadDirectoryTreeParams, SearchFileParams, read_directory_tree, search_file},
+    git::{ReadGitDiffParams, read_git_diff},
     json_yaml::{ReadJsonYamlKeysParams, ReadJsonYamlValueParams, read_json_yaml_keys, read_json_yaml_value},
     markdown::{ReadMarkdownSectionParams, ReadMarkdownTocParams, read_markdown_section, read_markdown_toc},
     memory::{MemoryDeleteParams, MemoryGetParams, MemoryListParams, MemorySaveParams, memory_delete, memory_get, memory_list, memory_save},
+    search::{SemanticSearchParams, semantic_search},
     session::{SessionListParams, SessionRestoreParams, SessionSnapshotParams, session_list, session_restore, session_snapshot},
     task::{TaskCreateParams, TaskDeleteParams, TaskGetParams, TaskListParams, TaskUpdateParams, task_create, task_delete, task_get, task_list, task_update},
     text::{CheckBudgetParams, CompressTextParams, CountTokensParams, SummarizeConversationParams, check_budget, compress_text, count_tokens, summarize_conversation},
@@ -162,6 +164,30 @@ impl T0k3nServer {
         let result = read_code_body(&self.root, params).map_err(|e| err(e))?;
         ok_json(serde_json::json!({
             "items": result.items,
+            "token_count": result.token_count,
+        }))
+    }
+
+    #[tool(description = "Search code semantically using a natural language query. Spawns Claude CLI to identify relevant functions from the skeleton, then returns their bodies. Requires `claude` CLI to be installed and authenticated.")]
+    async fn semantic_search(
+        &self,
+        Parameters(params): Parameters<SemanticSearchParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = semantic_search(&self.root, params).map_err(|e| err(e))?;
+        ok_json(serde_json::json!({
+            "items": result.items,
+            "token_count": result.token_count,
+        }))
+    }
+
+    #[tool(description = "Get compressed git diff. Defaults to all uncommitted changes vs HEAD. Use stat_only for a quick file-level summary.")]
+    async fn read_git_diff(
+        &self,
+        Parameters(params): Parameters<ReadGitDiffParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = read_git_diff(&self.root, params).map_err(|e| err(e))?;
+        ok_json(serde_json::json!({
+            "diff": result.diff,
             "token_count": result.token_count,
         }))
     }
@@ -406,6 +432,8 @@ impl ServerHandler for T0k3nServer {
                  - Directory: read_directory_tree\n\
                  - Markdown: read_markdown_toc → read_markdown_section\n\
                  - Code: read_code_skeleton → read_code_body\n\
+                 - Semantic: semantic_search (natural language → relevant code bodies)\n\
+                 - Git: read_git_diff (compressed diff vs HEAD or any ref)\n\
                  - JSON/YAML: read_json_yaml_keys → read_json_yaml_value\n\
                  - Web: fetch_webpage → read_webpage_section\n\
                  - Docs: convert_document → read_markdown_section(tmp_path)\n\
