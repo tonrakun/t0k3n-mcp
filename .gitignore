@@ -18,6 +18,8 @@ Thumbs.db
 .mcp.json
 CLAUDE.md
 /.sophon
+/.claude
+/.t0k3n
 
 # Tests (local benchmarks — not tracked)
 /tests/
