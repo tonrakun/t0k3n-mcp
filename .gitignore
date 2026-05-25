@@ -19,6 +19,9 @@ Thumbs.db
 CLAUDE.md
 /.sophon
 
+# Tests (local benchmarks — not tracked)
+/tests/
+
 # Added by cargo
 
 /target
