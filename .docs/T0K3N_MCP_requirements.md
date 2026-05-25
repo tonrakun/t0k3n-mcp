@@ -435,7 +435,7 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 ### Phase 1 — Rust MVP
 
 - [x] Cargo プロジェクト初期化・`rmcp` セットアップ
-- [ ] 起動時言語判別・tree-sitter パーサー自動ダウンロード・キャッシュ
+- [x] 起動時言語判別・tree-sitter パーサー自動ダウンロード・キャッシュ（言語判別のみ実装。parser自動DLはPhase 3）
 - [x] ファイル読み取り系ツール全実装
 - [x] `read_code_skeleton` / `read_code_body`（regex ベース実装、tree-sitter は Phase 2）
 - [x] `fetch_webpage`（htmd）+ `read_webpage_section`
@@ -447,10 +447,10 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 ### Phase 2 — 安定化・最適化
 
 - [ ] ベンチマーク測定
-- [ ] `--refresh-parsers` フラグ
-- [ ] エラーハンドリング強化
-- [ ] MCP Instructions 整備（ツールの使い方を LLM に伝える）
-- [ ] バイナリ配布（GitHub Releases）
+- [x] `--refresh-parsers` フラグ
+- [x] エラーハンドリング強化（パストラバーサル防止・入力バリデーション）
+- [x] MCP Instructions 整備（ツールの使い方を LLM に伝える）
+- [x] バイナリ配布（GitHub Actions release.yml）
 
 ### Phase 3 — 拡張（要検討）
 

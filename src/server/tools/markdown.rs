@@ -3,11 +3,12 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+use crate::security::safe_path_or_absolute;
 use super::fs::estimate_tokens;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadMarkdownTocParams {
-    #[schemars(description = "Root-relative path to the Markdown file")]
+    #[schemars(description = "Root-relative or absolute path to the Markdown file (absolute allowed for convert_document tmp files)")]
     pub path: String,
 }
 
@@ -24,11 +25,7 @@ pub struct ReadMarkdownTocResult {
 }
 
 pub fn read_markdown_toc(root: &Path, params: ReadMarkdownTocParams) -> anyhow::Result<ReadMarkdownTocResult> {
-    let path = if Path::new(&params.path).is_absolute() {
-        Path::new(&params.path).to_path_buf()
-    } else {
-        root.join(&params.path)
-    };
+    let path = safe_path_or_absolute(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let toc = extract_toc(&content);
     let json = serde_json::to_string(&toc).unwrap_or_default();
@@ -116,11 +113,7 @@ pub struct SectionContent {
 }
 
 pub fn read_markdown_section(root: &Path, params: ReadMarkdownSectionParams) -> anyhow::Result<ReadMarkdownSectionResult> {
-    let path = if Path::new(&params.path).is_absolute() {
-        Path::new(&params.path).to_path_buf()
-    } else {
-        root.join(&params.path)
-    };
+    let path = safe_path_or_absolute(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let sections = extract_sections(&content, &params.anchors);
     let json = serde_json::to_string(&sections).unwrap_or_default();

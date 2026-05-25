@@ -75,7 +75,7 @@ impl T0k3nServer {
         &self,
         Parameters(params): Parameters<ReadDirectoryTreeParams>,
     ) -> Result<CallToolResult, McpError> {
-        let result = read_directory_tree(&self.root, params);
+        let result = read_directory_tree(&self.root, params).map_err(|e| err(e))?;
         ok_json(serde_json::json!({
             "tree": result.tree,
             "token_count": result.token_count,

@@ -3,6 +3,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+use crate::security::safe_path;
 use super::fs::estimate_tokens;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -29,7 +30,7 @@ pub struct ReadCodeSkeletonResult {
 }
 
 pub fn read_code_skeleton(root: &Path, params: ReadCodeSkeletonParams) -> anyhow::Result<ReadCodeSkeletonResult> {
-    let path = root.join(&params.path);
+    let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let skeleton = parse_skeleton(&content, ext);
@@ -265,7 +266,7 @@ pub struct ReadCodeBodyResult {
 }
 
 pub fn read_code_body(root: &Path, params: ReadCodeBodyParams) -> anyhow::Result<ReadCodeBodyResult> {
-    let path = root.join(&params.path);
+    let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let lines: Vec<&str> = content.lines().collect();
 

@@ -5,11 +5,13 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Write as FmtWrite;
 use std::path::Path;
 
+use crate::security::safe_path;
+
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadDirectoryTreeParams {
     #[schemars(description = "Root-relative path to start from (omit for project root)")]
     pub path: Option<String>,
-    #[schemars(description = "Maximum depth (default: 3)")]
+    #[schemars(description = "Maximum depth (default: 3, max: 10)")]
     pub depth: Option<usize>,
 }
 
@@ -18,13 +20,13 @@ pub struct DirectoryTreeResult {
     pub token_count: usize,
 }
 
-pub fn read_directory_tree(root: &Path, params: ReadDirectoryTreeParams) -> DirectoryTreeResult {
-    let start = if let Some(p) = &params.path {
-        root.join(p)
+pub fn read_directory_tree(root: &Path, params: ReadDirectoryTreeParams) -> anyhow::Result<DirectoryTreeResult> {
+    let start = if let Some(ref p) = params.path {
+        safe_path(root, p)?
     } else {
         root.to_path_buf()
     };
-    let depth = params.depth.unwrap_or(3);
+    let depth = params.depth.unwrap_or(3).min(10);
 
     let mut out = String::new();
     let _ = write!(out, "./\n");
@@ -56,7 +58,7 @@ pub fn read_directory_tree(root: &Path, params: ReadDirectoryTreeParams) -> Dire
     }
 
     let token_count = estimate_tokens(&out);
-    DirectoryTreeResult { tree: out, token_count }
+    Ok(DirectoryTreeResult { tree: out, token_count })
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -82,12 +84,17 @@ pub struct SearchFileResult {
 }
 
 pub fn search_file(root: &Path, params: SearchFileParams) -> anyhow::Result<SearchFileResult> {
-    let path = root.join(&params.path);
-    let content = std::fs::read_to_string(&path)?;
+    let path = safe_path(root, &params.path)?;
+    if path.is_dir() {
+        anyhow::bail!("'{}' is a directory, not a file", params.path);
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", params.path, e))?;
     let lines: Vec<&str> = content.lines().collect();
     let ctx = params.context_lines.unwrap_or(2).min(10);
 
-    let re = Regex::new(&params.query)?;
+    let re = Regex::new(&params.query)
+        .map_err(|e| anyhow::anyhow!("Invalid regex '{}': {}", params.query, e))?;
     let mut matches = Vec::new();
 
     for (i, line) in lines.iter().enumerate() {

@@ -1,7 +1,9 @@
 use anyhow::Result;
 use rmcp::{ServiceExt, transport::stdio};
 
+mod security;
 mod server;
+mod startup;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -14,13 +16,37 @@ async fn main() -> Result<()> {
         .init();
 
     let args: Vec<String> = std::env::args().collect();
+
+    // Parse CLI flags
     let root = args
         .windows(2)
         .find(|w| w[0] == "--root")
         .map(|w| w[1].clone())
         .unwrap_or_else(|| ".".to_string());
 
+    let refresh_parsers = args.iter().any(|a| a == "--refresh-parsers");
+
+    if refresh_parsers {
+        tracing::info!("--refresh-parsers: clearing parser cache");
+        if let Err(e) = startup::clear_parser_cache() {
+            tracing::warn!("Failed to clear parser cache: {}", e);
+        }
+    }
+
     tracing::info!("Starting t0k3n-mcp with root: {}", root);
+
+    // Detect workspace languages at startup
+    let root_path = std::path::Path::new(&root);
+    let langs = startup::detect_languages(root_path, 10);
+    if langs.is_empty() {
+        tracing::info!("No source languages detected in workspace.");
+    } else {
+        let lang_list: Vec<String> = langs
+            .iter()
+            .map(|l| format!("{}({})", l.name, l.file_count))
+            .collect();
+        tracing::info!("Detected languages: {}", lang_list.join(", "));
+    }
 
     let transport = stdio();
     let server = server::T0k3nServer::new(root);

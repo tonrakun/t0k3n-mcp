@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
 
+use crate::security::safe_path;
 use super::fs::estimate_tokens;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -19,7 +20,7 @@ pub struct ReadJsonYamlKeysResult {
 }
 
 pub fn read_json_yaml_keys(root: &Path, params: ReadJsonYamlKeysParams) -> anyhow::Result<ReadJsonYamlKeysResult> {
-    let path = root.join(&params.path);
+    let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let value = parse_file(&path, &content)?;
     let depth = params.depth.unwrap_or(3);
@@ -70,7 +71,7 @@ pub struct ReadJsonYamlValueResult {
 }
 
 pub fn read_json_yaml_value(root: &Path, params: ReadJsonYamlValueParams) -> anyhow::Result<ReadJsonYamlValueResult> {
-    let path = root.join(&params.path);
+    let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let value = parse_file(&path, &content)?;
     let result = resolve_path(&value, &params.key_path)?;
