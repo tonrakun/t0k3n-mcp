@@ -40,6 +40,12 @@ pub fn read_code_skeleton(root: &Path, params: ReadCodeSkeletonParams) -> anyhow
 }
 
 fn parse_skeleton(content: &str, ext: &str) -> Vec<SkeletonItem> {
+    // tree-sitter first, regex fallback
+    if let Some(items) = try_parse_ts(content, ext) {
+        if !items.is_empty() {
+            return items;
+        }
+    }
     match ext {
         "rs" => parse_rust(content),
         "py" => parse_python(content),
@@ -49,11 +55,125 @@ fn parse_skeleton(content: &str, ext: &str) -> Vec<SkeletonItem> {
     }
 }
 
+// ── tree-sitter ────────────────────────────────────────────────────────────
+
+const RUST_QUERY: &str = "
+(function_item name: (identifier) @name) @definition.function
+(struct_item name: (type_identifier) @name) @definition.struct
+(enum_item name: (type_identifier) @name) @definition.enum
+(trait_item name: (type_identifier) @name) @definition.trait
+(impl_item type: (_) @name) @definition.impl
+(mod_item name: (identifier) @name) @definition.mod
+(const_item name: (identifier) @name) @definition.const
+";
+
+const PYTHON_QUERY: &str = "
+(function_definition name: (identifier) @name) @definition.function
+(class_definition name: (identifier) @name) @definition.class
+";
+
+const JS_QUERY: &str = "
+(function_declaration name: (identifier) @name) @definition.function
+(generator_function_declaration name: (identifier) @name) @definition.function
+(class_declaration name: (identifier) @name) @definition.class
+(method_definition name: (property_identifier) @name) @definition.method
+";
+
+const TS_QUERY: &str = "
+(function_declaration name: (identifier) @name) @definition.function
+(class_declaration name: (identifier) @name) @definition.class
+(method_definition name: (property_identifier) @name) @definition.method
+(interface_declaration name: (type_identifier) @name) @definition.interface
+(type_alias_declaration name: (type_identifier) @name) @definition.type
+";
+
+const GO_QUERY: &str = "
+(function_declaration name: (identifier) @name) @definition.function
+(method_declaration name: (field_identifier) @name) @definition.method
+(type_declaration (type_spec name: (type_identifier) @name)) @definition.type
+";
+
+fn ts_setup(ext: &str) -> Option<(tree_sitter::Language, &'static str)> {
+    match ext {
+        "rs" => Some((tree_sitter_rust::LANGUAGE.into(), RUST_QUERY)),
+        "py" => Some((tree_sitter_python::LANGUAGE.into(), PYTHON_QUERY)),
+        "js" | "jsx" => Some((tree_sitter_javascript::LANGUAGE.into(), JS_QUERY)),
+        "ts" => Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), TS_QUERY)),
+        "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), TS_QUERY)),
+        "go" => Some((tree_sitter_go::LANGUAGE.into(), GO_QUERY)),
+        _ => None,
+    }
+}
+
+fn try_parse_ts(content: &str, ext: &str) -> Option<Vec<SkeletonItem>> {
+    use streaming_iterator::StreamingIterator;
+
+    let (lang, query_str) = ts_setup(ext)?;
+
+    let mut parser = tree_sitter::Parser::new();
+    parser.set_language(&lang).ok()?;
+    let tree = parser.parse(content, None)?;
+    let root = tree.root_node();
+
+    let query = tree_sitter::Query::new(&lang, query_str).ok()?;
+    // Precompute to avoid borrow conflict with the match iterator
+    let cap_names: Vec<String> = query.capture_names().iter().map(|s| s.to_string()).collect();
+
+    let mut cursor = tree_sitter::QueryCursor::new();
+    let content_lines: Vec<&str> = content.lines().collect();
+    let mut items = Vec::new();
+
+    // tree-sitter 0.22+ uses StreamingIterator protocol (not std Iterator)
+    let mut matches = cursor.matches(&query, root, content.as_bytes());
+    loop {
+        matches.advance();
+        let mat = match matches.get() {
+            Some(m) => m,
+            None => break,
+        };
+
+        let mut def_node: Option<tree_sitter::Node> = None;
+        let mut name_text: Option<String> = None;
+        let mut kind = String::new();
+
+        for cap in mat.captures {
+            let cap_name = cap_names.get(cap.index as usize).map(|s| s.as_str()).unwrap_or("");
+            if let Some(k) = cap_name.strip_prefix("definition.") {
+                def_node = Some(cap.node);
+                kind = k.to_string();
+            } else if cap_name == "name" {
+                name_text = Some(content[cap.node.byte_range()].to_string());
+            }
+        }
+
+        if let Some(node) = def_node {
+            let start_line = node.start_position().row + 1;
+            let end_line = node.end_position().row + 1;
+            let signature = content_lines
+                .get(start_line - 1)
+                .map(|l| l.trim().to_string())
+                .unwrap_or_default();
+            let name = name_text.unwrap_or_else(|| kind.clone());
+            items.push(SkeletonItem {
+                id: format!("{}:{}-{}", kind, start_line, end_line),
+                kind,
+                name,
+                signature,
+                start_line,
+                end_line,
+            });
+        }
+    }
+
+    Some(items)
+}
+
+// ── regex fallbacks ────────────────────────────────────────────────────────
+
 fn parse_rust(content: &str) -> Vec<SkeletonItem> {
     let lines: Vec<&str> = content.lines().collect();
     let mut items = Vec::new();
 
-    // Match fn, struct, enum, impl, trait, type, const, static, mod
     let patterns = [
         (Regex::new(r"^(\s*)(pub\s+)?(async\s+)?fn\s+(\w+)").unwrap(), "function"),
         (Regex::new(r"^(\s*)(pub\s+)?struct\s+(\w+)").unwrap(), "struct"),
@@ -213,11 +333,59 @@ fn parse_generic(content: &str) -> Vec<SkeletonItem> {
     items
 }
 
+// ── block-end helpers ──────────────────────────────────────────────────────
+
+/// Finds the closing line of a `{...}` block, skipping strings and comments.
 fn find_block_end(lines: &[&str], start: usize) -> usize {
     let mut depth = 0i32;
+    let mut in_block_comment = false;
+
     for (i, line) in lines[start..].iter().enumerate() {
-        for ch in line.chars() {
-            match ch {
+        let chars: Vec<char> = line.chars().collect();
+        let n = chars.len();
+        let mut j = 0;
+
+        while j < n {
+            if in_block_comment {
+                if j + 1 < n && chars[j] == '*' && chars[j + 1] == '/' {
+                    in_block_comment = false;
+                    j += 2;
+                } else {
+                    j += 1;
+                }
+                continue;
+            }
+
+            // Line comment – rest of line is safe to skip
+            if j + 1 < n && chars[j] == '/' && chars[j + 1] == '/' {
+                break;
+            }
+
+            // Block comment start
+            if j + 1 < n && chars[j] == '/' && chars[j + 1] == '*' {
+                in_block_comment = true;
+                j += 2;
+                continue;
+            }
+
+            // String literal (handles \" escapes)
+            if chars[j] == '"' || chars[j] == '\'' {
+                let quote = chars[j];
+                j += 1;
+                while j < n {
+                    if chars[j] == '\\' {
+                        j += 2;
+                    } else if chars[j] == quote {
+                        j += 1;
+                        break;
+                    } else {
+                        j += 1;
+                    }
+                }
+                continue;
+            }
+
+            match chars[j] {
                 '{' => depth += 1,
                 '}' => {
                     depth -= 1;
@@ -227,24 +395,46 @@ fn find_block_end(lines: &[&str], start: usize) -> usize {
                 }
                 _ => {}
             }
+            j += 1;
         }
     }
     lines.len()
 }
 
+/// Finds the end of a Python indent-block, handling multiline signatures and comments.
 fn find_python_block_end(lines: &[&str], start: usize) -> usize {
     let base_indent = lines[start].len() - lines[start].trim_start().len();
+    // If the definition line already ends with ':', the signature is single-line.
+    let mut past_header = lines[start].trim_end().ends_with(':');
+    let mut found_body = false;
+
     for (i, line) in lines[start + 1..].iter().enumerate() {
-        if line.trim().is_empty() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
         let indent = line.len() - line.trim_start().len();
-        if indent <= base_indent && !line.trim().is_empty() {
+
+        if !past_header {
+            // Still inside multiline function/class signature
+            if trimmed.ends_with(':') {
+                past_header = true;
+            }
+            continue;
+        }
+
+        if !found_body {
+            if indent > base_indent {
+                found_body = true;
+            }
+        } else if indent <= base_indent {
             return start + i + 1;
         }
     }
     lines.len()
 }
+
+// ── read_code_body ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadCodeBodyParams {

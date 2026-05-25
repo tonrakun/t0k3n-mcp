@@ -28,6 +28,12 @@ thiserror = "2"
 
 # Code analysis (tree-sitter)
 tree-sitter = "0.24"
+tree-sitter-rust = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-go = "0.23"
+streaming-iterator = "0.1"
 
 # HTML→Markdown
 htmd = "0.1"
