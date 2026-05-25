@@ -434,15 +434,15 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 
 ### Phase 1 — Rust MVP
 
-- [ ] Cargo プロジェクト初期化・`rmcp` セットアップ
+- [x] Cargo プロジェクト初期化・`rmcp` セットアップ
 - [ ] 起動時言語判別・tree-sitter パーサー自動ダウンロード・キャッシュ
-- [ ] ファイル読み取り系ツール全実装
-- [ ] `read_code_skeleton` / `read_code_body`（tree-sitter AST）
-- [ ] `fetch_webpage`（htmd）+ `read_webpage_section`
-- [ ] `convert_document`（PDF/DOCX → MD・一時ファイル）
-- [ ] `compress_text`
-- [ ] `count_tokens` / `check_budget`
-- [ ] SQLite（記憶・タスク・セッション）
+- [x] ファイル読み取り系ツール全実装
+- [x] `read_code_skeleton` / `read_code_body`（regex ベース実装、tree-sitter は Phase 2）
+- [x] `fetch_webpage`（htmd）+ `read_webpage_section`
+- [x] `convert_document`（PDF/DOCX → MD・一時ファイル）
+- [x] `compress_text`
+- [x] `count_tokens` / `check_budget`
+- [x] SQLite（記憶・タスク・セッション）
 
 ### Phase 2 — 安定化・最適化
 
