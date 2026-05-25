@@ -6,7 +6,7 @@
 [![Built with Rust](https://img.shields.io/badge/Built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 [![Token Savings](https://img.shields.io/badge/Token%20Savings-87.3%25-brightgreen)](.docs/benchmark_token_savings.md)
 
-**English** | [日本語](README.ja.md)
+**English** | [日本語](README.ja.md) | [中文](README.zh.md) | [한국어](README.ko.md)
 
 ---
 
