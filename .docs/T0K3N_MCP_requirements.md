@@ -51,6 +51,16 @@
 - 起動時にワークスペース内の言語を自動判別する
 - 判別した言語に対応する tree-sitter パーサーを自動ダウンロードする
 - ダウンロード済みパーサーはキャッシュし、次回起動時は再利用する
+- 起動時にバックグラウンドでバージョンチェックを行い、結果をログ出力する（非ブロッキング）
+
+#### バージョンチェック仕様
+
+- GitHub API（`GET /repos/tonrakun/T0K3N-MCP/releases/latest`）から最新リリースの `tag_name` を取得する
+- 実行中バージョンと semver 比較する
+- `実行中 < 最新リリース` → `info: ⬆ Update available: vX.X.X → vY.Y.Y` + リリース URL をログ出力
+- `実行中 > 最新リリース` → `info: 🧪 Beta Preview: running vX.X.X (latest release: vY.Y.Y)` をログ出力
+- `実行中 == 最新リリース` → `debug` レベルのみ（通常ログに出力しない）
+- API エラー・タイムアウト（8 秒）→ `debug` レベルのみ、起動をブロックしない
 
 #### 言語判別ロジック
 
@@ -579,6 +589,7 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 - [x] `debug_info` ツール（サーバー診断・登録ツール一覧）
 - [x] `read_code_deps`（依存関係グラフ・imports / imported_by・Rust/Python/JS/TS/Go 対応）
 - [x] `read_file_outline`（ファイル種別自動判別の統合アウトラインエントリーポイント）
+- [x] バックグラウンド自動バージョンチェック（GitHub Releases API・Beta Preview 判定）
 
 ### Phase 3 — 拡張（要検討）
 
