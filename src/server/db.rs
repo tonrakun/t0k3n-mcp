@@ -17,6 +17,11 @@ impl Database {
         Ok(db)
     }
 
+    pub fn ping(&self) -> Result<()> {
+        self.conn.execute_batch("SELECT 1")?;
+        Ok(())
+    }
+
     fn init_schema(&self) -> Result<()> {
         self.conn.execute_batch(
             "

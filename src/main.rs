@@ -24,6 +24,19 @@ async fn main() -> Result<()> {
         .map(|w| w[1].clone())
         .unwrap_or_else(|| ".".to_string());
 
+    let list_tools = args.iter().any(|a| a == "--list-tools");
+    if list_tools {
+        eprintln!(
+            "t0k3n-mcp v{} — {} tools registered:",
+            env!("CARGO_PKG_VERSION"),
+            server::REGISTERED_TOOLS.len()
+        );
+        for tool in server::REGISTERED_TOOLS {
+            eprintln!("  {tool}");
+        }
+        return Ok(());
+    }
+
     let refresh_parsers = args.iter().any(|a| a == "--refresh-parsers");
 
     if refresh_parsers {

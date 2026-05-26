@@ -30,6 +30,39 @@ use tools::{
     web::{FetchWebpageParams, ReadWebpageSectionParams, fetch_webpage, read_webpage_section},
 };
 
+pub const REGISTERED_TOOLS: &[&str] = &[
+    "read_directory_tree",
+    "read_markdown_toc",
+    "read_markdown_section",
+    "search_file",
+    "read_json_yaml_keys",
+    "read_json_yaml_value",
+    "read_code_skeleton",
+    "read_code_body",
+    "semantic_search",
+    "read_git_diff",
+    "fetch_webpage",
+    "read_webpage_section",
+    "convert_document",
+    "compress_text",
+    "count_tokens",
+    "check_budget",
+    "summarize_conversation",
+    "memory_save",
+    "memory_get",
+    "memory_list",
+    "memory_delete",
+    "task_create",
+    "task_get",
+    "task_update",
+    "task_list",
+    "task_delete",
+    "session_snapshot",
+    "session_restore",
+    "session_list",
+    "debug_info",
+];
+
 #[derive(Clone)]
 pub struct T0k3nServer {
     pub root: PathBuf,
@@ -60,12 +93,19 @@ impl T0k3nServer {
             tracing::warn!("Failed to open DB at {:?}: {}. Using in-memory DB.", db_path, e);
             Database::new(std::path::Path::new(":memory:")).unwrap()
         });
-        Self {
+        let server = Self {
             root: root_path,
             db: Arc::new(Mutex::new(db)),
             web_cache: Arc::new(Mutex::new(HashMap::new())),
             tool_router: Self::tool_router(),
-        }
+        };
+        tracing::info!(
+            "t0k3n-mcp v{} initialized — {} tools registered: {}",
+            env!("CARGO_PKG_VERSION"),
+            REGISTERED_TOOLS.len(),
+            REGISTERED_TOOLS.join(", ")
+        );
+        server
     }
 
     // ─────────────────────────────────────────────
@@ -417,6 +457,36 @@ impl T0k3nServer {
         ok_json(serde_json::json!({
             "sessions": sessions,
             "count": count,
+        }))
+    }
+
+    // ─────────────────────────────────────────────
+    // Debug tool
+    // ─────────────────────────────────────────────
+
+    #[tool(description = "Returns server diagnostics: version, root path, DB status, and the full list of registered tools. Call this to confirm t0k3n-mcp is active and all tools are registered correctly.")]
+    async fn debug_info(&self) -> Result<CallToolResult, McpError> {
+        let db_status = match self.db.lock() {
+            Ok(db) => match db.ping() {
+                Ok(_) => "ok".to_string(),
+                Err(e) => format!("error: {e}"),
+            },
+            Err(e) => format!("lock poisoned: {e}"),
+        };
+
+        let timestamp_unix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        ok_json(serde_json::json!({
+            "ok": true,
+            "version": env!("CARGO_PKG_VERSION"),
+            "root": self.root.display().to_string(),
+            "db_status": db_status,
+            "tool_count": REGISTERED_TOOLS.len(),
+            "tools": REGISTERED_TOOLS,
+            "timestamp_unix": timestamp_unix,
         }))
     }
 }
