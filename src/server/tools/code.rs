@@ -25,6 +25,7 @@ pub struct SkeletonItem {
 }
 
 pub struct ReadCodeSkeletonResult {
+    pub language: String,
     pub skeleton: Vec<SkeletonItem>,
     pub token_count: usize,
 }
@@ -33,26 +34,35 @@ pub fn read_code_skeleton(root: &Path, params: ReadCodeSkeletonParams) -> anyhow
     let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let skeleton = parse_skeleton(&content, ext);
+    let (language, skeleton) = parse_skeleton(&content, ext);
     let json = serde_json::to_string(&skeleton).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadCodeSkeletonResult { skeleton, token_count })
+    Ok(ReadCodeSkeletonResult { language, skeleton, token_count })
 }
 
-fn parse_skeleton(content: &str, ext: &str) -> Vec<SkeletonItem> {
+fn parse_skeleton(content: &str, ext: &str) -> (String, Vec<SkeletonItem>) {
     // tree-sitter first, regex fallback
-    if let Some(items) = try_parse_ts(content, ext) {
+    if let Some((lang_name, items)) = try_parse_ts(content, ext) {
         if !items.is_empty() {
-            return items;
+            return (lang_name.to_string(), items);
         }
     }
-    match ext {
+    let lang_name = match ext {
+        "rs" => "rust",
+        "py" => "python",
+        "js" | "jsx" => "javascript",
+        "ts" | "tsx" => "typescript",
+        "go" => "go",
+        _ => "unknown",
+    };
+    let items = match ext {
         "rs" => parse_rust(content),
         "py" => parse_python(content),
         "js" | "jsx" | "ts" | "tsx" => parse_js_ts(content),
         "go" => parse_go(content),
         _ => parse_generic(content),
-    }
+    };
+    (lang_name.to_string(), items)
 }
 
 // ── tree-sitter ────────────────────────────────────────────────────────────
@@ -93,22 +103,34 @@ const GO_QUERY: &str = "
 (type_declaration (type_spec name: (type_identifier) @name)) @definition.type
 ";
 
-fn ts_setup(ext: &str) -> Option<(tree_sitter::Language, &'static str)> {
+pub fn ts_setup(ext: &str) -> Option<(tree_sitter::Language, &'static str, &'static str)> {
     match ext {
-        "rs" => Some((tree_sitter_rust::LANGUAGE.into(), RUST_QUERY)),
-        "py" => Some((tree_sitter_python::LANGUAGE.into(), PYTHON_QUERY)),
-        "js" | "jsx" => Some((tree_sitter_javascript::LANGUAGE.into(), JS_QUERY)),
-        "ts" => Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), TS_QUERY)),
-        "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), TS_QUERY)),
-        "go" => Some((tree_sitter_go::LANGUAGE.into(), GO_QUERY)),
+        "rs" => Some((tree_sitter_rust::LANGUAGE.into(), RUST_QUERY, "rust")),
+        "py" => Some((tree_sitter_python::LANGUAGE.into(), PYTHON_QUERY, "python")),
+        "js" | "jsx" => Some((tree_sitter_javascript::LANGUAGE.into(), JS_QUERY, "javascript")),
+        "ts" => Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), TS_QUERY, "typescript")),
+        "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), TS_QUERY, "tsx")),
+        "go" => Some((tree_sitter_go::LANGUAGE.into(), GO_QUERY, "go")),
         _ => None,
     }
 }
 
-fn try_parse_ts(content: &str, ext: &str) -> Option<Vec<SkeletonItem>> {
+fn extract_node_signature(content: &str, node: &tree_sitter::Node, ext: &str) -> String {
+    let node_text = &content[node.byte_range()];
+    let delimiter = if ext == "py" { ':' } else { '{' };
+    let sig = if let Some(pos) = node_text.find(delimiter) {
+        &node_text[..pos]
+    } else {
+        node_text
+    };
+    // Normalize whitespace so multi-line signatures become a single line
+    sig.split_whitespace().collect::<Vec<_>>().join(" ").trim().to_string()
+}
+
+fn try_parse_ts(content: &str, ext: &str) -> Option<(&'static str, Vec<SkeletonItem>)> {
     use streaming_iterator::StreamingIterator;
 
-    let (lang, query_str) = ts_setup(ext)?;
+    let (lang, query_str, lang_name) = ts_setup(ext)?;
 
     let mut parser = tree_sitter::Parser::new();
     parser.set_language(&lang).ok()?;
@@ -120,7 +142,6 @@ fn try_parse_ts(content: &str, ext: &str) -> Option<Vec<SkeletonItem>> {
     let cap_names: Vec<String> = query.capture_names().iter().map(|s| s.to_string()).collect();
 
     let mut cursor = tree_sitter::QueryCursor::new();
-    let content_lines: Vec<&str> = content.lines().collect();
     let mut items = Vec::new();
 
     // tree-sitter 0.22+ uses StreamingIterator protocol (not std Iterator)
@@ -149,10 +170,7 @@ fn try_parse_ts(content: &str, ext: &str) -> Option<Vec<SkeletonItem>> {
         if let Some(node) = def_node {
             let start_line = node.start_position().row + 1;
             let end_line = node.end_position().row + 1;
-            let signature = content_lines
-                .get(start_line - 1)
-                .map(|l| l.trim().to_string())
-                .unwrap_or_default();
+            let signature = extract_node_signature(content, &node, ext);
             let name = name_text.unwrap_or_else(|| kind.clone());
             items.push(SkeletonItem {
                 id: format!("{}:{}-{}", kind, start_line, end_line),
@@ -165,7 +183,7 @@ fn try_parse_ts(content: &str, ext: &str) -> Option<Vec<SkeletonItem>> {
         }
     }
 
-    Some(items)
+    Some((lang_name, items))
 }
 
 // ── regex fallbacks ────────────────────────────────────────────────────────
