@@ -334,6 +334,108 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 
 ---
 
+### 2.10 依存関係系（新規）
+
+#### 2.10.1 `read_code_deps`
+
+コードファイルの import/export 依存グラフを返す。「このファイルは何を使っているか」「このファイルは何から使われているか」をフルコンテンツなしに把握できる。
+
+**対応言語**
+
+| 言語 | import 抽出方法 | imported_by 検索 |
+|---|---|---|
+| Rust | `use` 文（regex） | `use` / `mod` 含む行を全ファイル検索 |
+| Python | `import` / `from ... import`（regex） | `import` / `from` 含む行を検索 |
+| JavaScript / TypeScript | ES import / `require()`（regex）・相対パス解決 | `import` / `require` 含む行を検索 |
+| Go | `import` ブロック（regex） | `"` 含む行を検索 |
+
+**入力**
+
+```ts
+{
+  path: string;
+  direction?: "imports" | "imported_by" | "both"; // デフォルト: "both"
+}
+```
+
+**出力**
+
+```ts
+{
+  path: string;
+  language: string;
+  imports: {
+    raw: string;          // 生 import 文字列
+    resolved?: string;    // 相対パス → 実ファイルパスに解決（JS/TS のみ）
+    symbols: string[];    // インポートシンボル一覧
+  }[];
+  imported_by: string[];  // このファイルを参照するワークスペース内ファイルパス一覧（最大 200 件）
+  token_count: number;
+}
+```
+
+---
+
+### 2.11 汎用アウトライン系（新規）
+
+#### 2.11.1 `read_file_outline`
+
+ファイル種別を自動判別し、適切なスケルトン / TOC / キー構造を返す統合エントリーポイント。LLM がツールを選択するコストを削減する。
+
+**種別判別ロジック**
+
+| 拡張子 | kind | 内部呼び出し |
+|---|---|---|
+| `.rs` `.py` `.js` `.ts` `.go` 等 | `"code"` | `read_code_skeleton` |
+| `.md` `.markdown` `.mdx` | `"markdown"` | `read_markdown_toc` |
+| `.json` `.jsonc` | `"json"` | `read_json_yaml_keys` |
+| `.yaml` `.yml` | `"yaml"` | `read_json_yaml_keys` |
+| その他 | `"unknown"` | — |
+
+**入力**
+
+```ts
+{
+  path: string;  // ワークスペース内の任意ファイルパス
+}
+```
+
+**出力**
+
+```ts
+{
+  path: string;
+  kind: "code" | "markdown" | "json" | "yaml" | "unknown";
+  language?: string;         // コードファイルの場合のみ（例: "rust", "typescript"）
+  outline: SkeletonItem[] | TocEntry[] | string[] | null;
+  token_count: number;
+}
+```
+
+---
+
+### 2.12 デバッグ系
+
+#### 2.12.1 `debug_info`
+
+サーバー診断情報を返す。バージョン・root パス・DB 状態・登録ツール一覧を確認できる。
+
+**出力**
+
+```ts
+{
+  ok: true;
+  version: string;
+  root: string;
+  db_status: "ok" | string;
+  tool_count: number;
+  tools: string[];
+  timestamp_unix: number;
+}
+```
+
+---
+
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -378,8 +480,10 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 | `read_directory_tree` | Rust 実装 | .gitignore 適用済みディレクトリツリー |
 | `read_markdown_toc` | Rust 実装 | MD の見出し一覧 |
 | `read_markdown_section` | Rust 実装 | anchor 指定でセクション取得 |
-| `read_code_skeleton` | Rust 実装 | tree-sitter による AST ベーススケルトン |
+| `read_code_skeleton` | Rust 実装 | tree-sitter AST ベーススケルトン（language フィールド・複数行シグネチャ対応） |
 | `read_code_body` | Rust 実装 | スケルトン ID 指定で本文取得 |
+| `read_file_outline` | Rust 実装 | ファイル種別自動判別の統合アウトライン取得 |
+| `read_code_deps` | Rust 実装 | import/imported_by 依存グラフ（Rust/Python/JS/TS/Go） |
 | `read_git_diff` | Rust 実装 | 圧縮済み git diff |
 | `search_file` | Rust 実装 | キーワードマッチ＋文脈 |
 | `semantic_search` | Rust 実装 | 意味検索 |
@@ -440,6 +544,12 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 | `session_restore` | Rust 実装 | スナップショット復元 |
 | `session_list` | Rust 実装 | スナップショット一覧 |
 
+### デバッグ系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `debug_info` | Rust 実装 | サーバー診断情報（バージョン・DB・登録ツール一覧） |
+
 ---
 
 ## 5. 実装フェーズ
@@ -465,11 +575,16 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 - [x] バイナリ配布（GitHub Actions release.yml）
 - [x] `read_git_diff`（圧縮済み git diff・stat_only オプション）
 - [x] `semantic_search`（claude CLI サブプロセス方式）
+- [x] `read_code_skeleton` に `language` フィールド追加・複数行シグネチャ対応（tree-sitter の `extract_node_signature` 導入）
+- [x] `debug_info` ツール（サーバー診断・登録ツール一覧）
+- [x] `read_code_deps`（依存関係グラフ・imports / imported_by・Rust/Python/JS/TS/Go 対応）
+- [x] `read_file_outline`（ファイル種別自動判別の統合アウトラインエントリーポイント）
 
 ### Phase 3 — 拡張（要検討）
 
 - [ ] Deno スクリプト連携（補助用途）
 - [ ] 対応言語・フォーマット追加
+- [ ] tree-sitter パーサー自動ダウンロード（起動時・バックグラウンド）
 
 ---
 
