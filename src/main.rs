@@ -4,6 +4,7 @@ use rmcp::{ServiceExt, transport::stdio};
 mod security;
 mod server;
 mod startup;
+mod update;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -47,6 +48,9 @@ async fn main() -> Result<()> {
     }
 
     tracing::info!("Starting t0k3n-mcp with root: {}", root);
+
+    // Non-blocking background update check
+    update::spawn_update_check();
 
     // Detect workspace languages at startup
     let root_path = std::path::Path::new(&root);
