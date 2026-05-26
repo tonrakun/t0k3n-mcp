@@ -53,6 +53,9 @@ fn parse_skeleton(content: &str, ext: &str) -> (String, Vec<SkeletonItem>) {
         "js" | "jsx" => "javascript",
         "ts" | "tsx" => "typescript",
         "go" => "go",
+        "cpp" | "cc" | "cxx" | "hpp" | "hh" | "h" => "cpp",
+        "java" => "java",
+        "rb" => "ruby",
         _ => "unknown",
     };
     let items = match ext {
@@ -103,6 +106,31 @@ const GO_QUERY: &str = "
 (type_declaration (type_spec name: (type_identifier) @name)) @definition.type
 ";
 
+const CPP_QUERY: &str = "
+(function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition.function
+(function_definition declarator: (function_declarator declarator: (qualified_identifier name: (identifier) @name))) @definition.method
+(class_specifier name: (type_identifier) @name) @definition.class
+(struct_specifier name: (type_identifier) @name) @definition.struct
+(enum_specifier name: (type_identifier) @name) @definition.enum
+(namespace_definition name: (namespace_identifier) @name) @definition.namespace
+";
+
+const JAVA_QUERY: &str = "
+(method_declaration name: (identifier) @name) @definition.method
+(class_declaration name: (identifier) @name) @definition.class
+(interface_declaration name: (identifier) @name) @definition.interface
+(enum_declaration name: (identifier) @name) @definition.enum
+(record_declaration name: (identifier) @name) @definition.record
+(constructor_declaration name: (identifier) @name) @definition.constructor
+";
+
+const RUBY_QUERY: &str = "
+(method name: (identifier) @name) @definition.method
+(singleton_method name: (identifier) @name) @definition.method
+(class name: (constant) @name) @definition.class
+(module name: (constant) @name) @definition.module
+";
+
 pub fn ts_setup(ext: &str) -> Option<(tree_sitter::Language, &'static str, &'static str)> {
     match ext {
         "rs" => Some((tree_sitter_rust::LANGUAGE.into(), RUST_QUERY, "rust")),
@@ -111,6 +139,9 @@ pub fn ts_setup(ext: &str) -> Option<(tree_sitter::Language, &'static str, &'sta
         "ts" => Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), TS_QUERY, "typescript")),
         "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), TS_QUERY, "tsx")),
         "go" => Some((tree_sitter_go::LANGUAGE.into(), GO_QUERY, "go")),
+        "cpp" | "cc" | "cxx" | "hpp" | "hh" | "h" => Some((tree_sitter_cpp::LANGUAGE.into(), CPP_QUERY, "cpp")),
+        "java" => Some((tree_sitter_java::LANGUAGE.into(), JAVA_QUERY, "java")),
+        "rb" => Some((tree_sitter_ruby::LANGUAGE.into(), RUBY_QUERY, "ruby")),
         _ => None,
     }
 }
