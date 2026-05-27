@@ -116,7 +116,6 @@ cargo build --release
 
 ```
 --root <path>          工作区根目录（必填）
---refresh-parsers      清除并重新下载解析器缓存
 ```
 
 ---
@@ -216,6 +215,25 @@ cargo build --release
 
 ---
 
+## 支持的语言
+
+`read_code_skeleton` / `read_code_body` / `read_code_deps` 支持的代码解析语言：
+
+| 语言 | 扩展名 |
+|------|--------|
+| Rust | `.rs` |
+| Python | `.py` |
+| JavaScript | `.js`, `.jsx` |
+| TypeScript | `.ts`, `.tsx` |
+| Go | `.go` |
+| C++ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
+| Java | `.java` |
+| Ruby | `.rb` |
+
+解析器以 Cargo crate 的形式在构建时静态打包到二进制文件中，无需运行时下载。新语言支持将随新版本发布。可通过 [GitHub Issues](https://github.com/tonrakun/t0k3n-mcp/issues) 提交请求。
+
+---
+
 ## 安全性
 
 - 阻止所有 `--root` 外的路径解析（路径遍历防护）
@@ -229,9 +247,6 @@ cargo build --release
 ```
 <root>/.t0k3n/
   t0k3n.db        ← SQLite（记忆、任务、会话）
-
-~/.cache/t0k3n-mcp/
-  parsers/        ← 语言解析器缓存（Phase 3）
 ```
 
 推荐在 `.gitignore` 中添加：

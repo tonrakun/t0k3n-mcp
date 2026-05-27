@@ -116,7 +116,6 @@ Add the same configuration to each client's MCP settings file.
 
 ```
 --root <path>          Workspace root (required)
---refresh-parsers      Clear and re-download parser cache
 ```
 
 ---
@@ -216,6 +215,25 @@ Add the same configuration to each client's MCP settings file.
 
 ---
 
+## Supported languages
+
+Languages supported by `read_code_skeleton` / `read_code_body` / `read_code_deps`:
+
+| Language | Extensions |
+|----------|------------|
+| Rust | `.rs` |
+| Python | `.py` |
+| JavaScript | `.js`, `.jsx` |
+| TypeScript | `.ts`, `.tsx` |
+| Go | `.go` |
+| C++ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
+| Java | `.java` |
+| Ruby | `.rb` |
+
+Parsers are statically bundled into the binary as Cargo crates at build time — no runtime download required. New language support is shipped in new releases. Request via [GitHub Issues](https://github.com/tonrakun/t0k3n-mcp/issues).
+
+---
+
 ## Security
 
 - All path resolution outside `--root` is blocked (path traversal protection)
@@ -229,9 +247,6 @@ Add the same configuration to each client's MCP settings file.
 ```
 <root>/.t0k3n/
   t0k3n.db        ← SQLite (memory, tasks, sessions)
-
-~/.cache/t0k3n-mcp/
-  parsers/        ← Language parser cache (Phase 3)
 ```
 
 Recommended `.gitignore` entry:

@@ -116,7 +116,6 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 
 ```
 --root <path>          ワークスペースルート（必須）
---refresh-parsers      パーサーキャッシュをクリアして再ダウンロード
 ```
 
 ---
@@ -216,6 +215,25 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 
 ---
 
+## 対応言語
+
+`read_code_skeleton` / `read_code_body` / `read_code_deps` が対応するコード解析言語：
+
+| 言語 | 拡張子 |
+|------|--------|
+| Rust | `.rs` |
+| Python | `.py` |
+| JavaScript | `.js`, `.jsx` |
+| TypeScript | `.ts`, `.tsx` |
+| Go | `.go` |
+| C++ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
+| Java | `.java` |
+| Ruby | `.rb` |
+
+パーサーは Cargo クレートとしてビルド時にバイナリへ静的に組み込まれています。新言語の追加は新リリースで提供されます。リクエストは [GitHub Issues](https://github.com/tonrakun/t0k3n-mcp/issues) へ。
+
+---
+
 ## セキュリティ
 
 - `--root` 外へのパス解決を全ブロック（パストラバーサル対策）
@@ -229,9 +247,6 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 ```
 <root>/.t0k3n/
   t0k3n.db        ← SQLite（記憶・タスク・セッション）
-
-~/.cache/t0k3n-mcp/
-  parsers/        ← 言語パーサーキャッシュ（Phase 3）
 ```
 
 `.gitignore` への追加を推奨します：

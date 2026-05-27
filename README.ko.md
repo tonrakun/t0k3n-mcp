@@ -116,7 +116,6 @@ Rust 이외의 의존성 없음. Node.js, npm, Python 불필요.
 
 ```
 --root <path>          워크스페이스 루트 (필수)
---refresh-parsers      파서 캐시를 삭제하고 재다운로드
 ```
 
 ---
@@ -216,6 +215,25 @@ Rust 이외의 의존성 없음. Node.js, npm, Python 불필요.
 
 ---
 
+## 지원 언어
+
+`read_code_skeleton` / `read_code_body` / `read_code_deps` 가 지원하는 코드 분석 언어：
+
+| 언어 | 확장자 |
+|------|--------|
+| Rust | `.rs` |
+| Python | `.py` |
+| JavaScript | `.js`, `.jsx` |
+| TypeScript | `.ts`, `.tsx` |
+| Go | `.go` |
+| C++ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
+| Java | `.java` |
+| Ruby | `.rb` |
+
+파서는 Cargo 크레이트로 빌드 시 바이너리에 정적으로 번들됩니다 — 런타임 다운로드 불필요. 새 언어 지원은 새 릴리스로 제공됩니다. [GitHub Issues](https://github.com/tonrakun/t0k3n-mcp/issues) 에서 요청하세요.
+
+---
+
 ## 보안
 
 - `--root` 외부의 모든 경로 해석 차단 (경로 탐색 방어)
@@ -229,9 +247,6 @@ Rust 이외의 의존성 없음. Node.js, npm, Python 불필요.
 ```
 <root>/.t0k3n/
   t0k3n.db        ← SQLite (메모리, 태스크, 세션)
-
-~/.cache/t0k3n-mcp/
-  parsers/        ← 언어 파서 캐시 (Phase 3)
 ```
 
 `.gitignore`에 추가 권장:
