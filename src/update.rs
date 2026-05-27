@@ -1,19 +1,20 @@
 use std::cmp::Ordering;
+use std::sync::Arc;
+
+use crate::dashboard::{DashboardState, UpdateInfo, UpdateKind};
 
 const GITHUB_REPO: &str = "tonrakun/T0K3N-MCP";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Spawns a non-blocking background task that checks for a newer GitHub release.
-/// Logs an update notice or a "Beta Preview" banner without blocking startup.
-pub fn spawn_update_check() {
+pub fn spawn_update_check(dashboard: Option<Arc<DashboardState>>) {
     tokio::spawn(async move {
-        if let Err(e) = check_for_updates().await {
+        if let Err(e) = check_for_updates(dashboard).await {
             tracing::debug!("Update check skipped: {}", e);
         }
     });
 }
 
-async fn check_for_updates() -> anyhow::Result<()> {
+async fn check_for_updates(dashboard: Option<Arc<DashboardState>>) -> anyhow::Result<()> {
     let url = format!(
         "https://api.github.com/repos/{}/releases/latest",
         GITHUB_REPO
@@ -40,21 +41,28 @@ async fn check_for_updates() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    match compare_semver(CURRENT_VERSION, tag) {
+    let info = match compare_semver(CURRENT_VERSION, tag) {
         Ordering::Less => {
             tracing::info!(
                 "⬆ Update available: v{CURRENT_VERSION} → v{tag} \
                  — https://github.com/{GITHUB_REPO}/releases/latest"
             );
+            UpdateInfo { available: Some(tag.to_string()), kind: UpdateKind::Available }
         }
         Ordering::Greater => {
             tracing::info!(
                 "🧪 Beta Preview: running v{CURRENT_VERSION} (latest release: v{tag})"
             );
+            UpdateInfo { available: Some(tag.to_string()), kind: UpdateKind::Beta }
         }
         Ordering::Equal => {
             tracing::debug!("t0k3n-mcp v{CURRENT_VERSION} is up to date");
+            UpdateInfo { available: None, kind: UpdateKind::UpToDate }
         }
+    };
+
+    if let Some(d) = dashboard {
+        d.set_update_info(info).await;
     }
 
     Ok(())

@@ -59,6 +59,10 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # HTTP fetching
 reqwest = { version = "0.12", features = ["rustls-tls"], default-features = false }
 
+# Dashboard
+axum = { version = "0.8", features = ["ws"] }
+open = "5"
+
 # File system (.gitignore-aware walk)
 ignore = "0.4"
 

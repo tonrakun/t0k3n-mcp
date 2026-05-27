@@ -1,10 +1,13 @@
 use anyhow::Result;
 use rmcp::{ServiceExt, transport::stdio};
 
+mod dashboard;
 mod security;
 mod server;
 mod startup;
 mod update;
+
+const DASHBOARD_PORT: u16 = 14123;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -39,7 +42,6 @@ async fn main() -> Result<()> {
     }
 
     let refresh_parsers = args.iter().any(|a| a == "--refresh-parsers");
-
     if refresh_parsers {
         tracing::info!("--refresh-parsers: clearing parser cache");
         if let Err(e) = startup::clear_parser_cache() {
@@ -47,12 +49,36 @@ async fn main() -> Result<()> {
         }
     }
 
+    let no_dashboard = args.iter().any(|a| a == "--no-dashboard");
+    let port = args
+        .windows(2)
+        .find(|w| w[0] == "--dashboard-port")
+        .and_then(|w| w[1].parse::<u16>().ok())
+        .unwrap_or(DASHBOARD_PORT);
+
     tracing::info!("Starting t0k3n-mcp with root: {}", root);
 
-    // Non-blocking background update check
-    update::spawn_update_check();
+    // ── Dashboard ──────────────────────────────────────────────
+    let dashboard = if no_dashboard {
+        None
+    } else {
+        let state = dashboard::DashboardState::new(env!("CARGO_PKG_VERSION"));
+        let state_clone = state.clone();
+        tokio::spawn(async move { dashboard::run(state_clone, port).await });
 
-    // Detect workspace languages at startup
+        // Open browser (non-blocking, best-effort)
+        let url = format!("http://127.0.0.1:{port}");
+        if let Err(e) = open::that_detached(&url) {
+            tracing::debug!("Could not open browser: {e}");
+        }
+
+        Some(state)
+    };
+
+    // ── Update check ───────────────────────────────────────────
+    update::spawn_update_check(dashboard.clone());
+
+    // ── Language detection ─────────────────────────────────────
     let root_path = std::path::Path::new(&root);
     let langs = startup::detect_languages(root_path, 10);
     if langs.is_empty() {
@@ -65,8 +91,9 @@ async fn main() -> Result<()> {
         tracing::info!("Detected languages: {}", lang_list.join(", "));
     }
 
+    // ── MCP server ─────────────────────────────────────────────
     let transport = stdio();
-    let server = server::T0k3nServer::new(root);
+    let server = server::T0k3nServer::new(root, dashboard);
     let service = server.serve(transport).await.inspect_err(|e| {
         tracing::error!("Server error: {}", e);
     })?;

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>T0K3N-MCP Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", sans-serif;
+      background-color: #09090b;
+      color: #fafafa;
+      min-height: 100vh;
+    }
+
+    /* Subtle dot-grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(circle, #27272a 1px, transparent 1px);
+      background-size: 24px 24px;
+      opacity: 0.35;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar          { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track    { background: transparent; }
+    ::-webkit-scrollbar-thumb    { background: #3f3f46; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+
+    /* New-row flash */
+    @keyframes row-flash {
+      0%   { background-color: rgba(139, 92, 246, 0.14); }
+      100% { background-color: transparent; }
+    }
+    .row-flash { animation: row-flash 2.2s ease-out forwards; }
+
+    /* Live dot pulse */
+    @keyframes dot-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.25; }
+    }
+    .dot-live { animation: dot-pulse 2s ease-in-out infinite; }
+
+    /* Stat card number pop */
+    @keyframes num-pop {
+      0%   { transform: scale(1.18); color: #a78bfa; }
+      100% { transform: scale(1);    color: #fafafa; }
+    }
+    .num-pop { animation: num-pop 0.35s ease-out forwards; }
+  </style>
+</head>
+<body>
+<div class="relative z-10">
+
+  <!-- ════════════════════════════════ HEADER ══════════════════════════════════ -->
+  <header class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/85 backdrop-blur-md">
+    <div class="mx-auto max-w-6xl px-5 h-14 flex items-center justify-between">
+
+      <!-- Brand -->
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-violet-700 flex items-center justify-center shadow-lg shadow-violet-900/40 flex-shrink-0">
+          <!-- token / cube icon -->
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V11"/>
+          </svg>
+        </div>
+        <div class="flex items-baseline gap-2.5">
+          <span class="text-sm font-semibold tracking-tight text-zinc-50">T0K3N-MCP</span>
+          <span id="hdr-version"
+            class="text-[11px] font-mono text-zinc-500 bg-zinc-900 border border-zinc-800
+                   px-1.5 py-0.5 rounded leading-none">v—</span>
+        </div>
+      </div>
+
+      <!-- WS status badge -->
+      <div class="flex items-center gap-2 select-none">
+        <span id="ws-dot" class="w-1.5 h-1.5 rounded-full bg-zinc-600 flex-shrink-0"></span>
+        <span id="ws-label" class="text-xs text-zinc-500">Connecting…</span>
+      </div>
+
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-5 py-6 space-y-4">
+
+    <!-- ═══════════════════════════ STAT CARDS ══════════════════════════════ -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+
+      <!-- Total Calls -->
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 flex flex-col gap-1.5 relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-violet-900/10 to-transparent pointer-events-none"></div>
+        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Total Calls</p>
+        <p id="s-total" class="text-3xl font-bold tabular-nums leading-none text-zinc-50 transition-all">0</p>
+        <p id="s-errors" class="text-[11px] text-zinc-600 leading-none">0 errors</p>
+      </div>
+
+      <!-- Uptime -->
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 flex flex-col gap-1.5 relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-blue-900/10 to-transparent pointer-events-none"></div>
+        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Uptime</p>
+        <p id="s-uptime" class="text-3xl font-bold tabular-nums font-mono leading-none text-zinc-50">00:00:00</p>
+        <p id="s-since" class="text-[11px] text-zinc-600 leading-none">since —</p>
+      </div>
+
+      <!-- Avg Duration -->
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 flex flex-col gap-1.5 relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-emerald-900/10 to-transparent pointer-events-none"></div>
+        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Avg Duration</p>
+        <div class="flex items-baseline gap-1 leading-none">
+          <span id="s-avg" class="text-3xl font-bold tabular-nums text-zinc-50">—</span>
+          <span class="text-base font-medium text-zinc-500">ms</span>
+        </div>
+        <p class="text-[11px] text-zinc-600 leading-none">per tool call</p>
+      </div>
+
+      <!-- Update -->
+      <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 flex flex-col gap-1.5 relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-amber-900/10 to-transparent pointer-events-none"></div>
+        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Update</p>
+        <p id="s-update-ver" class="text-base font-semibold text-zinc-50 leading-none mt-0.5">—</p>
+        <p id="s-update-msg" class="text-[11px] text-zinc-600 leading-none">Checking…</p>
+      </div>
+
+    </div>
+
+    <!-- ═══════════════════════════ TOOL CALL LOG ════════════════════════════ -->
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+
+      <!-- Log header -->
+      <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
+        <div class="flex items-center gap-2.5">
+          <h2 class="text-sm font-semibold text-zinc-200">Tool Call Log</h2>
+          <span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider
+                        px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">
+            <span id="badge-dot" class="w-1 h-1 rounded-full bg-zinc-600"></span>
+            <span id="badge-label">idle</span>
+          </span>
+        </div>
+        <span id="log-count" class="text-[11px] font-mono text-zinc-500 tabular-nums">0 calls</span>
+      </div>
+
+      <!-- Table -->
+      <div id="log-scroll" style="max-height: 540px; overflow-y: auto;">
+        <table class="w-full text-sm">
+          <thead class="sticky top-0 bg-zinc-900/95 backdrop-blur-sm">
+            <tr class="border-b border-zinc-800">
+              <th class="px-4 py-2.5 text-left text-[10px] font-semibold text-zinc-500 uppercase tracking-widest w-24">Time</th>
+              <th class="px-4 py-2.5 text-left text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Tool</th>
+              <th class="px-4 py-2.5 text-right text-[10px] font-semibold text-zinc-500 uppercase tracking-widest w-28">Duration</th>
+              <th class="px-4 py-2.5 text-center text-[10px] font-semibold text-zinc-500 uppercase tracking-widest w-20">Status</th>
+            </tr>
+          </thead>
+          <tbody id="log-body">
+            <tr id="empty-row">
+              <td colspan="4" class="px-4 py-20 text-center">
+                <div class="text-zinc-600 text-sm font-medium">No tool calls yet</div>
+                <div class="text-zinc-700 text-xs mt-1.5">Calls will appear here in real time</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <p class="text-center text-[11px] text-zinc-700 pb-1 select-none">
+      T0K3N-MCP &mdash; Token-saving MCP server for AI coding tools
+    </p>
+
+  </main>
+</div><!-- /z-10 -->
+
+<script>
+  // ── Utility ───────────────────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+
+  function fmtTime(ms) {
+    return new Date(ms).toLocaleTimeString([], {
+      hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+  }
+
+  function fmtDur(ms) {
+    if (ms < 1)    return '<1ms';
+    if (ms < 1000) return ms + 'ms';
+    return (ms / 1000).toFixed(2) + 's';
+  }
+
+  function fmtUptime(secs) {
+    const h = String(Math.floor(secs / 3600)).padStart(2, '0');
+    const m = String(Math.floor((secs % 3600) / 60)).padStart(2, '0');
+    const s = String(secs % 60).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  }
+
+  function fmtSince(ms) {
+    if (!ms) return '—';
+    return 'since ' + new Date(ms).toLocaleTimeString([], {
+      hour12: false, hour: '2-digit', minute: '2-digit'
+    });
+  }
+
+  // ── State ─────────────────────────────────────────────────────────
+  let startMs    = 0;
+  let totalCalls = 0;
+  let errorCalls = 0;
+
+  // ── Uptime clock ──────────────────────────────────────────────────
+  setInterval(() => {
+    if (!startMs) return;
+    $('s-uptime').textContent = fmtUptime(Math.floor((Date.now() - startMs) / 1000));
+  }, 1000);
+
+  // ── Helper: pop animation on a stat number ────────────────────────
+  function popNum(id) {
+    const el = $(id);
+    el.classList.remove('num-pop');
+    void el.offsetWidth;   // reflow to restart
+    el.classList.add('num-pop');
+  }
+
+  // ── Shared stats update ───────────────────────────────────────────
+  function setStats() {
+    $('s-total').textContent   = totalCalls.toLocaleString();
+    $('s-errors').textContent  = errorCalls + ' error' + (errorCalls !== 1 ? 's' : '');
+    $('log-count').textContent = totalCalls.toLocaleString() + ' call' + (totalCalls !== 1 ? 's' : '');
+  }
+
+  // ── Update info render ────────────────────────────────────────────
+  function applyUpdate(u) {
+    const ver = $('s-update-ver');
+    const msg = $('s-update-msg');
+    if (!u || u.kind === 'up_to_date') {
+      ver.textContent = 'Up to date';
+      msg.textContent = 'Running latest release';
+      msg.className   = 'text-[11px] leading-none text-emerald-500';
+    } else if (u.kind === 'available') {
+      ver.textContent = 'v' + u.available + ' available';
+      msg.textContent = '⬆ New version ready';
+      msg.className   = 'text-[11px] leading-none text-amber-400';
+    } else if (u.kind === 'beta') {
+      ver.textContent = 'Beta preview';
+      msg.textContent = '🧪 Ahead of release';
+      msg.className   = 'text-[11px] leading-none text-violet-400';
+    } else {
+      ver.textContent = '—';
+      msg.textContent = 'Checking…';
+      msg.className   = 'text-[11px] leading-none text-zinc-600';
+    }
+  }
+
+  // ── Append a table row ────────────────────────────────────────────
+  function appendRow(call, animate) {
+    const empty = $('empty-row');
+    if (empty) empty.remove();
+
+    const tr = document.createElement('tr');
+    tr.className = 'group border-t border-zinc-800/50'
+      + ' hover:bg-zinc-800/30 transition-colors duration-75'
+      + (animate ? ' row-flash' : '');
+
+    const statusBadge = call.success
+      ? `<span class="inline-flex px-2 py-0.5 text-[10px] font-bold rounded-full
+                       bg-emerald-950 text-emerald-400 border border-emerald-800/60
+                       tracking-wide">OK</span>`
+      : `<span class="inline-flex px-2 py-0.5 text-[10px] font-bold rounded-full
+                       bg-red-950 text-red-400 border border-red-800/60
+                       tracking-wide">ERR</span>`;
+
+    tr.innerHTML = `
+      <td class="px-4 py-2.5 text-[11px] font-mono text-zinc-500 whitespace-nowrap tabular-nums">${fmtTime(call.timestamp_ms)}</td>
+      <td class="px-4 py-2.5 text-[11px] font-mono text-violet-300 whitespace-nowrap">${call.tool}</td>
+      <td class="px-4 py-2.5 text-[11px] font-mono text-zinc-400 text-right whitespace-nowrap tabular-nums">${fmtDur(call.duration_ms)}</td>
+      <td class="px-4 py-2.5 text-center">${statusBadge}</td>
+    `;
+
+    $('log-body').appendChild(tr);
+  }
+
+  function scrollBottom() {
+    const el = $('log-scroll');
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    if (atBottom) el.scrollTop = el.scrollHeight;
+  }
+
+  // ── Live badge helper ─────────────────────────────────────────────
+  let liveBadgeTimer;
+  function flashLive() {
+    $('badge-dot').className = 'w-1 h-1 rounded-full bg-violet-500';
+    $('badge-label').textContent = 'live';
+    clearTimeout(liveBadgeTimer);
+    liveBadgeTimer = setTimeout(() => {
+      $('badge-dot').className  = 'w-1 h-1 rounded-full bg-zinc-600';
+      $('badge-label').textContent = 'idle';
+    }, 2000);
+  }
+
+  // ── Snapshot ──────────────────────────────────────────────────────
+  function applySnapshot(snap) {
+    startMs    = snap.start_ms;
+    totalCalls = snap.total_calls;
+    errorCalls = snap.error_calls;
+
+    $('hdr-version').textContent = 'v' + snap.version;
+    $('s-since').textContent     = fmtSince(snap.start_ms);
+    $('s-uptime').textContent    = fmtUptime(snap.uptime_secs);
+    $('s-avg').textContent       = snap.avg_duration_ms || '—';
+
+    setStats();
+    applyUpdate(snap.update);
+
+    const tbody = $('log-body');
+    tbody.innerHTML = '';
+    if (snap.recent_calls.length === 0) {
+      tbody.innerHTML = `
+        <tr id="empty-row">
+          <td colspan="4" class="px-4 py-20 text-center">
+            <div class="text-zinc-600 text-sm font-medium">No tool calls yet</div>
+            <div class="text-zinc-700 text-xs mt-1.5">Calls will appear here in real time</div>
+          </td>
+        </tr>`;
+    } else {
+      snap.recent_calls.forEach(c => appendRow(c, false));
+      scrollBottom();
+    }
+  }
+
+  // ── WebSocket ─────────────────────────────────────────────────────
+  let ws, retryTimer;
+
+  function connect() {
+    ws = new WebSocket('ws://' + location.host + '/ws');
+
+    ws.onopen = () => {
+      clearTimeout(retryTimer);
+      $('ws-dot').className  = 'w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0 dot-live';
+      $('ws-label').textContent = 'Live';
+    };
+
+    ws.onclose = () => {
+      $('ws-dot').className  = 'w-1.5 h-1.5 rounded-full bg-yellow-500 flex-shrink-0';
+      $('ws-label').textContent = 'Reconnecting…';
+      retryTimer = setTimeout(connect, 2500);
+    };
+
+    ws.onerror = () => {
+      $('ws-dot').className  = 'w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0';
+      $('ws-label').textContent = 'Error';
+    };
+
+    ws.onmessage = ({ data }) => {
+      let msg;
+      try { msg = JSON.parse(data); } catch { return; }
+
+      if (msg.type === 'snapshot') {
+        applySnapshot(msg);
+
+      } else if (msg.type === 'call') {
+        const c = msg.data;
+        totalCalls++;
+        if (!c.success) errorCalls++;
+        setStats();
+        popNum('s-total');
+        $('s-avg').textContent = msg.avg_duration_ms || $('s-avg').textContent;
+        appendRow(c, true);
+        scrollBottom();
+        flashLive();
+
+      } else if (msg.type === 'update') {
+        applyUpdate(msg.data);
+      }
+    };
+  }
+
+  connect();
+</script>
+</body>
+</html>
