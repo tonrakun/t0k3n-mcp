@@ -2,13 +2,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
+use toml;
 
 use crate::security::safe_path;
 use super::fs::estimate_tokens;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadJsonYamlKeysParams {
-    #[schemars(description = "Root-relative path to the JSON or YAML file")]
+    #[schemars(description = "Root-relative path to the JSON, YAML, or TOML file")]
     pub path: String,
     #[schemars(description = "Maximum key depth (default: 3)")]
     pub depth: Option<usize>,
@@ -59,7 +60,7 @@ fn collect_keys(value: &Value, prefix: &str, max_depth: usize, current_depth: us
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadJsonYamlValueParams {
-    #[schemars(description = "Root-relative path to the JSON or YAML file")]
+    #[schemars(description = "Root-relative path to the JSON, YAML, or TOML file")]
     pub path: String,
     #[schemars(description = "Dot-notation key path, e.g. 'dependencies.tokio' or 'items[0].name'")]
     pub key_path: String,
@@ -85,6 +86,12 @@ fn parse_file(path: &Path, content: &str) -> anyhow::Result<Value> {
     match ext {
         "yaml" | "yml" => {
             let v: Value = serde_yaml::from_str(content)?;
+            Ok(v)
+        }
+        "toml" => {
+            let toml_val: toml::Value = toml::from_str(content)?;
+            let json_str = serde_json::to_string(&toml_val)?;
+            let v: Value = serde_json::from_str(&json_str)?;
             Ok(v)
         }
         _ => {

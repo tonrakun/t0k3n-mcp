@@ -98,6 +98,21 @@ pub fn read_file_outline(root: &Path, params: ReadFileOutlineParams) -> anyhow::
                 token_count,
             })
         }
+        "toml" => {
+            let result = read_json_yaml_keys(root, ReadJsonYamlKeysParams {
+                path: params.path.clone(),
+                depth: None,
+            })?;
+            let token_count = result.token_count;
+            let outline = serde_json::to_value(result.keys)?;
+            Ok(ReadFileOutlineResult {
+                path: params.path,
+                kind: "toml".to_string(),
+                language: None,
+                outline,
+                token_count,
+            })
+        }
         _ => {
             // Unknown: return file size info only
             let size = abs_path.metadata().map(|m| m.len()).unwrap_or(0);

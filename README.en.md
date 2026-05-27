@@ -192,8 +192,8 @@ Add the same configuration to each client's MCP settings file.
 | `read_git_blame_body` | Per-line blame for a function body (author + date) |
 | `search_file` | Keyword / regex match with surrounding context |
 | `semantic_search` | Find semantically relevant functions via natural language |
-| `read_json_yaml_keys` | List key structure of JSON/YAML |
-| `read_json_yaml_value` | Fetch value by dot-notation key path |
+| `read_json_yaml_keys` | List key structure of JSON/YAML/TOML |
+| `read_json_yaml_value` | Fetch value by dot-notation key path (JSON/YAML/TOML) |
 | `read_openapi` | Parse OpenAPI/Swagger spec into compact endpoint list |
 | `read_env_schema` | Extract env var definitions from .env.example / docker-compose.yml |
 
@@ -238,6 +238,8 @@ Languages supported by `read_code_skeleton` / `read_code_body` / `read_code_deps
 | C++ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
 | Java | `.java` |
 | Ruby | `.rb` |
+| C# | `.cs` |
+| PHP | `.php` |
 
 Parsers are statically bundled into the binary as Cargo crates at build time — no runtime download required. New language support is shipped in new releases. Request via [GitHub Issues](https://github.com/tonrakun/t0k3n-mcp/issues).
 

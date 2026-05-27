@@ -132,6 +132,26 @@ const RUBY_QUERY: &str = "
 (module name: (constant) @name) @definition.module
 ";
 
+const CSHARP_QUERY: &str = "
+(class_declaration name: (identifier) @name) @definition.class
+(interface_declaration name: (identifier) @name) @definition.interface
+(struct_declaration name: (identifier) @name) @definition.struct
+(enum_declaration name: (identifier) @name) @definition.enum
+(record_declaration name: (identifier) @name) @definition.record
+(method_declaration name: (identifier) @name) @definition.method
+(constructor_declaration name: (identifier) @name) @definition.constructor
+(namespace_declaration name: (identifier) @name) @definition.namespace
+";
+
+const PHP_QUERY: &str = "
+(function_definition name: (name) @name) @definition.function
+(method_declaration name: (name) @name) @definition.method
+(class_declaration name: (name) @name) @definition.class
+(interface_declaration name: (name) @name) @definition.interface
+(trait_declaration name: (name) @name) @definition.trait
+(namespace_definition name: (namespace_name) @name) @definition.namespace
+";
+
 pub fn ts_setup(ext: &str) -> Option<(tree_sitter::Language, &'static str, &'static str)> {
     match ext {
         "rs" => Some((tree_sitter_rust::LANGUAGE.into(), RUST_QUERY, "rust")),
@@ -143,6 +163,8 @@ pub fn ts_setup(ext: &str) -> Option<(tree_sitter::Language, &'static str, &'sta
         "cpp" | "cc" | "cxx" | "hpp" | "hh" | "h" => Some((tree_sitter_cpp::LANGUAGE.into(), CPP_QUERY, "cpp")),
         "java" => Some((tree_sitter_java::LANGUAGE.into(), JAVA_QUERY, "java")),
         "rb" => Some((tree_sitter_ruby::LANGUAGE.into(), RUBY_QUERY, "ruby")),
+        "cs" => Some((tree_sitter_c_sharp::LANGUAGE.into(), CSHARP_QUERY, "csharp")),
+        "php" => Some((tree_sitter_php::LANGUAGE_PHP.into(), PHP_QUERY, "php")),
         _ => None,
     }
 }
@@ -538,6 +560,7 @@ pub fn read_code_body(root: &Path, params: ReadCodeBodyParams) -> anyhow::Result
 const CODE_EXTENSIONS: &[&str] = &[
     "rs", "py", "js", "jsx", "ts", "tsx", "go",
     "cpp", "cc", "cxx", "hpp", "hh", "h", "java", "rb", "c",
+    "cs", "php",
 ];
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]

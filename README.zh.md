@@ -185,8 +185,8 @@ cargo build --release
 | `read_code_skeleton` | 仅返回函数 / 类签名 |
 | `read_code_body` | 通过 skeleton ID 获取函数体 |
 | `search_file` | 关键字 / 正则匹配及上下文 |
-| `read_json_yaml_keys` | 列出 JSON/YAML 的键结构 |
-| `read_json_yaml_value` | 通过点分键路径获取值 |
+| `read_json_yaml_keys` | 列出 JSON/YAML/TOML 的键结构 |
+| `read_json_yaml_value` | 通过点分键路径获取值（JSON/YAML/TOML） |
 
 ### 网页与文档
 
@@ -229,6 +229,8 @@ cargo build --release
 | C++ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
 | Java | `.java` |
 | Ruby | `.rb` |
+| C# | `.cs` |
+| PHP | `.php` |
 
 解析器以 Cargo crate 的形式在构建时静态打包到二进制文件中，无需运行时下载。新语言支持将随新版本发布。可通过 [GitHub Issues](https://github.com/tonrakun/t0k3n-mcp/issues) 提交请求。
 

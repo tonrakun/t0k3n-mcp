@@ -185,8 +185,8 @@ Rust 이외의 의존성 없음. Node.js, npm, Python 불필요.
 | `read_code_skeleton` | 함수 / 클래스 시그니처만 반환 |
 | `read_code_body` | skeleton ID로 함수 본문 가져오기 |
 | `search_file` | 키워드 / 정규식 매칭 및 주변 컨텍스트 |
-| `read_json_yaml_keys` | JSON/YAML 키 구조 나열 |
-| `read_json_yaml_value` | 점 표기법 키 경로로 값 가져오기 |
+| `read_json_yaml_keys` | JSON/YAML/TOML 키 구조 나열 |
+| `read_json_yaml_value` | 점 표기법 키 경로로 값 가져오기（JSON/YAML/TOML） |
 
 ### 웹 & 문서
 
@@ -229,6 +229,8 @@ Rust 이외의 의존성 없음. Node.js, npm, Python 불필요.
 | C++ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
 | Java | `.java` |
 | Ruby | `.rb` |
+| C# | `.cs` |
+| PHP | `.php` |
 
 파서는 Cargo 크레이트로 빌드 시 바이너리에 정적으로 번들됩니다 — 런타임 다운로드 불필요. 새 언어 지원은 새 릴리스로 제공됩니다. [GitHub Issues](https://github.com/tonrakun/t0k3n-mcp/issues) 에서 요청하세요.
 

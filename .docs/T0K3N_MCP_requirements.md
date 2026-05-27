@@ -665,8 +665,8 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 | `read_git_blame_body` | Rust 実装 | 関数単位の行 blame（著者・日付） |
 | `search_file` | Rust 実装 | キーワードマッチ＋文脈 |
 | `semantic_search` | Rust 実装 | 意味検索 |
-| `read_json_yaml_keys` | Rust 実装 | JSON/YAML キー構造 |
-| `read_json_yaml_value` | Rust 実装 | キーパス指定で値取得 |
+| `read_json_yaml_keys` | Rust 実装 | JSON/YAML/TOML キー構造 |
+| `read_json_yaml_value` | Rust 実装 | キーパス指定で値取得（JSON/YAML/TOML） |
 
 ### Web 取得系
 
@@ -778,8 +778,8 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 ### Phase 3 — 拡張（要検討）
 
 - [ ] Deno スクリプト連携（補助用途）
-- [ ] 新言語対応（Cargo クレート追加・新リリースで提供・GitHub Issues でリクエスト可）
-- [ ] 対応フォーマット追加（CSV / TOML 等）
+- [x] 新言語対応（C# / PHP — v2.0.0 で追加）
+- [x] 対応フォーマット追加（TOML — `read_json_yaml_keys` / `read_json_yaml_value` / `read_file_outline` で対応）
 
 ---
 

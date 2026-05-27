@@ -192,8 +192,8 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | `read_git_blame_body` | 関数単位の行 blame（著者・日付） |
 | `search_file` | キーワード/regex マッチ行と前後文脈 |
 | `semantic_search` | 自然言語で意味的に近い関数を検索 |
-| `read_json_yaml_keys` | JSON/YAML のキー構造一覧 |
-| `read_json_yaml_value` | ドット記法キーパスで値取得 |
+| `read_json_yaml_keys` | JSON/YAML/TOML のキー構造一覧 |
+| `read_json_yaml_value` | ドット記法キーパスで値取得（JSON/YAML/TOML） |
 | `read_openapi` | OpenAPI/Swagger エンドポイント一覧取得 |
 | `read_env_schema` | .env.example / docker-compose.yml から環境変数定義を抽出 |
 
@@ -238,6 +238,8 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | C++ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
 | Java | `.java` |
 | Ruby | `.rb` |
+| C# | `.cs` |
+| PHP | `.php` |
 
 パーサーは Cargo クレートとしてビルド時にバイナリへ静的に組み込まれています。新言語の追加は新リリースで提供されます。リクエストは [GitHub Issues](https://github.com/tonrakun/t0k3n-mcp/issues) へ。
 
