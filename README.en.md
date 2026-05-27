@@ -173,7 +173,7 @@ Add the same configuration to each client's MCP settings file.
 
 ---
 
-## Tool reference (26 tools)
+## Tool reference (31 tools)
 
 ### File reading
 
@@ -184,9 +184,18 @@ Add the same configuration to each client's MCP settings file.
 | `read_markdown_section` | Fetch section body by anchor |
 | `read_code_skeleton` | Return function / class signatures only |
 | `read_code_body` | Fetch function body by skeleton ID |
+| `read_symbol_usages` | Find all usages of a symbol across the workspace |
+| `read_code_deps` | import / imported_by dependency graph |
+| `read_file_outline` | Unified outline with auto file-type detection |
+| `read_git_diff` | Compressed git diff |
+| `read_git_log` | Structured commit log (author, date, changed files) |
+| `read_git_blame_body` | Per-line blame for a function body (author + date) |
 | `search_file` | Keyword / regex match with surrounding context |
+| `semantic_search` | Find semantically relevant functions via natural language |
 | `read_json_yaml_keys` | List key structure of JSON/YAML |
 | `read_json_yaml_value` | Fetch value by dot-notation key path |
+| `read_openapi` | Parse OpenAPI/Swagger spec into compact endpoint list |
+| `read_env_schema` | Extract env var definitions from .env.example / docker-compose.yml |
 
 ### Web & documents
 

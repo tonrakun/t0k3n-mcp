@@ -16,11 +16,13 @@ pub mod tools;
 
 use db::Database;
 use tools::{
-    code::{ReadCodeBodyParams, ReadCodeSkeletonParams, read_code_body, read_code_skeleton},
+    code::{ReadCodeBodyParams, ReadCodeSkeletonParams, ReadSymbolUsagesParams, read_code_body, read_code_skeleton, read_symbol_usages},
     deps::{ReadCodeDepsParams, read_code_deps},
     document::{ConvertDocumentParams, convert_document},
+    env::{ReadEnvSchemaParams, read_env_schema},
     fs::{ReadDirectoryTreeParams, SearchFileParams, read_directory_tree, search_file},
-    git::{ReadGitDiffParams, read_git_diff},
+    git::{ReadGitBlameBodyParams, ReadGitDiffParams, ReadGitLogParams, read_git_blame_body, read_git_diff, read_git_log},
+    openapi::{ReadOpenApiParams, read_openapi},
     json_yaml::{ReadJsonYamlKeysParams, ReadJsonYamlValueParams, read_json_yaml_keys, read_json_yaml_value},
     markdown::{ReadMarkdownSectionParams, ReadMarkdownTocParams, read_markdown_section, read_markdown_toc},
     memory::{MemoryDeleteParams, MemoryGetParams, MemoryListParams, MemorySaveParams, memory_delete, memory_get, memory_list, memory_save},
@@ -45,6 +47,11 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_file_outline",
     "semantic_search",
     "read_git_diff",
+    "read_git_log",
+    "read_git_blame_body",
+    "read_symbol_usages",
+    "read_openapi",
+    "read_env_schema",
     "fetch_webpage",
     "read_webpage_section",
     "convert_document",
@@ -263,6 +270,75 @@ impl T0k3nServer {
         let result = read_git_diff(&self.root, params).map_err(|e| err(e))?;
         ok_json(serde_json::json!({
             "diff": result.diff,
+            "token_count": result.token_count,
+        }))
+    }
+
+    #[tool(description = "Get structured git commit log with sha, author, date, message, and changed files. Filter by path, author, date range, or limit.")]
+    async fn read_git_log(
+        &self,
+        Parameters(params): Parameters<ReadGitLogParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = read_git_log(&self.root, params).map_err(|e| err(e))?;
+        ok_json(serde_json::json!({
+            "entries": result.entries,
+            "token_count": result.token_count,
+        }))
+    }
+
+    #[tool(description = "Get per-line blame (author + date) for a specific line range in a file. Use start_line/end_line from read_code_skeleton to target a function body.")]
+    async fn read_git_blame_body(
+        &self,
+        Parameters(params): Parameters<ReadGitBlameBodyParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = read_git_blame_body(&self.root, params).map_err(|e| err(e))?;
+        ok_json(serde_json::json!({
+            "path": result.path,
+            "lines": result.lines,
+            "token_count": result.token_count,
+        }))
+    }
+
+    #[tool(description = "Find all usages of a symbol name (function, struct, class, variable) across the workspace. Returns file path, line number, and context for each match. Max 100 results.")]
+    async fn read_symbol_usages(
+        &self,
+        Parameters(params): Parameters<ReadSymbolUsagesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = read_symbol_usages(&self.root, params).map_err(|e| err(e))?;
+        ok_json(serde_json::json!({
+            "symbol": result.symbol,
+            "usages": result.usages,
+            "total": result.total,
+            "truncated": result.truncated,
+            "token_count": result.token_count,
+        }))
+    }
+
+    #[tool(description = "Parse an OpenAPI / Swagger spec (JSON or YAML) and return a compact endpoint summary: method, path, operation_id, summary, parameters, request body, and responses.")]
+    async fn read_openapi(
+        &self,
+        Parameters(params): Parameters<ReadOpenApiParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = read_openapi(&self.root, params).map_err(|e| err(e))?;
+        ok_json(serde_json::json!({
+            "title": result.title,
+            "version": result.version,
+            "base_url": result.base_url,
+            "spec_version": result.spec_version,
+            "endpoints": result.endpoints,
+            "token_count": result.token_count,
+        }))
+    }
+
+    #[tool(description = "Extract environment variable definitions from .env.example / .env.sample / .env.template / docker-compose.yml. Returns key, description (from comments), default value, and required flag. Omit path to auto-scan workspace root.")]
+    async fn read_env_schema(
+        &self,
+        Parameters(params): Parameters<ReadEnvSchemaParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = read_env_schema(&self.root, params).map_err(|e| err(e))?;
+        ok_json(serde_json::json!({
+            "vars": result.vars,
+            "sources": result.sources,
             "token_count": result.token_count,
         }))
     }

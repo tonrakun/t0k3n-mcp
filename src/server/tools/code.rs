@@ -1,3 +1,4 @@
+use ignore::WalkBuilder;
 use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -530,4 +531,92 @@ pub fn read_code_body(root: &Path, params: ReadCodeBodyParams) -> anyhow::Result
     let json = serde_json::to_string(&items).unwrap_or_default();
     let token_count = estimate_tokens(&json);
     Ok(ReadCodeBodyResult { items, token_count })
+}
+
+// ─── read_symbol_usages ───────────────────────────────────────────────────────
+
+const CODE_EXTENSIONS: &[&str] = &[
+    "rs", "py", "js", "jsx", "ts", "tsx", "go",
+    "cpp", "cc", "cxx", "hpp", "hh", "h", "java", "rb", "c",
+];
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadSymbolUsagesParams {
+    #[schemars(description = "Symbol name to search for (function, struct, class, variable, etc.)")]
+    pub symbol: String,
+    #[schemars(description = "Restrict search to this file or directory (root-relative). Omit to search entire workspace.")]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SymbolUsage {
+    pub path: String,
+    pub line: usize,
+    pub content: String,
+    pub context: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReadSymbolUsagesResult {
+    pub symbol: String,
+    pub usages: Vec<SymbolUsage>,
+    pub total: usize,
+    pub truncated: bool,
+    pub token_count: usize,
+}
+
+pub fn read_symbol_usages(root: &Path, params: ReadSymbolUsagesParams) -> anyhow::Result<ReadSymbolUsagesResult> {
+    if params.symbol.is_empty() {
+        anyhow::bail!("symbol は空にできません");
+    }
+
+    let start = if let Some(ref p) = params.path {
+        safe_path(root, p)?
+    } else {
+        root.to_path_buf()
+    };
+
+    let pattern = format!(r"\b{}\b", regex::escape(&params.symbol));
+    let re = Regex::new(&pattern)
+        .map_err(|e| anyhow::anyhow!("Invalid symbol '{}': {}", params.symbol, e))?;
+
+    let mut usages: Vec<SymbolUsage> = Vec::new();
+    const MAX_RESULTS: usize = 100;
+    let mut truncated = false;
+
+    'outer: for entry in WalkBuilder::new(&start)
+        .hidden(false)
+        .git_ignore(true)
+        .git_global(false)
+        .git_exclude(false)
+        .build()
+        .flatten()
+    {
+        let path = entry.path();
+        if path.is_dir() { continue; }
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !CODE_EXTENSIONS.contains(&ext) { continue; }
+
+        let Ok(content) = std::fs::read_to_string(path) else { continue };
+        let lines: Vec<&str> = content.lines().collect();
+        let rel = path.strip_prefix(root).unwrap_or(path)
+            .to_string_lossy().replace('\\', "/");
+
+        for (i, line) in lines.iter().enumerate() {
+            if !re.is_match(line) { continue; }
+            let mut context = Vec::new();
+            if i > 0 { context.push(format!("{}: {}", i, lines[i - 1])); }
+            if i + 1 < lines.len() { context.push(format!("{}: {}", i + 2, lines[i + 1])); }
+            usages.push(SymbolUsage { path: rel.clone(), line: i + 1, content: line.to_string(), context });
+            if usages.len() >= MAX_RESULTS {
+                truncated = true;
+                break 'outer;
+            }
+        }
+    }
+
+    let total = usages.len();
+    let json = serde_json::to_string(&usages).unwrap_or_default();
+    let token_count = estimate_tokens(&json);
+    Ok(ReadSymbolUsagesResult { symbol: params.symbol, usages, total, truncated, token_count })
 }

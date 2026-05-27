@@ -417,6 +417,185 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 
 ---
 
+### 2.13 Git 拡張系
+
+#### 2.13.1 `read_git_log`
+
+コミット履歴を構造化して返す。`read_git_diff` との対になるツール。
+
+**入力**
+
+```ts
+{
+  path?: string;    // 対象ファイル/ディレクトリ（省略時: 全コミット）
+  author?: string;  // 著者名またはメールのサブ文字列
+  since?: string;   // 例: "2024-01-01" / "2 weeks ago"
+  until?: string;
+  limit?: number;   // デフォルト: 20、最大: 100
+}
+```
+
+**出力**
+
+```ts
+{
+  entries: {
+    sha: string;
+    sha_short: string;
+    author: string;
+    date: string;        // YYYY-MM-DD
+    message: string;
+    files: string[];
+  }[];
+  token_count: number;
+}
+```
+
+#### 2.13.2 `read_git_blame_body`
+
+`read_code_skeleton` が返す `start_line` / `end_line` を使い、関数単位の blame を取得する。
+
+**入力**
+
+```ts
+{
+  path: string;
+  start_line: number;  // read_code_skeleton の start_line をそのまま使用
+  end_line: number;
+}
+```
+
+**出力**
+
+```ts
+{
+  path: string;
+  lines: {
+    line_no: number;
+    sha_short: string;
+    author: string;
+    date: string;
+    content: string;
+  }[];
+  token_count: number;
+}
+```
+
+---
+
+### 2.14 シンボル検索系
+
+#### 2.14.1 `read_symbol_usages`
+
+ワークスペース全体でシンボル名の使用箇所を検索する。`search_file`（単一ファイル）の全ワークスペース版。正規表現のワードバウンダリでマッチし、コードファイル（rs/py/js/ts/go/cpp/java/rb 等）のみを対象とする。
+
+**入力**
+
+```ts
+{
+  symbol: string;   // 検索するシンボル名
+  path?: string;    // 検索対象をこのファイル/ディレクトリに絞る（省略時: 全ワークスペース）
+}
+```
+
+**出力**
+
+```ts
+{
+  symbol: string;
+  usages: {
+    path: string;
+    line: number;
+    content: string;
+    context: string[];  // 前後1行
+  }[];
+  total: number;
+  truncated: boolean;   // 100件上限に達した場合 true
+  token_count: number;
+}
+```
+
+---
+
+### 2.15 OpenAPI 系
+
+#### 2.15.1 `read_openapi`
+
+OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント一覧をコンパクトに返す。大きなスペックファイルを全文読み込む代わりに使う。
+
+**対応フォーマット**: OpenAPI 3.x / Swagger 2.0（JSON・YAML）
+
+**入力**
+
+```ts
+{
+  path: string;  // ワークスペース内の OpenAPI ファイルパス
+}
+```
+
+**出力**
+
+```ts
+{
+  title?: string;
+  version?: string;
+  base_url?: string;
+  spec_version: string;
+  endpoints: {
+    method: string;
+    path: string;
+    operation_id?: string;
+    summary?: string;
+    tags: string[];
+    parameters: string[];    // "name (in, required?)" 形式
+    request_body?: string;   // content-type
+    responses: string[];     // "200 OK" 形式
+  }[];
+  token_count: number;
+}
+```
+
+---
+
+### 2.16 環境変数スキーマ系
+
+#### 2.16.1 `read_env_schema`
+
+`.env.example` / `.env.sample` / `.env.template` / `docker-compose.yml` から環境変数の定義一覧を抽出する。コメントを description として取り込む。
+
+**対応ファイル**
+
+| ファイル | 抽出内容 |
+|---|---|
+| `.env.example` / `.env.sample` / `.env.template` / `.env.dist` | コメント → description、`KEY=value` → key + default |
+| `docker-compose.yml` | `environment:` ブロック（リスト・マップ両形式） |
+
+**入力**
+
+```ts
+{
+  path?: string;  // 省略時: ワークスペースルートを自動スキャン
+}
+```
+
+**出力**
+
+```ts
+{
+  vars: {
+    key: string;
+    default_value?: string;
+    description?: string;
+    required: boolean;
+    source: string;  // ファイル名
+  }[];
+  sources: string[];  // スキャンしたファイル一覧
+  token_count: number;
+}
+```
+
+---
+
 ### 2.12 デバッグ系
 
 #### 2.12.1 `debug_info`
@@ -480,7 +659,10 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 | `read_code_body` | Rust 実装 | スケルトン ID 指定で本文取得 |
 | `read_file_outline` | Rust 実装 | ファイル種別自動判別の統合アウトライン取得 |
 | `read_code_deps` | Rust 実装 | import/imported_by 依存グラフ（Rust/Python/JS/TS/Go） |
+| `read_symbol_usages` | Rust 実装 | ワークスペース全体シンボル使用箇所検索 |
 | `read_git_diff` | Rust 実装 | 圧縮済み git diff |
+| `read_git_log` | Rust 実装 | 構造化コミットログ（著者・日付・変更ファイル） |
+| `read_git_blame_body` | Rust 実装 | 関数単位の行 blame（著者・日付） |
 | `search_file` | Rust 実装 | キーワードマッチ＋文脈 |
 | `semantic_search` | Rust 実装 | 意味検索 |
 | `read_json_yaml_keys` | Rust 実装 | JSON/YAML キー構造 |
@@ -540,6 +722,18 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 | `session_restore` | Rust 実装 | スナップショット復元 |
 | `session_list` | Rust 実装 | スナップショット一覧 |
 
+### OpenAPI 系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_openapi` | Rust 実装 | OpenAPI/Swagger エンドポイント一覧取得 |
+
+### 環境変数スキーマ系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_env_schema` | Rust 実装 | .env.example / docker-compose.yml から変数定義抽出 |
+
 ### デバッグ系
 
 | ツール | 種別 | 説明 |
@@ -575,6 +769,11 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 - [x] `read_code_deps`（依存関係グラフ・imports / imported_by・Rust/Python/JS/TS/Go 対応）
 - [x] `read_file_outline`（ファイル種別自動判別の統合アウトラインエントリーポイント）
 - [x] バックグラウンド自動バージョンチェック（GitHub Releases API・Beta Preview 判定）
+- [x] `read_git_log`（構造化コミットログ・author/since/until/path フィルタ）
+- [x] `read_git_blame_body`（関数単位の行 blame・porcelain パース）
+- [x] `read_symbol_usages`（ワークスペース全体シンボル使用箇所検索・最大 100 件）
+- [x] `read_openapi`（OpenAPI 3.x / Swagger 2.0 エンドポイント一覧）
+- [x] `read_env_schema`（.env.example / docker-compose.yml 環境変数スキーマ抽出）
 
 ### Phase 3 — 拡張（要検討）
 

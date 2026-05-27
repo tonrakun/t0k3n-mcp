@@ -1,11 +1,13 @@
 pub mod code;
 pub mod deps;
 pub mod document;
+pub mod env;
 pub mod fs;
 pub mod git;
 pub mod json_yaml;
 pub mod markdown;
 pub mod memory;
+pub mod openapi;
 pub mod outline;
 pub mod search;
 pub mod session;

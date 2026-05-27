@@ -173,7 +173,7 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 
 ---
 
-## ツール一覧（26 ツール）
+## ツール一覧（31 ツール）
 
 ### ファイル読み取り
 
@@ -184,9 +184,18 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | `read_markdown_section` | anchor 指定でセクション本文取得 |
 | `read_code_skeleton` | 関数・クラス一覧をシグネチャのみで返す |
 | `read_code_body` | skeleton の ID 指定で関数本文取得 |
+| `read_symbol_usages` | ワークスペース全体のシンボル使用箇所を検索 |
+| `read_code_deps` | import / imported_by 依存グラフ |
+| `read_file_outline` | ファイル種別自動判別の統合アウトライン |
+| `read_git_diff` | 圧縮済み git diff |
+| `read_git_log` | 構造化コミットログ（著者・日付・変更ファイル） |
+| `read_git_blame_body` | 関数単位の行 blame（著者・日付） |
 | `search_file` | キーワード/regex マッチ行と前後文脈 |
+| `semantic_search` | 自然言語で意味的に近い関数を検索 |
 | `read_json_yaml_keys` | JSON/YAML のキー構造一覧 |
 | `read_json_yaml_value` | ドット記法キーパスで値取得 |
+| `read_openapi` | OpenAPI/Swagger エンドポイント一覧取得 |
+| `read_env_schema` | .env.example / docker-compose.yml から環境変数定義を抽出 |
 
 ### Web・ドキュメント
 
