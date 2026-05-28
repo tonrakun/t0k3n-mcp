@@ -8,6 +8,8 @@ use super::code::{ReadCodeSkeletonParams, read_code_skeleton};
 use super::fs::estimate_tokens;
 use super::json_yaml::{ReadJsonYamlKeysParams, read_json_yaml_keys};
 use super::markdown::{ReadMarkdownTocParams, read_markdown_toc};
+use super::notebook::{ReadNotebookCellsParams, read_notebook_cells};
+use super::proto::{ReadProtoSchemaParams, read_proto_schema};
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadFileOutlineParams {
@@ -108,6 +110,30 @@ pub fn read_file_outline(root: &Path, params: ReadFileOutlineParams) -> anyhow::
             Ok(ReadFileOutlineResult {
                 path: params.path,
                 kind: "toml".to_string(),
+                language: None,
+                outline,
+                token_count,
+            })
+        }
+        "ipynb" => {
+            let result = read_notebook_cells(root, ReadNotebookCellsParams { path: params.path.clone() })?;
+            let token_count = result.token_count;
+            let outline = serde_json::to_value(result.cells)?;
+            Ok(ReadFileOutlineResult {
+                path: params.path,
+                kind: "notebook".to_string(),
+                language: None,
+                outline,
+                token_count,
+            })
+        }
+        "proto" => {
+            let result = read_proto_schema(root, ReadProtoSchemaParams { path: params.path.clone() })?;
+            let token_count = result.token_count;
+            let outline = serde_json::to_value(result.types)?;
+            Ok(ReadFileOutlineResult {
+                path: params.path,
+                kind: "proto".to_string(),
                 language: None,
                 outline,
                 token_count,

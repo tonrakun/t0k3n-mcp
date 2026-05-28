@@ -28,11 +28,14 @@ use tools::{
     fs::{ReadDirectoryTreeParams, ReadTokenMapParams, SearchFileParams, read_directory_tree, read_token_map, search_file},
     git::{ReadChangedFilesParams, ReadGitBlameBodyParams, ReadGitDiffParams, ReadGitLogParams, read_changed_files, read_git_blame_body, read_git_diff, read_git_log},
     graphql::{ReadGraphqlSchemaParams, ReadGraphqlTypeParams, read_graphql_schema, read_graphql_type},
+    log::{ReadLogTailParams, ReadStackTraceParams, read_log_tail, read_stack_trace},
     openapi::{ReadOpenApiParams, read_openapi},
     json_yaml::{ReadJsonYamlKeysParams, ReadJsonYamlValueParams, read_json_yaml_keys, read_json_yaml_value},
     markdown::{ReadMarkdownSectionParams, ReadMarkdownTocParams, read_markdown_section, read_markdown_toc},
     memory::{MemoryDeleteParams, MemoryGetParams, MemoryListParams, MemorySaveParams, memory_delete, memory_get, memory_list, memory_save},
+    notebook::{ReadNotebookCellParams, ReadNotebookCellsParams, read_notebook_cell, read_notebook_cells},
     outline::{ReadFileOutlineParams, read_file_outline},
+    proto::{ReadProtoSchemaParams, ReadProtoTypeParams, read_proto_schema, read_proto_type},
     search::{SemanticSearchParams, semantic_search},
     session::{SessionListParams, SessionRestoreParams, SessionSnapshotParams, session_list, session_restore, session_snapshot},
     task::{TaskCreateParams, TaskDeleteParams, TaskGetParams, TaskListParams, TaskUpdateParams, task_create, task_delete, task_get, task_list, task_update},
@@ -71,11 +74,19 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_css_body",
     "read_graphql_schema",
     "read_graphql_type",
+    "read_proto_schema",
+    "read_proto_type",
     "read_openapi",
     "read_env_schema",
+    // Notebook
+    "read_notebook_cells",
+    "read_notebook_cell",
     // Test
     "read_test_skeleton",
     "read_test_results",
+    // Log / Debug
+    "read_log_tail",
+    "read_stack_trace",
     // Web / Document
     "fetch_webpage",
     "read_webpage_section",
@@ -682,6 +693,100 @@ impl T0k3nServer {
         })
     }
 
+    #[tool(description = "Get message/service/enum list from a .proto (Protocol Buffers) file. Returns IDs for use with read_proto_type.")]
+    async fn read_proto_schema(
+        &self,
+        Parameters(params): Parameters<ReadProtoSchemaParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_proto_schema", {
+            let result = read_proto_schema(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "path": result.path, "syntax": result.syntax, "package": result.package,
+                "types": result.types, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Get full field definitions for a specific message, service, or enum in a .proto file. Call read_proto_schema first to get the type list.")]
+    async fn read_proto_type(
+        &self,
+        Parameters(params): Parameters<ReadProtoTypeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_proto_type", {
+            let result = read_proto_type(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "name": result.name, "kind": result.kind,
+                "fields": result.fields, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    // ─────────────────────────────────────────────
+    // Notebook tools
+    // ─────────────────────────────────────────────
+
+    #[tool(description = "Get cell list from a Jupyter notebook (.ipynb) with type, preview, and output count. Call before read_notebook_cell to choose which cells to read.")]
+    async fn read_notebook_cells(
+        &self,
+        Parameters(params): Parameters<ReadNotebookCellsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_notebook_cells", {
+            let result = read_notebook_cells(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "path": result.path, "nbformat": result.nbformat,
+                "cells": result.cells, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Get full source of a specific cell from a Jupyter notebook (.ipynb). Use the index from read_notebook_cells. Set include_outputs=true to also fetch cell outputs.")]
+    async fn read_notebook_cell(
+        &self,
+        Parameters(params): Parameters<ReadNotebookCellParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_notebook_cell", {
+            let result = read_notebook_cell(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "path": result.path, "index": result.index, "cell_type": result.cell_type,
+                "execution_count": result.execution_count, "source": result.source,
+                "outputs": result.outputs, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    // ─────────────────────────────────────────────
+    // Log tools
+    // ─────────────────────────────────────────────
+
+    #[tool(description = "Read the tail of a log file with optional level (ERROR/WARN/INFO/DEBUG) and regex pattern filters. Returns last N lines and level counts across the whole file.")]
+    async fn read_log_tail(
+        &self,
+        Parameters(params): Parameters<ReadLogTailParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_log_tail", {
+            let result = read_log_tail(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "path": result.path, "total_lines": result.total_lines,
+                "returned_lines": result.returned_lines, "level_counts": result.level_counts,
+                "lines": result.lines, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Parse a stack trace and fetch source context around each referenced file:line. Supports Python, Rust, JavaScript/TypeScript, Java, Go, and C#. Returns resolved code snippets from workspace files.")]
+    async fn read_stack_trace(
+        &self,
+        Parameters(params): Parameters<ReadStackTraceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_stack_trace", {
+            let result = read_stack_trace(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "total_frames": result.total_frames, "resolved_frames": result.resolved_frames,
+                "frames": result.frames, "token_count": result.token_count,
+            }))
+        })
+    }
+
     // ─────────────────────────────────────────────
     // Test tools
     // ─────────────────────────────────────────────
@@ -852,7 +957,11 @@ impl ServerHandler for T0k3nServer {
                  - Types: read_type_skeleton (TS/Go/Rust types with fields)\n\
                  - Calls: read_call_graph (callers/callees for a function)\n\
                  - Token map: read_token_map (largest files first)\n\
-                 - Changed files: read_changed_files → read_git_diff (per-file)"
+                 - Changed files: read_changed_files → read_git_diff (per-file)\n\
+                 - Proto: read_proto_schema → read_proto_type\n\
+                 - Notebook: read_notebook_cells → read_notebook_cell\n\
+                 - Logs: read_log_tail (filter by level/pattern)\n\
+                 - Stack trace: read_stack_trace (auto-resolves source context)"
                     .into(),
             ),
             ..Default::default()

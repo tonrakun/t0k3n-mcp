@@ -826,6 +826,10 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 - [x] `read_graphql_schema` / `read_graphql_type`（GraphQL スキーマ段階的読み取り）
 - [x] `read_test_skeleton`（テストスイート構造取得・6フレームワーク対応）
 - [x] `read_test_results`（テスト結果パース・フレームワーク自動検出）
+- [x] `read_proto_schema` / `read_proto_type`（Protocol Buffers スキーマ段階的読み取り）
+- [x] `read_notebook_cells` / `read_notebook_cell`（Jupyter ノートブック段階的読み取り）
+- [x] `read_log_tail`（ログファイル末尾取得・レベル/パターンフィルタ）
+- [x] `read_stack_trace`（スタックトレース→ソースコンテキスト自動解決）
 
 ---
 
