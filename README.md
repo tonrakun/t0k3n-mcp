@@ -8,14 +8,7 @@
 
 ---
 
-## Language / 言語
-
-| Language | Link |
-|----------|------|
-| English | [README.en.md](README.en.md) |
-| 日本語 | [README.ja.md](README.ja.md) |
-| 中文 | [README.zh.md](README.zh.md) |
-| 한국어 | [README.ko.md](README.ko.md) |
+**日本語ドキュメント**: [README.ja.md](README.ja.md)
 
 ---
 
@@ -40,4 +33,13 @@ Add to `.mcp.json`:
 }
 ```
 
-For full documentation, select your language above.
+## CLI Options
+
+| Flag | Description |
+|------|-------------|
+| `--root <path>` | Workspace root directory (required) |
+| `--no-dashboard` | Disable the web dashboard |
+| `--open-browser` | Open the dashboard in a browser on startup |
+| `--dashboard-port <port>` | Dashboard port (default: 14123) |
+| `--list-tools` | Print all registered tool names and exit |
+| `--refresh-parsers` | Clear the tree-sitter parser cache on startup |
