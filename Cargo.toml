@@ -1,6 +1,6 @@
 [package]
 name = "t0k3n-mcp"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2024"
 description = "Token-saving MCP server for AI coding tools"
 license = "MIT"
