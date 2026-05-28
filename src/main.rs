@@ -50,6 +50,7 @@ async fn main() -> Result<()> {
     }
 
     let no_dashboard = args.iter().any(|a| a == "--no-dashboard");
+    let open_browser = args.iter().any(|a| a == "--open-browser");
     let port = args
         .windows(2)
         .find(|w| w[0] == "--dashboard-port")
@@ -66,10 +67,11 @@ async fn main() -> Result<()> {
         let state_clone = state.clone();
         tokio::spawn(async move { dashboard::run(state_clone, port).await });
 
-        // Open browser (non-blocking, best-effort)
-        let url = format!("http://127.0.0.1:{port}");
-        if let Err(e) = open::that_detached(&url) {
-            tracing::debug!("Could not open browser: {e}");
+        if open_browser {
+            let url = format!("http://127.0.0.1:{port}");
+            if let Err(e) = open::that_detached(&url) {
+                tracing::debug!("Could not open browser: {e}");
+            }
         }
 
         Some(state)

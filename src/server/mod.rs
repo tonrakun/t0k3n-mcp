@@ -40,7 +40,7 @@ use tools::{
     session::{SessionListParams, SessionRestoreParams, SessionSnapshotParams, session_list, session_restore, session_snapshot},
     task::{TaskCreateParams, TaskDeleteParams, TaskGetParams, TaskListParams, TaskUpdateParams, task_create, task_delete, task_get, task_list, task_update},
     test_results::{ReadTestResultsParams, read_test_results},
-    test_tools::{ReadTestSkeletonParams, read_test_skeleton},
+    test_skeleton::{ReadTestSkeletonParams, read_test_skeleton},
     text::{CheckBudgetParams, CompressTextParams, CountTokensParams, SummarizeConversationParams, check_budget, compress_text, count_tokens, summarize_conversation},
     web::{FetchWebpageParams, ReadWebpageSectionParams, fetch_webpage, read_webpage_section},
 };

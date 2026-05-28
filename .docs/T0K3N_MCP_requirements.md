@@ -35,9 +35,8 @@
 | PDF 変換 | `pdf-extract` クレート | Rust ネイティブ |
 | DOCX 変換 | `docx-rs` クレート | Rust ネイティブ |
 | DB | SQLite（`rusqlite`） | 軽量・組み込み |
-| スクリプト補助 | Deno（必要に応じて） | 設定ファイル生成等の補助用途のみ |
 
-> **方針**: Rust をコアとし、全処理を単一バイナリで完結させる。Node.js / npm に依存しない。Deno は補助用途に限定。
+> **方針**: Rust をコアとし、全処理を単一バイナリで完結させる。Node.js / npm に依存しない。
 
 ---
 
@@ -814,7 +813,6 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 
 ### Phase 3 — 拡張（要検討）
 
-- [ ] Deno スクリプト連携（補助用途）
 - [x] 新言語対応（C# / PHP — v2.0.0 で追加）
 - [x] 対応フォーマット追加（TOML — `read_json_yaml_keys` / `read_json_yaml_value` / `read_file_outline` で対応）
 - [x] `read_type_skeleton`（TS/Go/Rust 型定義スケルトン）

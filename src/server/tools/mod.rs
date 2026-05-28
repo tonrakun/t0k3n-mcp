@@ -19,6 +19,6 @@ pub mod search;
 pub mod session;
 pub mod task;
 pub mod test_results;
-pub mod test_tools;
+pub mod test_skeleton;
 pub mod text;
 pub mod web;
