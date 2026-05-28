@@ -118,6 +118,137 @@ pub fn search_file(root: &Path, params: SearchFileParams) -> anyhow::Result<Sear
     Ok(SearchFileResult { matches, token_count })
 }
 
+// ─── read_token_map ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadTokenMapParams {
+    #[schemars(description = "Root-relative subdirectory to scan. Omit for entire workspace.")]
+    pub path: Option<String>,
+    #[schemars(description = "Maximum number of files to return (default: 50, max: 200). Results are sorted by token count descending.")]
+    pub limit: Option<usize>,
+    #[schemars(description = "Only include files matching this glob pattern (e.g. '*.ts', '*.rs'). Omit for all files.")]
+    pub glob: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TokenMapEntry {
+    pub path: String,
+    pub estimated_tokens: usize,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReadTokenMapResult {
+    pub files: Vec<TokenMapEntry>,
+    pub total_tokens: usize,
+    pub file_count: usize,
+    pub token_count: usize,
+}
+
+pub fn read_token_map(root: &Path, params: ReadTokenMapParams) -> anyhow::Result<ReadTokenMapResult> {
+    let start = if let Some(ref p) = params.path {
+        safe_path(root, p)?
+    } else {
+        root.to_path_buf()
+    };
+
+    let limit = params.limit.unwrap_or(50).min(200);
+    let glob_pat = params.glob.as_deref();
+
+    let glob_re: Option<Regex> = if let Some(pat) = glob_pat {
+        let regex_pat = glob_to_regex(pat);
+        Some(Regex::new(&regex_pat).unwrap_or_else(|_| Regex::new(".*").unwrap()))
+    } else {
+        None
+    };
+
+    let mut entries: Vec<TokenMapEntry> = Vec::new();
+    let mut total_tokens = 0usize;
+
+    for entry in WalkBuilder::new(&start)
+        .hidden(false)
+        .git_ignore(true)
+        .git_global(false)
+        .git_exclude(false)
+        .build()
+        .flatten()
+    {
+        let path = entry.path().to_path_buf();
+        if path.is_dir() { continue; }
+
+        let rel = path.strip_prefix(root).unwrap_or(&path)
+            .to_string_lossy().replace('\\', "/");
+
+        // Apply glob filter
+        if let Some(ref re) = glob_re {
+            let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+            if !re.is_match(&file_name) && !re.is_match(&rel) { continue; }
+        }
+
+        // Skip obviously binary files by extension
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if matches!(ext, "png" | "jpg" | "jpeg" | "gif" | "ico" | "svg" | "woff" | "woff2"
+                | "ttf" | "eot" | "mp4" | "webm" | "mp3" | "zip" | "tar" | "gz"
+                | "exe" | "dll" | "so" | "dylib" | "bin" | "db" | "sqlite" | "lock") {
+                continue;
+            }
+        }
+
+        let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+        // Estimate tokens cheaply: read first 64KB, extrapolate
+        let tokens = estimate_file_tokens(&path, size_bytes);
+        total_tokens += tokens;
+        entries.push(TokenMapEntry { path: rel, estimated_tokens: tokens, size_bytes });
+    }
+
+    let file_count = entries.len();
+    entries.sort_by(|a, b| b.estimated_tokens.cmp(&a.estimated_tokens));
+    entries.truncate(limit);
+
+    let json = serde_json::to_string(&entries).unwrap_or_default();
+    let token_count = estimate_tokens(&json);
+    Ok(ReadTokenMapResult { files: entries, total_tokens, file_count, token_count })
+}
+
+fn estimate_file_tokens(path: &std::path::Path, size_bytes: u64) -> usize {
+    // Read up to 32KB to compute average, then extrapolate for larger files
+    const SAMPLE: u64 = 32768;
+    if size_bytes == 0 { return 0; }
+
+    use std::io::Read;
+    let Ok(mut f) = std::fs::File::open(path) else { return size_bytes as usize / 4 };
+    let sample_len = size_bytes.min(SAMPLE) as usize;
+    let mut buf = vec![0u8; sample_len];
+    let Ok(read) = f.read(&mut buf) else { return size_bytes as usize / 4 };
+    buf.truncate(read);
+
+    let Ok(text) = std::str::from_utf8(&buf) else { return 0 }; // binary
+    let sample_tokens = estimate_tokens(text);
+    if read as u64 >= size_bytes {
+        sample_tokens
+    } else {
+        // Extrapolate
+        (sample_tokens as f64 * (size_bytes as f64 / read as f64)) as usize
+    }
+}
+
+fn glob_to_regex(glob: &str) -> String {
+    let mut re = String::from("^");
+    for ch in glob.chars() {
+        match ch {
+            '*' => re.push_str(".*"),
+            '?' => re.push('.'),
+            '.' | '+' | '(' | ')' | '[' | ']' | '{' | '}' | '^' | '$' | '|' | '\\' => {
+                re.push('\\');
+                re.push(ch);
+            }
+            c => re.push(c),
+        }
+    }
+    re.push('$');
+    re
+}
+
 pub fn estimate_tokens(text: &str) -> usize {
     // CJK/Japanese chars are 3 UTF-8 bytes but ~1 token each (len/4 underestimates 40-60%).
     // Split by character class for better accuracy across Latin, CJK, and mixed content.

@@ -173,7 +173,7 @@ Add the same configuration to each client's MCP settings file.
 
 ---
 
-## Tool reference (31 tools)
+## Tool reference (51 tools)
 
 ### File reading
 
@@ -184,18 +184,55 @@ Add the same configuration to each client's MCP settings file.
 | `read_markdown_section` | Fetch section body by anchor |
 | `read_code_skeleton` | Return function / class signatures only |
 | `read_code_body` | Fetch function body by skeleton ID |
+| `read_type_skeleton` | Type definition skeleton (TS interface/type/enum, Go struct/interface, Rust struct/enum/trait) |
+| `read_call_graph` | Function call graph — callees and callers within a single file |
+| `read_token_map` | Token count map for workspace files (glob filter, sorted descending) |
 | `read_symbol_usages` | Find all usages of a symbol across the workspace |
 | `read_code_deps` | import / imported_by dependency graph |
 | `read_file_outline` | Unified outline with auto file-type detection |
-| `read_git_diff` | Compressed git diff |
-| `read_git_log` | Structured commit log (author, date, changed files) |
-| `read_git_blame_body` | Per-line blame for a function body (author + date) |
 | `search_file` | Keyword / regex match with surrounding context |
 | `semantic_search` | Find semantically relevant functions via natural language |
 | `read_json_yaml_keys` | List key structure of JSON/YAML/TOML |
 | `read_json_yaml_value` | Fetch value by dot-notation key path (JSON/YAML/TOML) |
 | `read_openapi` | Parse OpenAPI/Swagger spec into compact endpoint list |
 | `read_env_schema` | Extract env var definitions from .env.example / docker-compose.yml |
+
+### Git
+
+| Tool | Description |
+|------|-------------|
+| `read_git_diff` | Compressed git diff |
+| `read_git_log` | Structured commit log (author, date, changed files) |
+| `read_git_blame_body` | Per-line blame for a function body (author + date) |
+| `read_changed_files` | Changed file list between branches (status, added/deleted lines) |
+
+### DB schema
+
+| Tool | Description |
+|------|-------------|
+| `read_db_schema` | Table / model list from Prisma or SQL schema (auto-detect) |
+| `read_db_table` | Detailed field definitions for a specific table or model |
+
+### CSS
+
+| Tool | Description |
+|------|-------------|
+| `read_css_skeleton` | CSS/SCSS selector list (property count, line range) |
+| `read_css_body` | Fetch ruleset body by selector ID |
+
+### GraphQL
+
+| Tool | Description |
+|------|-------------|
+| `read_graphql_schema` | Type list from GraphQL schema (type/input/enum/interface) |
+| `read_graphql_type` | Detailed field definitions for a specific type |
+
+### Tests
+
+| Tool | Description |
+|------|-------------|
+| `read_test_skeleton` | Test suite / case list from test files (Jest/pytest/Cargo/Go/JUnit/RSpec) |
+| `read_test_results` | Parse test result output and return summary (auto-detects framework) |
 
 ### Web & documents
 

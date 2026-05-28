@@ -19,12 +19,15 @@ pub mod tools;
 
 use db::Database;
 use tools::{
-    code::{ReadCodeBodyParams, ReadCodeSkeletonParams, ReadSymbolUsagesParams, read_code_body, read_code_skeleton, read_symbol_usages},
+    code::{ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams, read_call_graph, read_code_body, read_code_skeleton, read_symbol_usages, read_type_skeleton},
+    css::{ReadCssBodyParams, ReadCssSkeletonParams, read_css_body, read_css_skeleton},
+    db_schema::{ReadDbSchemaParams, ReadDbTableParams, read_db_schema, read_db_table},
     deps::{ReadCodeDepsParams, read_code_deps},
     document::{ConvertDocumentParams, convert_document},
     env::{ReadEnvSchemaParams, read_env_schema},
-    fs::{ReadDirectoryTreeParams, SearchFileParams, read_directory_tree, search_file},
-    git::{ReadGitBlameBodyParams, ReadGitDiffParams, ReadGitLogParams, read_git_blame_body, read_git_diff, read_git_log},
+    fs::{ReadDirectoryTreeParams, ReadTokenMapParams, SearchFileParams, read_directory_tree, read_token_map, search_file},
+    git::{ReadChangedFilesParams, ReadGitBlameBodyParams, ReadGitDiffParams, ReadGitLogParams, read_changed_files, read_git_blame_body, read_git_diff, read_git_log},
+    graphql::{ReadGraphqlSchemaParams, ReadGraphqlTypeParams, read_graphql_schema, read_graphql_type},
     openapi::{ReadOpenApiParams, read_openapi},
     json_yaml::{ReadJsonYamlKeysParams, ReadJsonYamlValueParams, read_json_yaml_keys, read_json_yaml_value},
     markdown::{ReadMarkdownSectionParams, ReadMarkdownTocParams, read_markdown_section, read_markdown_toc},
@@ -33,11 +36,14 @@ use tools::{
     search::{SemanticSearchParams, semantic_search},
     session::{SessionListParams, SessionRestoreParams, SessionSnapshotParams, session_list, session_restore, session_snapshot},
     task::{TaskCreateParams, TaskDeleteParams, TaskGetParams, TaskListParams, TaskUpdateParams, task_create, task_delete, task_get, task_list, task_update},
+    test_results::{ReadTestResultsParams, read_test_results},
+    test_tools::{ReadTestSkeletonParams, read_test_skeleton},
     text::{CheckBudgetParams, CompressTextParams, CountTokensParams, SummarizeConversationParams, check_budget, compress_text, count_tokens, summarize_conversation},
     web::{FetchWebpageParams, ReadWebpageSectionParams, fetch_webpage, read_webpage_section},
 };
 
 pub const REGISTERED_TOOLS: &[&str] = &[
+    // File reading
     "read_directory_tree",
     "read_markdown_toc",
     "read_markdown_section",
@@ -49,19 +55,37 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_code_deps",
     "read_file_outline",
     "semantic_search",
+    "read_symbol_usages",
+    "read_type_skeleton",
+    "read_call_graph",
+    "read_token_map",
+    // Git
     "read_git_diff",
     "read_git_log",
     "read_git_blame_body",
-    "read_symbol_usages",
+    "read_changed_files",
+    // Schema / DSL
+    "read_db_schema",
+    "read_db_table",
+    "read_css_skeleton",
+    "read_css_body",
+    "read_graphql_schema",
+    "read_graphql_type",
     "read_openapi",
     "read_env_schema",
+    // Test
+    "read_test_skeleton",
+    "read_test_results",
+    // Web / Document
     "fetch_webpage",
     "read_webpage_section",
     "convert_document",
+    // Text / Budget
     "compress_text",
     "count_tokens",
     "check_budget",
     "summarize_conversation",
+    // Memory / Task / Session
     "memory_save",
     "memory_get",
     "memory_list",
@@ -576,6 +600,184 @@ impl T0k3nServer {
     }
 
     // ─────────────────────────────────────────────
+    // Schema / DSL tools
+    // ─────────────────────────────────────────────
+
+    #[tool(description = "Get table/model list from a Prisma or SQL schema file. Returns name, kind, and field count. Call read_db_table for field details of a specific table.")]
+    async fn read_db_schema(
+        &self,
+        Parameters(params): Parameters<ReadDbSchemaParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_db_schema", {
+            let result = read_db_schema(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "path": result.path, "format": result.format,
+                "tables": result.tables, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Get full field definitions for a specific table or model from a Prisma or SQL schema. Call read_db_schema first to get the table list.")]
+    async fn read_db_table(
+        &self,
+        Parameters(params): Parameters<ReadDbTableParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_db_table", {
+            let result = read_db_table(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "name": result.name, "kind": result.kind,
+                "fields": result.fields, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Get CSS/SCSS/Less selector list with property counts. Returns IDs for use with read_css_body.")]
+    async fn read_css_skeleton(
+        &self,
+        Parameters(params): Parameters<ReadCssSkeletonParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_css_skeleton", {
+            let result = read_css_skeleton(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "path": result.path, "selectors": result.selectors, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Get full CSS rule content for specific selectors by ID. Call read_css_skeleton first to get selector IDs.")]
+    async fn read_css_body(
+        &self,
+        Parameters(params): Parameters<ReadCssBodyParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_css_body", {
+            let result = read_css_body(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({ "items": result.items, "token_count": result.token_count }))
+        })
+    }
+
+    #[tool(description = "Get type/input/enum/interface list from a GraphQL schema file. Returns IDs for use with read_graphql_type.")]
+    async fn read_graphql_schema(
+        &self,
+        Parameters(params): Parameters<ReadGraphqlSchemaParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_graphql_schema", {
+            let result = read_graphql_schema(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "path": result.path, "types": result.types, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Get full field definitions for a specific GraphQL type. Call read_graphql_schema first to get the type list.")]
+    async fn read_graphql_type(
+        &self,
+        Parameters(params): Parameters<ReadGraphqlTypeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_graphql_type", {
+            let result = read_graphql_type(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "name": result.name, "kind": result.kind,
+                "fields": result.fields, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    // ─────────────────────────────────────────────
+    // Test tools
+    // ─────────────────────────────────────────────
+
+    #[tool(description = "Get test case list from a test file (Jest/pytest/Rust/#[test]/Go/JUnit/RSpec). Returns IDs usable with read_code_body to get test implementations.")]
+    async fn read_test_skeleton(
+        &self,
+        Parameters(params): Parameters<ReadTestSkeletonParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_test_skeleton", {
+            let result = read_test_skeleton(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "path": result.path, "framework": result.framework,
+                "tests": result.tests, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Parse test runner output (Jest/Vitest/pytest/cargo test/go test) into a structured summary: pass/fail counts per suite and failure details. Accepts raw text or a file path.")]
+    async fn read_test_results(
+        &self,
+        Parameters(params): Parameters<ReadTestResultsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_test_results", {
+            let result = read_test_results(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "framework": result.framework, "summary": result.summary,
+                "suites": result.suites, "failures": result.failures,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    // ─────────────────────────────────────────────
+    // Extended code analysis tools
+    // ─────────────────────────────────────────────
+
+    #[tool(description = "Get type definitions (interface/type/enum/struct) with field names from TypeScript, Go, or Rust files. More detailed than read_code_skeleton for type-heavy files.")]
+    async fn read_type_skeleton(
+        &self,
+        Parameters(params): Parameters<ReadTypeSkeletonParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_type_skeleton", {
+            let result = read_type_skeleton(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "path": result.path, "language": result.language,
+                "types": result.types, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Get the call graph for a function: what functions it calls, and which functions in the same file call it. Uses function_id from read_code_skeleton.")]
+    async fn read_call_graph(
+        &self,
+        Parameters(params): Parameters<ReadCallGraphParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_call_graph", {
+            let result = read_call_graph(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "function": result.function, "file": result.file,
+                "calls": result.calls, "called_by_in_file": result.called_by_in_file,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "List all workspace files sorted by estimated token count (largest first). Use to identify token-heavy files before reading. Supports glob filtering.")]
+    async fn read_token_map(
+        &self,
+        Parameters(params): Parameters<ReadTokenMapParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_token_map", {
+            let result = read_token_map(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "files": result.files, "total_tokens": result.total_tokens,
+                "file_count": result.file_count, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Get per-file change summary (added/deleted lines, status) for the current diff vs a base ref. Step 1 before read_git_diff — get the file list first, then read specific files' diffs.")]
+    async fn read_changed_files(
+        &self,
+        Parameters(params): Parameters<ReadChangedFilesParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_changed_files", {
+            let result = read_changed_files(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "base": result.base, "files": result.files,
+                "total_added": result.total_added, "total_deleted": result.total_deleted,
+                "file_count": result.file_count, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    // ─────────────────────────────────────────────
     // Debug tool
     // ─────────────────────────────────────────────
 
@@ -642,7 +844,15 @@ impl ServerHandler for T0k3nServer {
                  - Budget: check_budget, compress_text, count_tokens\n\
                  - Memory: memory_save/get/list/delete\n\
                  - Tasks: task_create/update/get/list/delete\n\
-                 - Sessions: session_snapshot/restore/list"
+                 - Sessions: session_snapshot/restore/list\n\
+                 - DB schema: read_db_schema → read_db_table\n\
+                 - CSS: read_css_skeleton → read_css_body\n\
+                 - GraphQL: read_graphql_schema → read_graphql_type\n\
+                 - Tests: read_test_skeleton (list), read_test_results (parse output)\n\
+                 - Types: read_type_skeleton (TS/Go/Rust types with fields)\n\
+                 - Calls: read_call_graph (callers/callees for a function)\n\
+                 - Token map: read_token_map (largest files first)\n\
+                 - Changed files: read_changed_files → read_git_diff (per-file)"
                     .into(),
             ),
             ..Default::default()

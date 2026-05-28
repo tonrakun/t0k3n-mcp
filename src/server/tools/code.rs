@@ -643,3 +643,375 @@ pub fn read_symbol_usages(root: &Path, params: ReadSymbolUsagesParams) -> anyhow
     let token_count = estimate_tokens(&json);
     Ok(ReadSymbolUsagesResult { symbol: params.symbol, usages, total, truncated, token_count })
 }
+
+// ─── read_type_skeleton ───────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadTypeSkeletonParams {
+    #[schemars(description = "Root-relative path to a TypeScript (.ts/.tsx) or Go (.go) file.")]
+    pub path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TypeItem {
+    pub id: String,
+    pub name: String,
+    pub kind: String,    // "interface" | "type" | "enum" | "struct"
+    pub fields: Vec<String>,
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReadTypeSkeletonResult {
+    pub path: String,
+    pub language: String,
+    pub types: Vec<TypeItem>,
+    pub token_count: usize,
+}
+
+pub fn read_type_skeleton(root: &Path, params: ReadTypeSkeletonParams) -> anyhow::Result<ReadTypeSkeletonResult> {
+    let path = safe_path(root, &params.path)?;
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let rel = path.strip_prefix(root).unwrap_or(&path)
+        .to_string_lossy().replace('\\', "/");
+
+    let (language, types) = match ext {
+        "ts" | "tsx" => parse_ts_types(&content),
+        "go" => parse_go_types(&content),
+        "rs" => parse_rust_types(&content),
+        _ => anyhow::bail!("未対応の拡張子: {ext}。.ts / .tsx / .go / .rs のみ対応"),
+    };
+
+    let json = serde_json::to_string(&types).unwrap_or_default();
+    let token_count = estimate_tokens(&json);
+    Ok(ReadTypeSkeletonResult { path: rel, language, types, token_count })
+}
+
+fn parse_ts_types(content: &str) -> (String, Vec<TypeItem>) {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut items = Vec::new();
+
+    let re = Regex::new(
+        r"^(?:export\s+)?(?:declare\s+)?(interface|type|enum)\s+(\w+)"
+    ).unwrap();
+    let re_field_ts = Regex::new(r"^\s+(?:readonly\s+)?(\w+\??)\s*[?:]").unwrap();
+
+    let mut i = 0;
+    while i < lines.len() {
+        if let Some(cap) = re.captures(lines[i]) {
+            let kind = cap[1].to_string();
+            let name = cap[2].to_string();
+            let start_line = i + 1;
+
+            // For `type Foo = ...` without braces (union, intersection, alias)
+            if kind == "type" && !lines[i].contains('{') {
+                let end_line = i + 1;
+                let value = lines[i].splitn(2, '=').nth(1)
+                    .unwrap_or("").trim().to_string();
+                items.push(TypeItem {
+                    id: format!("type:{}-{}", start_line, end_line),
+                    name, kind, fields: vec![value], start_line, end_line,
+                });
+                i += 1;
+                continue;
+            }
+
+            // Block type: find closing brace
+            let mut depth: i32 = 0;
+            let mut j = i;
+            let mut fields = Vec::new();
+            let mut found_open = false;
+
+            while j < lines.len() {
+                let l = lines[j].trim();
+                let opens  = l.chars().filter(|&c| c == '{').count() as i32;
+                let closes = l.chars().filter(|&c| c == '}').count() as i32;
+                depth += opens - closes;
+                if opens > 0 { found_open = true; }
+
+                if found_open && depth == 1 && j > i {
+                    if let Some(fc) = re_field_ts.captures(lines[j]) {
+                        fields.push(fc[0].trim().trim_end_matches(|c| c == ',' || c == ';').to_string());
+                    }
+                }
+                if found_open && depth <= 0 { break; }
+                j += 1;
+            }
+
+            let end_line = (j + 1).min(lines.len());
+            items.push(TypeItem {
+                id: format!("{}:{}-{}", kind, start_line, end_line),
+                name, kind, fields, start_line, end_line,
+            });
+            i = j + 1;
+            continue;
+        }
+        i += 1;
+    }
+
+    ("typescript".to_string(), items)
+}
+
+fn parse_go_types(content: &str) -> (String, Vec<TypeItem>) {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut items = Vec::new();
+
+    let re_type = Regex::new(r"^type\s+(\w+)\s+(struct|interface|\S+)").unwrap();
+    let re_field = Regex::new(r"^\s+(\w+)\s+[\w\*\[\]]+").unwrap();
+
+    let mut i = 0;
+    while i < lines.len() {
+        if let Some(cap) = re_type.captures(lines[i]) {
+            let name = cap[1].to_string();
+            let raw_kind = &cap[2];
+            let kind = if raw_kind == "struct" { "struct" }
+                else if raw_kind == "interface" { "interface" }
+                else { "type" }.to_string();
+            let start_line = i + 1;
+
+            if !lines[i].contains('{') {
+                // simple type alias
+                items.push(TypeItem {
+                    id: format!("type:{}-{}", start_line, start_line),
+                    name, kind, fields: vec![raw_kind.to_string()], start_line, end_line: start_line,
+                });
+                i += 1;
+                continue;
+            }
+
+            let mut depth: i32 = 0;
+            let mut j = i;
+            let mut fields = Vec::new();
+
+            while j < lines.len() {
+                let l = lines[j].trim();
+                let opens  = l.chars().filter(|&c| c == '{').count() as i32;
+                let closes = l.chars().filter(|&c| c == '}').count() as i32;
+                depth += opens - closes;
+
+                if depth == 1 && j > i {
+                    if let Some(fc) = re_field.captures(lines[j]) {
+                        fields.push(fc[0].trim().to_string());
+                    }
+                }
+                if depth <= 0 && opens + closes > 0 { break; }
+                j += 1;
+            }
+
+            let end_line = (j + 1).min(lines.len());
+            items.push(TypeItem {
+                id: format!("{}:{}-{}", kind, start_line, end_line),
+                name, kind, fields, start_line, end_line,
+            });
+            i = j + 1;
+            continue;
+        }
+        i += 1;
+    }
+
+    ("go".to_string(), items)
+}
+
+fn parse_rust_types(content: &str) -> (String, Vec<TypeItem>) {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut items = Vec::new();
+
+    let re = Regex::new(r"^(?:pub(?:\(\w+\))?\s+)?(?:pub\s+)?(struct|enum|trait|type)\s+(\w+)").unwrap();
+    let re_field = Regex::new(r"^\s+(?:pub(?:\(\w+\))?\s+)?(\w+)\s*:").unwrap();
+
+    let mut i = 0;
+    while i < lines.len() {
+        if let Some(cap) = re.captures(lines[i]) {
+            let kind = cap[1].to_string();
+            let name = cap[2].to_string();
+            let start_line = i + 1;
+
+            if !lines[i].contains('{') && kind == "type" {
+                items.push(TypeItem {
+                    id: format!("type:{}-{}", start_line, start_line),
+                    name, kind, fields: Vec::new(), start_line, end_line: start_line,
+                });
+                i += 1;
+                continue;
+            }
+
+            let mut depth: i32 = 0;
+            let mut j = i;
+            let mut fields = Vec::new();
+            let mut found_open = false;
+
+            while j < lines.len() {
+                let l = lines[j].trim();
+                let opens  = l.chars().filter(|&c| c == '{').count() as i32;
+                let closes = l.chars().filter(|&c| c == '}').count() as i32;
+                depth += opens - closes;
+                if opens > 0 { found_open = true; }
+
+                if found_open && depth == 1 && j > i {
+                    if let Some(fc) = re_field.captures(lines[j]) {
+                        fields.push(fc[0].trim().trim_end_matches(',').to_string());
+                    }
+                }
+                if found_open && depth <= 0 { break; }
+                j += 1;
+            }
+
+            let end_line = (j + 1).min(lines.len());
+            items.push(TypeItem {
+                id: format!("{}:{}-{}", kind, start_line, end_line),
+                name, kind, fields, start_line, end_line,
+            });
+            i = j + 1;
+            continue;
+        }
+        i += 1;
+    }
+
+    ("rust".to_string(), items)
+}
+
+// ─── read_call_graph ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadCallGraphParams {
+    #[schemars(description = "Root-relative path to the code file.")]
+    pub path: String,
+    #[schemars(description = "Function ID from read_code_skeleton (e.g. 'function:34-42').")]
+    pub function_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReadCallGraphResult {
+    pub function: String,
+    pub file: String,
+    pub calls: Vec<String>,
+    pub called_by_in_file: Vec<String>,
+    pub token_count: usize,
+}
+
+pub fn read_call_graph(root: &Path, params: ReadCallGraphParams) -> anyhow::Result<ReadCallGraphResult> {
+    let file_path = safe_path(root, &params.path)?;
+    let content = std::fs::read_to_string(&file_path)
+        .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
+    let lines: Vec<&str> = content.lines().collect();
+    let rel = file_path.strip_prefix(root).unwrap_or(&file_path)
+        .to_string_lossy().replace('\\', "/");
+
+    // Parse the function_id to get line range
+    let parts: Vec<&str> = params.function_id.rsplitn(2, ':').collect();
+    anyhow::ensure!(parts.len() == 2, "無効な function_id 形式: {}", params.function_id);
+    let range: Vec<&str> = parts[0].splitn(2, '-').collect();
+    anyhow::ensure!(range.len() == 2, "無効な function_id 形式: {}", params.function_id);
+    let start: usize = range[0].parse().map_err(|_| anyhow::anyhow!("無効な開始行"))?;
+    let end: usize   = range[1].parse().map_err(|_| anyhow::anyhow!("無効な終了行"))?;
+
+    let from = start.saturating_sub(1);
+    let to = end.min(lines.len());
+
+    // Get function name from the first line of the body
+    let fn_name = extract_fn_name(lines[from]);
+
+    // Find all function calls in this body
+    let body = lines[from..to].join("\n");
+    let calls = extract_calls(&body, fn_name.as_deref());
+
+    // Find which functions in the same file call our function
+    let called_by = if let Some(ref name) = fn_name {
+        find_callers(&lines, name, from, to)
+    } else {
+        Vec::new()
+    };
+
+    let result_json = serde_json::json!({
+        "calls": calls,
+        "called_by_in_file": called_by,
+    });
+    let token_count = estimate_tokens(&result_json.to_string());
+
+    Ok(ReadCallGraphResult {
+        function: fn_name.unwrap_or_else(|| params.function_id.clone()),
+        file: rel,
+        calls,
+        called_by_in_file: called_by,
+        token_count,
+    })
+}
+
+fn extract_fn_name(line: &str) -> Option<String> {
+    // Rust: pub fn foo( / async fn foo(
+    let re_rust = Regex::new(r"fn\s+(\w+)\s*[<(]").unwrap();
+    // JS/TS: function foo( / async function foo( / const foo = ( / foo(
+    let re_js   = Regex::new(r"(?:function\s+|const\s+|let\s+|var\s+)(\w+)\s*[=(]").unwrap();
+    // Python: def foo(
+    let re_py   = Regex::new(r"def\s+(\w+)\s*\(").unwrap();
+    // Go: func Foo(
+    let re_go   = Regex::new(r"func\s+(?:\(\w+\s+\*?\w+\)\s+)?(\w+)\s*\(").unwrap();
+
+    for re in &[re_rust, re_go, re_js, re_py] {
+        if let Some(cap) = re.captures(line) {
+            return Some(cap[1].to_string());
+        }
+    }
+    None
+}
+
+fn extract_calls(body: &str, self_name: Option<&str>) -> Vec<String> {
+    // Match: identifier( — but not control keywords
+    let re = Regex::new(r"\b([a-zA-Z_]\w*)\s*\(").unwrap();
+    let skip = &[
+        "if", "while", "for", "match", "switch", "return", "typeof", "instanceof",
+        "new", "await", "async", "yield", "delete", "void", "throw", "catch",
+        "super", "assert", "print", "println", "eprintln", "format", "vec",
+        "Some", "None", "Ok", "Err", "Box", "Arc", "Rc", "Mutex",
+    ];
+
+    let mut seen = std::collections::HashSet::new();
+    let mut calls = Vec::new();
+
+    for cap in re.captures_iter(body) {
+        let name = cap[1].to_string();
+        if skip.contains(&&*name) { continue; }
+        if Some(name.as_str()) == self_name { continue; } // skip recursive self-call
+        if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) { continue; } // skip type constructors
+        if seen.insert(name.clone()) {
+            calls.push(name);
+        }
+    }
+
+    calls
+}
+
+fn find_callers(lines: &[&str], fn_name: &str, fn_start: usize, fn_end: usize) -> Vec<String> {
+    // Find other functions in the file that call fn_name
+    let call_re = Regex::new(&format!(r"\b{}\s*\(", regex::escape(fn_name))).unwrap();
+    let fn_re = Regex::new(
+        r"(?:fn|func|def|function)\s+(\w+)\s*[(<]"
+    ).unwrap();
+
+    let mut current_fn: Option<String> = None;
+    let mut current_fn_start = 0usize;
+    let mut callers: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(cap) = fn_re.captures(line) {
+            current_fn = Some(cap[1].to_string());
+            current_fn_start = i;
+        }
+
+        // Skip calls from within the function itself
+        if i >= fn_start && i < fn_end { continue; }
+
+        if call_re.is_match(line) {
+            if let Some(ref caller) = current_fn {
+                if current_fn_start < fn_start || current_fn_start >= fn_end {
+                    callers.insert(caller.clone());
+                }
+            }
+        }
+    }
+
+    callers.into_iter().collect()
+}

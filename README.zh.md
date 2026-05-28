@@ -173,7 +173,7 @@ cargo build --release
 
 ---
 
-## 工具参考（26 个工具）
+## 工具参考（51 个工具）
 
 ### 文件读取
 
@@ -184,9 +184,55 @@ cargo build --release
 | `read_markdown_section` | 通过锚点获取章节内容 |
 | `read_code_skeleton` | 仅返回函数 / 类签名 |
 | `read_code_body` | 通过 skeleton ID 获取函数体 |
+| `read_type_skeleton` | 类型定义骨架（TS interface/type/enum、Go struct/interface、Rust struct/enum/trait） |
+| `read_call_graph` | 函数调用图 — 单文件内的调用者 / 被调用者 |
+| `read_token_map` | 工作区文件 token 数量映射（glob 过滤，降序排列） |
+| `read_symbol_usages` | 跨工作区查找符号的所有使用位置 |
+| `read_code_deps` | import / imported_by 依赖图 |
+| `read_file_outline` | 自动检测文件类型的统一大纲 |
 | `search_file` | 关键字 / 正则匹配及上下文 |
+| `semantic_search` | 通过自然语言查找语义相关函数 |
 | `read_json_yaml_keys` | 列出 JSON/YAML/TOML 的键结构 |
 | `read_json_yaml_value` | 通过点分键路径获取值（JSON/YAML/TOML） |
+| `read_openapi` | 将 OpenAPI/Swagger 规范解析为简洁的端点列表 |
+| `read_env_schema` | 从 .env.example / docker-compose.yml 提取环境变量定义 |
+
+### Git
+
+| 工具 | 描述 |
+|------|------|
+| `read_git_diff` | 压缩的 git diff |
+| `read_git_log` | 结构化提交日志（作者、日期、修改文件） |
+| `read_git_blame_body` | 函数体的逐行 blame（作者 + 日期） |
+| `read_changed_files` | 分支间变更文件列表（状态、增删行数） |
+
+### 数据库 Schema
+
+| 工具 | 描述 |
+|------|------|
+| `read_db_schema` | Prisma / SQL schema 中的表 / 模型列表（自动检测） |
+| `read_db_table` | 特定表或模型的字段定义详情 |
+
+### CSS
+
+| 工具 | 描述 |
+|------|------|
+| `read_css_skeleton` | CSS/SCSS 选择器列表（属性数量、行范围） |
+| `read_css_body` | 通过选择器 ID 获取规则集内容 |
+
+### GraphQL
+
+| 工具 | 描述 |
+|------|------|
+| `read_graphql_schema` | GraphQL schema 中的类型列表（type/input/enum/interface） |
+| `read_graphql_type` | 特定类型的字段定义详情 |
+
+### 测试
+
+| 工具 | 描述 |
+|------|------|
+| `read_test_skeleton` | 测试文件中的套件 / 用例列表（Jest/pytest/Cargo/Go/JUnit/RSpec） |
+| `read_test_results` | 解析测试输出并返回摘要（自动检测框架） |
 
 ### 网页与文档
 

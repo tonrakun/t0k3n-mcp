@@ -173,7 +173,7 @@ Rust 이외의 의존성 없음. Node.js, npm, Python 불필요.
 
 ---
 
-## 도구 참조 (26개 도구)
+## 도구 참조 (51개 도구)
 
 ### 파일 읽기
 
@@ -184,9 +184,55 @@ Rust 이외의 의존성 없음. Node.js, npm, Python 불필요.
 | `read_markdown_section` | 앵커로 섹션 본문 가져오기 |
 | `read_code_skeleton` | 함수 / 클래스 시그니처만 반환 |
 | `read_code_body` | skeleton ID로 함수 본문 가져오기 |
+| `read_type_skeleton` | 타입 정의 스켈레톤 (TS interface/type/enum, Go struct/interface, Rust struct/enum/trait) |
+| `read_call_graph` | 함수 호출 그래프 — 단일 파일 내 호출자 / 피호출자 |
+| `read_token_map` | 워크스페이스 파일 토큰 수 맵 (glob 필터, 내림차순 정렬) |
+| `read_symbol_usages` | 워크스페이스 전체에서 심볼 사용 위치 검색 |
+| `read_code_deps` | import / imported_by 의존 그래프 |
+| `read_file_outline` | 파일 종류 자동 감지 통합 아웃라인 |
 | `search_file` | 키워드 / 정규식 매칭 및 주변 컨텍스트 |
+| `semantic_search` | 자연어로 의미적으로 관련된 함수 검색 |
 | `read_json_yaml_keys` | JSON/YAML/TOML 키 구조 나열 |
 | `read_json_yaml_value` | 점 표기법 키 경로로 값 가져오기（JSON/YAML/TOML） |
+| `read_openapi` | OpenAPI/Swagger 스펙을 간결한 엔드포인트 목록으로 파싱 |
+| `read_env_schema` | .env.example / docker-compose.yml 에서 환경 변수 정의 추출 |
+
+### Git
+
+| 도구 | 설명 |
+|------|------|
+| `read_git_diff` | 압축된 git diff |
+| `read_git_log` | 구조화된 커밋 로그 (저자, 날짜, 변경 파일) |
+| `read_git_blame_body` | 함수 본문의 줄별 blame (저자 + 날짜) |
+| `read_changed_files` | 브랜치 간 변경 파일 목록 (상태, 추가/삭제 줄 수) |
+
+### DB 스키마
+
+| 도구 | 설명 |
+|------|------|
+| `read_db_schema` | Prisma / SQL 스키마의 테이블 / 모델 목록 (자동 감지) |
+| `read_db_table` | 특정 테이블 또는 모델의 필드 정의 상세 |
+
+### CSS
+
+| 도구 | 설명 |
+|------|------|
+| `read_css_skeleton` | CSS/SCSS 선택자 목록 (속성 수, 줄 범위) |
+| `read_css_body` | 선택자 ID로 규칙셋 본문 가져오기 |
+
+### GraphQL
+
+| 도구 | 설명 |
+|------|------|
+| `read_graphql_schema` | GraphQL 스키마의 타입 목록 (type/input/enum/interface) |
+| `read_graphql_type` | 특정 타입의 필드 정의 상세 |
+
+### 테스트
+
+| 도구 | 설명 |
+|------|------|
+| `read_test_skeleton` | 테스트 파일의 스위트 / 케이스 목록 (Jest/pytest/Cargo/Go/JUnit/RSpec) |
+| `read_test_results` | 테스트 결과 텍스트 파싱 및 요약 반환 (프레임워크 자동 감지) |
 
 ### 웹 & 문서
 

@@ -660,13 +660,50 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 | `read_file_outline` | Rust 実装 | ファイル種別自動判別の統合アウトライン取得 |
 | `read_code_deps` | Rust 実装 | import/imported_by 依存グラフ（Rust/Python/JS/TS/Go） |
 | `read_symbol_usages` | Rust 実装 | ワークスペース全体シンボル使用箇所検索 |
-| `read_git_diff` | Rust 実装 | 圧縮済み git diff |
-| `read_git_log` | Rust 実装 | 構造化コミットログ（著者・日付・変更ファイル） |
-| `read_git_blame_body` | Rust 実装 | 関数単位の行 blame（著者・日付） |
 | `search_file` | Rust 実装 | キーワードマッチ＋文脈 |
 | `semantic_search` | Rust 実装 | 意味検索 |
 | `read_json_yaml_keys` | Rust 実装 | JSON/YAML/TOML キー構造 |
 | `read_json_yaml_value` | Rust 実装 | キーパス指定で値取得（JSON/YAML/TOML） |
+| `read_type_skeleton` | Rust 実装 | 型定義スケルトン（TS interface/type/enum・Go struct/interface・Rust struct/enum/trait） |
+| `read_call_graph` | Rust 実装 | 関数の呼び出し先・呼び出し元グラフ（単一ファイル内） |
+| `read_token_map` | Rust 実装 | ワークスペース内ファイルのトークン数マップ（glob フィルタ・降順ソート） |
+
+### Git 拡張系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_git_diff` | Rust 実装 | 圧縮済み git diff |
+| `read_git_log` | Rust 実装 | 構造化コミットログ（著者・日付・変更ファイル） |
+| `read_git_blame_body` | Rust 実装 | 関数単位の行 blame（著者・日付） |
+| `read_changed_files` | Rust 実装 | ブランチ間の変更ファイル一覧（ステータス・追加/削除行数） |
+
+### DB スキーマ系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_db_schema` | Rust 実装 | Prisma / SQL スキーマのテーブル/モデル一覧（自動検出対応） |
+| `read_db_table` | Rust 実装 | テーブル/モデルのフィールド定義詳細取得 |
+
+### CSS 系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_css_skeleton` | Rust 実装 | CSS/SCSS セレクタ一覧（プロパティ数・行範囲） |
+| `read_css_body` | Rust 実装 | セレクタ ID 指定でルールセット本文取得 |
+
+### GraphQL 系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_graphql_schema` | Rust 実装 | GraphQL スキーマの型一覧（type/input/enum/interface） |
+| `read_graphql_type` | Rust 実装 | 型名指定でフィールド定義詳細取得 |
+
+### テスト系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_test_skeleton` | Rust 実装 | テストファイルのスイート/テスト一覧（Jest/pytest/Cargo/Go/JUnit/RSpec） |
+| `read_test_results` | Rust 実装 | テスト結果テキストのパース・サマリ返却（フレームワーク自動検出） |
 
 ### Web 取得系
 
@@ -780,6 +817,15 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 - [ ] Deno スクリプト連携（補助用途）
 - [x] 新言語対応（C# / PHP — v2.0.0 で追加）
 - [x] 対応フォーマット追加（TOML — `read_json_yaml_keys` / `read_json_yaml_value` / `read_file_outline` で対応）
+- [x] `read_type_skeleton`（TS/Go/Rust 型定義スケルトン）
+- [x] `read_call_graph`（関数呼び出しグラフ・単一ファイル内 callers/callees）
+- [x] `read_token_map`（ワークスペーストークンマップ・glob フィルタ）
+- [x] `read_changed_files`（ブランチ間変更ファイル一覧・ステータス・diff 行数）
+- [x] `read_db_schema` / `read_db_table`（Prisma / SQL スキーマ段階的読み取り）
+- [x] `read_css_skeleton` / `read_css_body`（CSS セレクタ段階的読み取り）
+- [x] `read_graphql_schema` / `read_graphql_type`（GraphQL スキーマ段階的読み取り）
+- [x] `read_test_skeleton`（テストスイート構造取得・6フレームワーク対応）
+- [x] `read_test_results`（テスト結果パース・フレームワーク自動検出）
 
 ---
 

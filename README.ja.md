@@ -173,7 +173,7 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 
 ---
 
-## ツール一覧（31 ツール）
+## ツール一覧（51 ツール）
 
 ### ファイル読み取り
 
@@ -184,18 +184,55 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | `read_markdown_section` | anchor 指定でセクション本文取得 |
 | `read_code_skeleton` | 関数・クラス一覧をシグネチャのみで返す |
 | `read_code_body` | skeleton の ID 指定で関数本文取得 |
+| `read_type_skeleton` | 型定義スケルトン（TS interface/type/enum・Go struct/interface・Rust struct/enum/trait） |
+| `read_call_graph` | 関数の呼び出し先・呼び出し元グラフ（単一ファイル内） |
+| `read_token_map` | ワークスペース内ファイルのトークン数マップ（glob フィルタ・降順ソート） |
 | `read_symbol_usages` | ワークスペース全体のシンボル使用箇所を検索 |
 | `read_code_deps` | import / imported_by 依存グラフ |
 | `read_file_outline` | ファイル種別自動判別の統合アウトライン |
-| `read_git_diff` | 圧縮済み git diff |
-| `read_git_log` | 構造化コミットログ（著者・日付・変更ファイル） |
-| `read_git_blame_body` | 関数単位の行 blame（著者・日付） |
 | `search_file` | キーワード/regex マッチ行と前後文脈 |
 | `semantic_search` | 自然言語で意味的に近い関数を検索 |
 | `read_json_yaml_keys` | JSON/YAML/TOML のキー構造一覧 |
 | `read_json_yaml_value` | ドット記法キーパスで値取得（JSON/YAML/TOML） |
 | `read_openapi` | OpenAPI/Swagger エンドポイント一覧取得 |
 | `read_env_schema` | .env.example / docker-compose.yml から環境変数定義を抽出 |
+
+### Git
+
+| ツール | 説明 |
+|--------|------|
+| `read_git_diff` | 圧縮済み git diff |
+| `read_git_log` | 構造化コミットログ（著者・日付・変更ファイル） |
+| `read_git_blame_body` | 関数単位の行 blame（著者・日付） |
+| `read_changed_files` | ブランチ間の変更ファイル一覧（ステータス・追加/削除行数） |
+
+### DB スキーマ
+
+| ツール | 説明 |
+|--------|------|
+| `read_db_schema` | Prisma / SQL スキーマのテーブル/モデル一覧（自動検出対応） |
+| `read_db_table` | テーブル/モデルのフィールド定義詳細取得 |
+
+### CSS
+
+| ツール | 説明 |
+|--------|------|
+| `read_css_skeleton` | CSS/SCSS セレクタ一覧（プロパティ数・行範囲） |
+| `read_css_body` | セレクタ ID 指定でルールセット本文取得 |
+
+### GraphQL
+
+| ツール | 説明 |
+|--------|------|
+| `read_graphql_schema` | GraphQL スキーマの型一覧（type/input/enum/interface） |
+| `read_graphql_type` | 型名指定でフィールド定義詳細取得 |
+
+### テスト
+
+| ツール | 説明 |
+|--------|------|
+| `read_test_skeleton` | テストファイルのスイート/テスト一覧（Jest/pytest/Cargo/Go/JUnit/RSpec） |
+| `read_test_results` | テスト結果テキストのパース・サマリ返却（フレームワーク自動検出） |
 
 ### Web・ドキュメント
 
