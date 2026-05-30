@@ -12,13 +12,34 @@
 
 ---
 
-## Quick Start
+## Installation
+
+**macOS / Linux**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.sh | bash
+```
+
+**Windows (PowerShell)**
+
+```powershell
+irm https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.ps1 | iex
+```
+
+Installs to `~/.local/bin/t0k3n-mcp` (Unix) or `%USERPROFILE%\.local\bin\t0k3n-mcp.exe` (Windows) and adds it to your PATH.
+
+<details>
+<summary>Build from source</summary>
 
 ```bash
 git clone https://github.com/tonrakun/t0k3n-mcp
 cd t0k3n-mcp
 cargo build --release
 ```
+
+</details>
+
+## Quick Start
 
 Add to `.mcp.json`:
 

@@ -68,19 +68,22 @@ read_code_body(["function:54-67"])   →    150 トークン（対象関数の�
 
 ## インストール
 
-### ビルド済みバイナリ（推奨）
+**macOS / Linux**
 
-GitHub Releases からお使いの OS のバイナリをダウンロードしてください。
+```bash
+curl -fsSL https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.sh | bash
+```
 
-| OS | ファイル |
-|----|---------|
-| macOS (Apple Silicon) | `t0k3n-mcp-macos-aarch64` |
-| macOS (Intel) | `t0k3n-mcp-macos-x86_64` |
-| Linux x86_64 | `t0k3n-mcp-linux-x86_64` |
-| Linux ARM64 | `t0k3n-mcp-linux-aarch64` |
-| Windows x86_64 | `t0k3n-mcp-windows-x86_64.exe` |
+**Windows（PowerShell）**
 
-### ソースからビルド
+```powershell
+irm https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.ps1 | iex
+```
+
+Unix は `~/.local/bin/t0k3n-mcp`、Windows は `%USERPROFILE%\.local\bin\t0k3n-mcp.exe` にインストールされ、PATH にも自動追加されます。
+
+<details>
+<summary>ソースからビルド</summary>
 
 ```bash
 git clone https://github.com/tonrakun/t0k3n-mcp
@@ -90,6 +93,8 @@ cargo build --release
 ```
 
 Rust 以外の依存はありません。Node.js / npm / Python 不要。
+
+</details>
 
 ---
 
