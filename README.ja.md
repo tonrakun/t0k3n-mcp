@@ -183,7 +183,7 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 
 ---
 
-## ツール一覧（55 ツール）
+## ツール一覧（67 ツール）
 
 ### ファイル読み取り
 
@@ -195,18 +195,21 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | `read_code_skeleton` | 関数・クラス一覧をシグネチャのみで返す |
 | `read_code_body` | skeleton の ID 指定で関数本文取得 |
 | `read_type_skeleton` | 型定義スケルトン（TS interface/type/enum・Go struct/interface・Rust struct/enum/trait） |
-| `read_call_graph` | 関数の呼び出し先・呼び出し元グラフ（単一ファイル内） |
+| `read_call_graph` | 関数の呼び出し先・呼び出し元グラフ（depth 指定でクロスファイル対応） |
 | `read_token_map` | ワークスペース内ファイルのトークン数マップ（glob フィルタ・降順ソート） |
 | `read_symbol_usages` | ワークスペース全体のシンボル使用箇所を検索 |
 | `read_code_deps` | import / imported_by 依存グラフ |
 | `read_file_outline` | ファイル種別自動判別の統合アウトライン |
+| `read_interface_conformance` | interface / trait の実装型をワークスペース全体から検索（TS/Rust/Java/Kotlin/Go） |
 | `search_file` | キーワード/regex マッチ行と前後文脈 |
 | `semantic_search` | 自然言語で意味的に近い関数を検索 |
 | `read_json_yaml_keys` | JSON/YAML/TOML のキー構造一覧 |
 | `read_json_yaml_value` | ドット記法キーパスで値取得（JSON/YAML/TOML） |
 | `read_openapi` | OpenAPI/Swagger エンドポイント一覧取得 |
 | `read_env_schema` | .env.example / docker-compose.yml から環境変数定義を抽出 |
+| `read_workspace_stats` | コードベース全体の言語別統計（ファイル数・行数・トークン数） |
 | `read_log_tail` | ログファイル末尾のN行取得（ログレベル別カウント付き） |
+| `batch_read` | 複数の読み取り操作を 1 コールで並列実行（ラウンドトリップ削減） |
 
 ### Git
 
@@ -216,6 +219,7 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | `read_git_log` | 構造化コミットログ（著者・日付・変更ファイル） |
 | `read_git_blame_body` | 関数単位の行 blame（著者・日付） |
 | `read_changed_files` | ブランチ間の変更ファイル一覧（ステータス・追加/削除行数） |
+| `read_git_stash` | スタッシュ一覧と diff 取得 |
 
 ### DB スキーマ
 
@@ -259,6 +263,13 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | `read_test_skeleton` | テストファイルのスイート/テスト一覧（Jest/pytest/Cargo/Go/JUnit/RSpec） |
 | `read_test_results` | テスト結果テキストのパース・サマリ返却（フレームワーク自動検出） |
 
+### パッケージ・CI
+
+| ツール | 説明 |
+|--------|------|
+| `read_package_manifest` | package.json / Cargo.toml / go.mod 等を統一フォーマットで返す |
+| `read_ci_pipeline` | GitHub Actions / GitLab CI / CircleCI ワークフロー構造取得 |
+
 ### Web・ドキュメント
 
 | ツール | 説明 |
@@ -286,11 +297,24 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | `task_create/update/get/list/delete` | タスク管理（状態・優先度・タグ） |
 | `session_snapshot/restore/list` | 作業状態の保存と復元 |
 
+### 分析系（Phase 5）
+
+他の MCP サーバーが持たない差別化ツール群です。
+
+| ツール | 説明 |
+|--------|------|
+| `read_complexity_map` | 関数ごとの循環的複雑度を計算し low / medium / high / critical でリスク分類。コンパイラ不要 |
+| `read_dead_code` | 定義されているが参照ゼロのシンボルを検出。全言語対応・LSP 不要 |
+| `read_refactor_impact` | シンボル名 1 つで「呼び出し元・全参照ファイル・テストファイル・ブラスト半径」を 1 コールで返す |
+| `read_security_surface` | injection / XSS / hardcoded secrets / unsafe / path_traversal を 50 パターンで静的スキャン |
+| `diff_schemas` | OpenAPI・Prisma/SQL・TypeScript 型を git ref 間で比較し added / removed / modified を返す |
+| `read_pr_context` | branch + base 指定で変更ファイルのスケルトン・関連テスト・コミット一覧を 1 コールでロード |
+
 ---
 
 ## 対応言語
 
-`read_code_skeleton` / `read_code_body` / `read_code_deps` が対応するコード解析言語：
+`read_code_skeleton` / `read_code_body` / `read_code_deps` / `read_complexity_map` 等が対応するコード解析言語：
 
 | 言語 | 拡張子 |
 |------|--------|
@@ -301,9 +325,12 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | Go | `.go` |
 | C++ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
 | Java | `.java` |
+| Kotlin | `.kt` |
+| Swift | `.swift` |
 | Ruby | `.rb` |
 | C# | `.cs` |
 | PHP | `.php` |
+| Lua | `.lua` |
 
 パーサーは Cargo クレートとしてビルド時にバイナリへ静的に組み込まれています。新言語の追加は新リリースで提供されます。リクエストは [GitHub Issues](https://github.com/tonrakun/t0k3n-mcp/issues) へ。
 
