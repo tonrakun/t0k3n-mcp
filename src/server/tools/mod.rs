@@ -1,5 +1,6 @@
 pub mod batch;
 pub mod ci;
+pub mod cmd;
 pub mod code;
 pub mod complexity;
 pub mod css;

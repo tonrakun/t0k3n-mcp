@@ -21,6 +21,7 @@ use db::Database;
 use tools::{
     batch::{BatchReadParams, batch_read},
     ci::{ReadCiPipelineParams, read_ci_pipeline},
+    cmd::{RunCommandParams, run_command},
     code::{ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams, ReadInterfaceConformanceParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams, read_call_graph, read_code_body, read_code_skeleton, read_interface_conformance, read_symbol_usages, read_type_skeleton},
     complexity::{ReadComplexityMapParams, read_complexity_map},
     dead_code::{ReadDeadCodeParams, read_dead_code},
@@ -126,6 +127,8 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "session_restore",
     "session_list",
     "debug_info",
+    // Phase 6 — Command execution
+    "run_command",
     // Phase 5 — Differentiating analysis
     "read_complexity_map",
     "read_dead_code",
@@ -1122,6 +1125,26 @@ impl T0k3nServer {
     // ─────────────────────────────────────────────
     // Debug tool
     // ─────────────────────────────────────────────
+
+    #[tool(description = "Execute a shell command and return token-efficient output. On success: last ~30 lines (final summary). On failure: extracted error lines + warning lines + last ~20 lines for context. Use for build tools (cargo, npm, go, make, mvn), test runners (cargo test, pytest, jest), linters (clippy, eslint, flake8), and type checkers (tsc, mypy).")]
+    async fn run_command(
+        &self,
+        Parameters(params): Parameters<RunCommandParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "run_command", {
+            let result = run_command(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "command":     result.command,
+                "exit_code":   result.exit_code,
+                "success":     result.success,
+                "duration_ms": result.duration_ms,
+                "summary":     result.summary,
+                "errors":      result.errors,
+                "warnings":    result.warnings,
+                "token_count": result.token_count,
+            }))
+        })
+    }
 
     #[tool(description = "Returns server diagnostics: version, root path, DB status, and the full list of registered tools. Call this to confirm t0k3n-mcp is active and all tools are registered correctly.")]
     async fn debug_info(&self) -> Result<CallToolResult, McpError> {

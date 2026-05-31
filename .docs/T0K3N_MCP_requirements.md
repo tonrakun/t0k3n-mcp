@@ -898,6 +898,69 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 ---
 
+### 2.24 コマンド実行系（新規）
+
+#### 2.24.1 `run_command`
+
+シェルコマンドを実行し、トークン効率の良い出力を返す。生の全出力を AI に渡す代わりに、成功時は最終サマリ（末尾 ~30 行）、失敗時はエラー行・警告行・末尾 ~20 行のみを返す。
+
+**対象コマンドカテゴリ**
+
+| カテゴリ | 代表コマンド |
+|---|---|
+| ビルドツール | `cargo build`, `go build`, `make`, `cmake`, `mvn`, `gradle`, `tsc` |
+| パッケージマネージャー | `npm install`, `yarn`, `pnpm`, `pip install`, `cargo add` |
+| テストランナー | `cargo test`, `pytest`, `jest`, `vitest`, `go test`, `mocha` |
+| リンター / フォーマッター | `cargo clippy`, `eslint`, `flake8`, `pylint`, `rubocop` |
+| 型チェッカー | `tsc --noEmit`, `mypy`, `pyright` |
+| 汎用コマンド | 任意のシェルコマンド |
+
+**フィルタリング戦略**
+
+| 状態 | 返す内容 |
+|---|---|
+| 成功（exit code 0）| `summary`: 末尾 ~30 非空行（build summary が含まれる） |
+| 失敗（exit code ≠ 0）| `errors`: エラー行＋前後コンテキスト / `summary`: 末尾 ~20 行 |
+| 常時 | `warnings`: 警告行（rust warning: / npm warn / deprecated 等） |
+
+**入力**
+
+```ts
+{
+  command: string;        // 実行するシェルコマンド（sh -c / cmd /C 経由）
+  cwd?: string;           // 作業ディレクトリ（root からの相対パス。省略時: root）
+  timeout_secs?: number;  // タイムアウト秒数（デフォルト: 120、最大: 600）
+}
+```
+
+**出力**
+
+```ts
+{
+  command: string;
+  exit_code: number;
+  success: boolean;
+  duration_ms: number;
+  summary: string;        // 成功時: 末尾 ~30 行 / 失敗時: 末尾 ~20 行
+  errors: string[];       // 抽出されたエラー行（成功時は空）
+  warnings: string[];     // 抽出された警告行（常時）
+  token_count: number;
+}
+```
+
+**対応エラーパターン（自動検出）**
+
+- Rust: `error[E0123]`, `error: `, `could not compile`, `aborting due to`
+- TypeScript: `error TS1234`, `Found N error(s)`
+- Python: `SyntaxError:`, `ImportError:`, `Traceback (most recent call last):`
+- Go: `./foo.go:12:5: undefined: Bar`
+- npm: `npm ERR!`
+- Make/CMake: `make: ***`, `CMake Error:`
+- Maven/Gradle: `BUILD FAILURE`, `[ERROR]`, `COMPILATION ERROR`
+- テスト: `FAILED`, `failures:`, `● test name`（Jest）
+
+---
+
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -1105,6 +1168,12 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 | `diff_schemas` | Rust 実装 | git ref 間スキーマ差分（OpenAPI / Prisma / SQL / TypeScript 型） |
 | `read_pr_context` | Rust 実装 | PR 文脈一括ロード（変更ファイルスケルトン + テスト発見 + コミット一覧） |
 
+### コマンド実行系（Phase 6）
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `run_command` | Rust 実装 | コマンド実行・スマートフィルタリング（成功: 末尾サマリ / 失敗: エラー行+警告行） |
+
 ---
 
 ## 5. 実装フェーズ
@@ -1181,6 +1250,10 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [x] `read_security_surface`（静的セキュリティサーフェス：injection / XSS / secrets / unsafe / path_traversal）
 - [x] `diff_schemas`（OpenAPI / Prisma / SQL / TypeScript の git ref 間スキーマ差分）
 - [x] `read_pr_context`（PR 文脈一括ロード：変更ファイルのスケルトン + テスト + コミット一覧）
+
+### Phase 6 — コマンド実行 v2.5+
+
+- [x] `run_command`（コマンド実行＋スマートフィルタリング：成功時サマリ / 失敗時エラー行・警告行抽出）
 
 ---
 
