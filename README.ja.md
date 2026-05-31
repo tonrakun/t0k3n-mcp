@@ -6,7 +6,7 @@
 [![Built with Rust](https://img.shields.io/badge/Built%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 [![Token Savings](https://img.shields.io/badge/Token%20Savings-87.3%25-brightgreen)](.docs/benchmark_token_savings.md)
 
-[English](README.en.md) | **日本語** | [中文](README.zh.md) | [한국어](README.ko.md)
+[English](README.md) | **日本語**
 
 ---
 
@@ -206,6 +206,7 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | `read_json_yaml_value` | ドット記法キーパスで値取得（JSON/YAML/TOML） |
 | `read_openapi` | OpenAPI/Swagger エンドポイント一覧取得 |
 | `read_env_schema` | .env.example / docker-compose.yml から環境変数定義を抽出 |
+| `read_log_tail` | ログファイル末尾のN行取得（ログレベル別カウント付き） |
 
 ### Git
 
@@ -237,6 +238,20 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | `read_graphql_schema` | GraphQL スキーマの型一覧（type/input/enum/interface） |
 | `read_graphql_type` | 型名指定でフィールド定義詳細取得 |
 
+### Proto
+
+| ツール | 説明 |
+|--------|------|
+| `read_proto_schema` | Protocol Buffers スキーマの型/サービス一覧（message/enum/service） |
+| `read_proto_type` | メッセージ/サービス名指定でフィールド・RPC 定義取得 |
+
+### Notebook
+
+| ツール | 説明 |
+|--------|------|
+| `read_notebook_cells` | Jupyter Notebook のセル一覧（タイプ・ソース・行数） |
+| `read_notebook_cell` | セル番号指定で本文・出力取得 |
+
 ### テスト
 
 | ツール | 説明 |
@@ -260,6 +275,8 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 | `count_tokens` | トークン数・文字数・行数カウント |
 | `check_budget` | 残量と推奨読み取り戦略を返す |
 | `summarize_conversation` | 会話履歴を指定トークン予算内に要約 |
+| `read_stack_trace` | スタックトレース解析（フレーム・ファイル・行・前後コード付き） |
+| `debug_info` | サーバー診断（バージョン・root・DB状態・登録ツール一覧） |
 
 ### 記憶 / タスク / セッション
 
