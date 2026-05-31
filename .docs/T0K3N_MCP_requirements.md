@@ -416,6 +416,28 @@ PDF / DOCX 等のドキュメントを MD に変換し、TOC を返す。
 
 ---
 
+### 2.12 デバッグ系
+
+#### 2.12.1 `debug_info`
+
+サーバー診断情報を返す。バージョン・root パス・DB 状態・登録ツール一覧を確認できる。
+
+**出力**
+
+```ts
+{
+  ok: true;
+  version: string;
+  root: string;
+  db_status: "ok" | string;
+  tool_count: number;
+  tools: string[];
+  timestamp_unix: number;
+}
+```
+
+---
+
 ### 2.13 Git 拡張系
 
 #### 2.13.1 `read_git_log`
@@ -876,28 +898,6 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 ---
 
-### 2.12 デバッグ系
-
-#### 2.12.1 `debug_info`
-
-サーバー診断情報を返す。バージョン・root パス・DB 状態・登録ツール一覧を確認できる。
-
-**出力**
-
-```ts
-{
-  ok: true;
-  version: string;
-  root: string;
-  db_status: "ok" | string;
-  tool_count: number;
-  tools: string[];
-  timestamp_unix: number;
-}
-```
-
----
-
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -988,6 +988,27 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 |---|---|---|
 | `read_test_skeleton` | Rust 実装 | テストファイルのスイート/テスト一覧（Jest/pytest/Cargo/Go/JUnit/RSpec） |
 | `read_test_results` | Rust 実装 | テスト結果テキストのパース・サマリ返却（フレームワーク自動検出） |
+
+### Proto 系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_proto_schema` | Rust 実装 | Protocol Buffers スキーマのメッセージ/サービス一覧 |
+| `read_proto_type` | Rust 実装 | メッセージ/サービス名指定でフィールド定義詳細取得 |
+
+### Notebook 系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_notebook_cells` | Rust 実装 | Jupyter ノートブックのセル一覧（種別・コード・出力サマリ） |
+| `read_notebook_cell` | Rust 実装 | セル番号指定で本文・出力全取得 |
+
+### ログ系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_log_tail` | Rust 実装 | ログファイル末尾取得（レベル/パターンフィルタ） |
+| `read_stack_trace` | Rust 実装 | スタックトレース→ソースコンテキスト自動解決 |
 
 ### Web 取得系
 
