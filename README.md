@@ -12,6 +12,62 @@
 
 ---
 
+## Measured: 75–87% Token Reduction
+
+Benchmarked against **2 real projects** using Anthropic's official token-count API.
+
+### Study 1: Rust Project (T0K3N-MCP itself)
+
+| File | Full | T0K3N-MCP | Reduction |
+|------|------|-----------|-----------|
+| `code.rs` (295 lines) | 3,642 | 345 | **90.5%** |
+| `mod.rs` (422 lines) | 4,997 | 1,162 | **76.7%** |
+| `README.md` | 2,492 | 296 | **88.1%** |
+| `Cargo.toml` | 491 | 24 | **95.1%** |
+| **Average** | 2,147 | 321 | **87.3%** |
+
+### Study 2: Next.js Project (vercel/commerce)
+
+| File | Full | T0K3N-MCP | Reduction |
+|------|------|-----------|-----------|
+| `components/cart/modal.tsx` | 2,776 | 143 | **94.8%** |
+| `app/product/[handle]/page.tsx` | 1,400 | 134 | **90.4%** |
+| `lib/shopify/index.ts` | 4,073 | 1,299 | **68.1%** |
+| `components/cart/cart-context.tsx` | 1,742 | 488 | **72.0%** |
+| **Average (20 files)** | 957 | 198 | **75.5%** |
+
+### Full-Project Simulation (5-Task Study)
+
+| | Standard | T0K3N-MCP | Reduction |
+|-|----------|-----------|-----------|
+| Next.js investigation | 19,109 tokens | 2,668 tokens | **86.0%** |
+
+> Full methodology and data: [`.docs/benchmark_token_savings.md`](.docs/benchmark_token_savings.md)
+
+A 200,000-token context window effectively becomes **6–8× larger**.
+
+---
+
+## Why Standard Tools Fall Short
+
+Claude Code and Cursor's built-in Read File dumps entire files into context.
+
+```
+read_file("server/mod.rs")  →  4,997 tokens consumed
+                                ↑ 95% irrelevant to the current question
+```
+
+T0K3N-MCP solves this with **"structure first, fetch only what you need"**:
+
+```
+read_code_skeleton("server/mod.rs")  →  1,162 tokens (signatures only)
+read_code_body(["function:54-67"])   →    150 tokens (target function only)
+                                         ─────────────────────────────────
+Total                                      1,312 tokens  ← 74% reduction
+```
+
+---
+
 ## Installation
 
 **macOS / Linux**
@@ -181,3 +237,30 @@ Add to `.mcp.json`:
 | Lua | `.lua` |
 
 Parsers are statically bundled at build time — no runtime downloads. New language support ships with new releases.
+
+## Security
+
+- All path resolution outside `--root` is blocked (path traversal protection)
+- Symlink escapes beyond root are blocked
+- Only web tools (`fetch_webpage`) target URLs outside root by design
+
+---
+
+## Data Storage
+
+```
+<root>/.t0k3n/
+  t0k3n.db        ← SQLite (memory, tasks, sessions)
+```
+
+Recommended `.gitignore` entry:
+
+```gitignore
+.t0k3n/
+```
+
+---
+
+## License
+
+[MIT](LICENSE) © 2025 Tonrakun

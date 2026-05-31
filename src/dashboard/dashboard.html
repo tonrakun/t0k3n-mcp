@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>T0K3N-MCP Dashboard</title>
+  <title>T0K3N-MCP ダッシュボード</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -75,7 +75,7 @@
       </div>
       <div class="flex items-center gap-2 select-none">
         <span id="ws-dot" class="w-1.5 h-1.5 rounded-full bg-zinc-600 flex-shrink-0"></span>
-        <span id="ws-label" class="text-xs text-zinc-500">Connecting…</span>
+        <span id="ws-label" class="text-xs text-zinc-500">接続中…</span>
       </div>
     </div>
   </header>
@@ -88,36 +88,36 @@
       <!-- Total Calls -->
       <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 flex flex-col gap-1.5 relative overflow-hidden">
         <div class="absolute inset-0 bg-gradient-to-br from-violet-900/10 to-transparent pointer-events-none"></div>
-        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Total Calls</p>
+        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">総コール数</p>
         <p id="s-total" class="text-3xl font-bold tabular-nums leading-none text-zinc-50">0</p>
-        <p id="s-errors" class="text-[11px] text-zinc-600 leading-none">0 errors</p>
+        <p id="s-errors" class="text-[11px] text-zinc-600 leading-none">0 エラー</p>
       </div>
 
       <!-- Uptime -->
       <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 flex flex-col gap-1.5 relative overflow-hidden">
         <div class="absolute inset-0 bg-gradient-to-br from-blue-900/10 to-transparent pointer-events-none"></div>
-        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Uptime</p>
+        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">稼働時間</p>
         <p id="s-uptime" class="text-3xl font-bold tabular-nums font-mono leading-none text-zinc-50">00:00:00</p>
-        <p id="s-since" class="text-[11px] text-zinc-600 leading-none">since —</p>
+        <p id="s-since" class="text-[11px] text-zinc-600 leading-none">開始 —</p>
       </div>
 
       <!-- Avg Duration -->
       <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 flex flex-col gap-1.5 relative overflow-hidden">
         <div class="absolute inset-0 bg-gradient-to-br from-emerald-900/10 to-transparent pointer-events-none"></div>
-        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Avg Duration</p>
+        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">平均実行時間</p>
         <div class="flex items-baseline gap-1 leading-none">
           <span id="s-avg" class="text-3xl font-bold tabular-nums text-zinc-50">—</span>
           <span class="text-base font-medium text-zinc-500">ms</span>
         </div>
-        <p class="text-[11px] text-zinc-600 leading-none">per tool call</p>
+        <p class="text-[11px] text-zinc-600 leading-none">ツール呼び出しごと</p>
       </div>
 
       <!-- Update -->
       <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 flex flex-col gap-1.5 relative overflow-hidden">
         <div class="absolute inset-0 bg-gradient-to-br from-amber-900/10 to-transparent pointer-events-none"></div>
-        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Update</p>
+        <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">アップデート</p>
         <p id="s-update-ver" class="text-base font-semibold text-zinc-50 leading-none mt-0.5">—</p>
-        <p id="s-update-msg" class="text-[11px] text-zinc-600 leading-none">Checking…</p>
+        <p id="s-update-msg" class="text-[11px] text-zinc-600 leading-none">確認中…</p>
       </div>
 
     </div>
@@ -132,10 +132,10 @@
           <svg class="w-3.5 h-3.5 text-cyan-500 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
           </svg>
-          <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Tokens Returned</p>
+          <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">返却トークン数</p>
         </div>
         <p id="s-tokens-used" class="text-2xl font-bold tabular-nums font-mono leading-none text-cyan-400">0</p>
-        <p class="text-[11px] text-zinc-600 leading-none">actual tokens sent to LLM</p>
+        <p class="text-[11px] text-zinc-600 leading-none">LLMへ実際に送信されたトークン数</p>
       </div>
 
       <!-- Tokens Saved -->
@@ -145,24 +145,24 @@
           <svg class="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
           </svg>
-          <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Tokens Saved</p>
+          <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">節約トークン数</p>
         </div>
         <p id="s-tokens-saved" class="text-2xl font-bold tabular-nums font-mono leading-none text-emerald-400">0</p>
-        <p class="text-[11px] text-zinc-600 leading-none">vs naive full-file reads (~87% avg)</p>
+        <p class="text-[11px] text-zinc-600 leading-none">全ファイル読み込み比（平均 87%）</p>
       </div>
 
       <!-- Savings Rate -->
       <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 flex flex-col gap-2 relative overflow-hidden">
         <div class="absolute inset-0 bg-gradient-to-br from-violet-900/10 to-transparent pointer-events-none"></div>
         <div class="flex items-center justify-between">
-          <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">Efficiency</p>
+          <p class="text-[10px] font-semibold text-zinc-500 uppercase tracking-[0.12em]">効率</p>
           <span id="s-pct-label" class="text-[11px] font-mono font-bold text-violet-400">—%</span>
         </div>
         <!-- Progress bar -->
         <div class="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
           <div id="s-pct-bar" class="h-2 rounded-full bg-gradient-to-r from-violet-600 to-emerald-500 transition-all duration-700" style="width:0%"></div>
         </div>
-        <p class="text-[11px] text-zinc-600 leading-none">token reduction rate</p>
+        <p class="text-[11px] text-zinc-600 leading-none">トークン削減率</p>
       </div>
 
     </div>
@@ -173,11 +173,11 @@
       <!-- ── Top Tools ── (2/5 width) -->
       <div class="lg:col-span-2 rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden flex flex-col">
         <div class="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
-          <h2 class="text-sm font-semibold text-zinc-200">Tool Usage</h2>
-          <span id="tool-count-badge" class="text-[10px] font-mono text-zinc-500">0 tools</span>
+          <h2 class="text-sm font-semibold text-zinc-200">ツール使用状況</h2>
+          <span id="tool-count-badge" class="text-[10px] font-mono text-zinc-500">0 ツール</span>
         </div>
         <div id="tool-chart" class="flex-1 overflow-y-auto p-3 space-y-1.5" style="max-height: 500px;">
-          <p id="tool-empty" class="text-zinc-600 text-xs text-center py-8">No calls yet</p>
+          <p id="tool-empty" class="text-zinc-600 text-xs text-center py-8">まだ呼び出しなし</p>
         </div>
       </div>
 
@@ -185,31 +185,31 @@
       <div class="lg:col-span-3 rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden flex flex-col">
         <div class="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/50">
           <div class="flex items-center gap-2.5">
-            <h2 class="text-sm font-semibold text-zinc-200">Tool Call Log</h2>
+            <h2 class="text-sm font-semibold text-zinc-200">ツール呼び出しログ</h2>
             <span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider
                           px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700">
               <span id="badge-dot" class="w-1 h-1 rounded-full bg-zinc-600"></span>
-              <span id="badge-label">idle</span>
+              <span id="badge-label">待機中</span>
             </span>
           </div>
-          <span id="log-count" class="text-[11px] font-mono text-zinc-500 tabular-nums">0 calls</span>
+          <span id="log-count" class="text-[11px] font-mono text-zinc-500 tabular-nums">0 件</span>
         </div>
         <div id="log-scroll" class="flex-1 overflow-y-auto" style="max-height: 500px;">
           <table class="w-full text-sm">
             <thead class="sticky top-0 bg-zinc-900/95 backdrop-blur-sm">
               <tr class="border-b border-zinc-800">
-                <th class="px-3 py-2.5 text-left text-[10px] font-semibold text-zinc-500 uppercase tracking-widest w-20">Time</th>
-                <th class="px-3 py-2.5 text-left text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Tool</th>
+                <th class="px-3 py-2.5 text-left text-[10px] font-semibold text-zinc-500 uppercase tracking-widest w-20">時刻</th>
+                <th class="px-3 py-2.5 text-left text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">ツール</th>
                 <th class="px-3 py-2.5 text-right text-[10px] font-semibold text-zinc-500 uppercase tracking-widest w-16">Tok</th>
-                <th class="px-3 py-2.5 text-right text-[10px] font-semibold text-zinc-500 uppercase tracking-widest w-20">Dur</th>
-                <th class="px-3 py-2.5 text-center text-[10px] font-semibold text-zinc-500 uppercase tracking-widest w-16">St</th>
+                <th class="px-3 py-2.5 text-right text-[10px] font-semibold text-zinc-500 uppercase tracking-widest w-20">時間</th>
+                <th class="px-3 py-2.5 text-center text-[10px] font-semibold text-zinc-500 uppercase tracking-widest w-16">状態</th>
               </tr>
             </thead>
             <tbody id="log-body">
               <tr id="empty-row">
                 <td colspan="5" class="px-4 py-16 text-center">
-                  <div class="text-zinc-600 text-sm font-medium">No tool calls yet</div>
-                  <div class="text-zinc-700 text-xs mt-1.5">Calls will appear here in real time</div>
+                  <div class="text-zinc-600 text-sm font-medium">まだツール呼び出しなし</div>
+                  <div class="text-zinc-700 text-xs mt-1.5">呼び出しはリアルタイムで表示されます</div>
                 </td>
               </tr>
             </tbody>
@@ -221,7 +221,7 @@
 
     <!-- Footer -->
     <p class="text-center text-[11px] text-zinc-700 pb-1 select-none">
-      T0K3N-MCP &mdash; Token-saving MCP server for AI coding tools
+      T0K3N-MCP &mdash; AI コーディングツール向けトークン節約型 MCP サーバー
     </p>
 
   </main>
@@ -247,7 +247,7 @@
   }
   function fmtSince(ms) {
     if (!ms) return '—';
-    return 'since ' + new Date(ms).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
+    return '開始 ' + new Date(ms).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
   }
   function fmtTokens(n) {
     if (!n) return '0';
@@ -281,8 +281,8 @@
   // ── Stats update ──────────────────────────────────────────────
   function setStats() {
     $('s-total').textContent   = totalCalls.toLocaleString();
-    $('s-errors').textContent  = errorCalls + ' error' + (errorCalls !== 1 ? 's' : '');
-    $('log-count').textContent = totalCalls.toLocaleString() + ' call' + (totalCalls !== 1 ? 's' : '');
+    $('s-errors').textContent  = errorCalls + ' エラー';
+    $('log-count').textContent = totalCalls.toLocaleString() + ' 件';
   }
 
   function setTokenStats() {
@@ -300,20 +300,20 @@
     const ver = $('s-update-ver');
     const msg = $('s-update-msg');
     if (!u || u.kind === 'up_to_date') {
-      ver.textContent = 'Up to date';
-      msg.textContent = 'Running latest release';
+      ver.textContent = '最新版';
+      msg.textContent = '最新リリースを実行中';
       msg.className   = 'text-[11px] leading-none text-emerald-500';
     } else if (u.kind === 'available') {
-      ver.textContent = 'v' + u.available + ' available';
-      msg.textContent = '⬆ New version ready';
+      ver.textContent = 'v' + u.available + ' 利用可能';
+      msg.textContent = '⬆ 新バージョン公開中';
       msg.className   = 'text-[11px] leading-none text-amber-400';
     } else if (u.kind === 'beta') {
-      ver.textContent = 'Beta preview';
-      msg.textContent = '🧪 Ahead of release';
+      ver.textContent = 'ベータプレビュー';
+      msg.textContent = '🧪 リリース前バージョン';
       msg.className   = 'text-[11px] leading-none text-violet-400';
     } else {
       ver.textContent = '—';
-      msg.textContent = 'Checking…';
+      msg.textContent = '確認中…';
       msg.className   = 'text-[11px] leading-none text-zinc-600';
     }
   }
@@ -322,12 +322,12 @@
   function renderToolChart(tools) {
     const container = $('tool-chart');
     if (!tools || tools.length === 0) {
-      container.innerHTML = '<p id="tool-empty" class="text-zinc-600 text-xs text-center py-8">No calls yet</p>';
-      $('tool-count-badge').textContent = '0 tools';
+      container.innerHTML = '<p id="tool-empty" class="text-zinc-600 text-xs text-center py-8">まだ呼び出しなし</p>';
+      $('tool-count-badge').textContent = '0 ツール';
       return;
     }
 
-    $('tool-count-badge').textContent = tools.length + ' tool' + (tools.length !== 1 ? 's' : '');
+    $('tool-count-badge').textContent = tools.length + ' ツール';
     const maxCalls = tools[0].calls || 1;
 
     container.innerHTML = tools.map((t, i) => {
@@ -395,11 +395,11 @@
   let liveBadgeTimer;
   function flashLive() {
     $('badge-dot').className  = 'w-1 h-1 rounded-full bg-violet-500';
-    $('badge-label').textContent = 'live';
+    $('badge-label').textContent = '実行中';
     clearTimeout(liveBadgeTimer);
     liveBadgeTimer = setTimeout(() => {
       $('badge-dot').className  = 'w-1 h-1 rounded-full bg-zinc-600';
-      $('badge-label').textContent = 'idle';
+      $('badge-label').textContent = '待機中';
     }, 2000);
   }
 
@@ -428,8 +428,8 @@
       tbody.innerHTML = `
         <tr id="empty-row">
           <td colspan="5" class="px-4 py-16 text-center">
-            <div class="text-zinc-600 text-sm font-medium">No tool calls yet</div>
-            <div class="text-zinc-700 text-xs mt-1.5">Calls will appear here in real time</div>
+            <div class="text-zinc-600 text-sm font-medium">まだツール呼び出しなし</div>
+            <div class="text-zinc-700 text-xs mt-1.5">呼び出しはリアルタイムで表示されます</div>
           </td>
         </tr>`;
     } else {
@@ -447,18 +447,18 @@
     ws.onopen = () => {
       clearTimeout(retryTimer);
       $('ws-dot').className  = 'w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0 dot-live';
-      $('ws-label').textContent = 'Live';
+      $('ws-label').textContent = '接続済み';
     };
 
     ws.onclose = () => {
       $('ws-dot').className  = 'w-1.5 h-1.5 rounded-full bg-yellow-500 flex-shrink-0';
-      $('ws-label').textContent = 'Reconnecting…';
+      $('ws-label').textContent = '再接続中…';
       retryTimer = setTimeout(connect, 2500);
     };
 
     ws.onerror = () => {
       $('ws-dot').className  = 'w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0';
-      $('ws-label').textContent = 'Error';
+      $('ws-label').textContent = 'エラー';
     };
 
     ws.onmessage = ({ data }) => {
