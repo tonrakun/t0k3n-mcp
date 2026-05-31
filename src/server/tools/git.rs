@@ -358,3 +358,100 @@ pub fn read_changed_files(root: &Path, params: ReadChangedFilesParams) -> Result
 
     Ok(ReadChangedFilesResult { base, files, total_added, total_deleted, file_count, token_count })
 }
+
+// ─── read_git_stash ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadGitStashParams {
+    #[schemars(description = "Stash index to show diff for (e.g. 0 for stash@{0}). Omit to list only.")]
+    pub index: Option<usize>,
+    #[schemars(description = "Return only diff statistics instead of full patch (default: false)")]
+    pub stat_only: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StashEntry {
+    pub index: usize,
+    pub name: String,
+    pub message: String,
+    pub date: String,
+    pub branch: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReadGitStashResult {
+    pub stashes: Vec<StashEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diff: Option<String>,
+    pub token_count: usize,
+}
+
+pub fn read_git_stash(root: &Path, params: ReadGitStashParams) -> Result<ReadGitStashResult, String> {
+    // List stashes
+    let mut list_cmd = Command::new("git");
+    list_cmd.current_dir(root);
+    list_cmd.args(["stash", "list", "--format=%gd|%ai|%gs|%s"]);
+    let list_out = list_cmd.output().map_err(|e| format!("git コマンド実行失敗: {e}"))?;
+    if !list_out.status.success() {
+        return Err(format!("git stash list 失敗: {}", String::from_utf8_lossy(&list_out.stderr)));
+    }
+
+    let list_text = String::from_utf8_lossy(&list_out.stdout);
+    let mut stashes = Vec::new();
+
+    for line in list_text.lines() {
+        let parts: Vec<&str> = line.splitn(4, '|').collect();
+        if parts.len() < 4 { continue; }
+        let name = parts[0].trim().to_string();
+        let date = parts[1].trim().chars().take(10).collect::<String>();
+        let subject = parts[3].trim().to_string();
+
+        // Extract branch from subject: "On main: message" or "WIP on main: message"
+        let (branch, message) = if let Some(rest) = subject.strip_prefix("WIP on ").or(subject.strip_prefix("On ")) {
+            if let Some(colon) = rest.find(": ") {
+                (rest[..colon].to_string(), rest[colon + 2..].to_string())
+            } else {
+                (rest.to_string(), subject.clone())
+            }
+        } else {
+            ("unknown".to_string(), subject.clone())
+        };
+
+        // Parse index from "stash@{N}"
+        let index = name.trim_start_matches("stash@{")
+            .trim_end_matches('}')
+            .parse::<usize>()
+            .unwrap_or(stashes.len());
+
+        stashes.push(StashEntry { index, name, message, date, branch });
+    }
+
+    // Optionally get diff for specific stash
+    let diff = if let Some(idx) = params.index {
+        let stash_ref = format!("stash@{{{idx}}}");
+        let stat_only = params.stat_only.unwrap_or(false);
+        let mut cmd = Command::new("git");
+        cmd.current_dir(root);
+        cmd.args(["stash", "show"]);
+        if stat_only {
+            cmd.arg("--stat");
+        } else {
+            cmd.arg("-p");
+            cmd.args(["--unified=2"]);
+        }
+        cmd.arg(&stash_ref);
+        let out = cmd.output().map_err(|e| format!("git コマンド実行失敗: {e}"))?;
+        if out.status.success() {
+            Some(String::from_utf8_lossy(&out.stdout).into_owned())
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let json_for_count = serde_json::json!({ "stashes": stashes, "diff": diff });
+    let token_count = estimate_tokens(&json_for_count.to_string());
+
+    Ok(ReadGitStashResult { stashes, diff, token_count })
+}

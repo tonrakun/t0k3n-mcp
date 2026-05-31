@@ -881,6 +881,8 @@ pub struct ReadCallGraphParams {
     pub path: String,
     #[schemars(description = "Function ID from read_code_skeleton (e.g. 'function:34-42').")]
     pub function_id: String,
+    #[schemars(description = "Cross-file trace depth (0=single file only, 1-5=follow calls across files). Default: 0.")]
+    pub depth: Option<u8>,
 }
 
 #[derive(Debug, Serialize)]
@@ -890,6 +892,9 @@ pub struct ReadCallGraphResult {
     pub calls: Vec<String>,
     pub called_by_in_file: Vec<String>,
     pub token_count: usize,
+    // cross-file fields (populated only when depth >= 1)
+    pub cross_file_callees: Vec<serde_json::Value>,
+    pub cross_file_callers: Vec<serde_json::Value>,
 }
 
 pub fn read_call_graph(root: &Path, params: ReadCallGraphParams) -> anyhow::Result<ReadCallGraphResult> {
@@ -911,23 +916,35 @@ pub fn read_call_graph(root: &Path, params: ReadCallGraphParams) -> anyhow::Resu
     let from = start.saturating_sub(1);
     let to = end.min(lines.len());
 
-    // Get function name from the first line of the body
     let fn_name = extract_fn_name(lines[from]);
-
-    // Find all function calls in this body
     let body = lines[from..to].join("\n");
     let calls = extract_calls(&body, fn_name.as_deref());
 
-    // Find which functions in the same file call our function
     let called_by = if let Some(ref name) = fn_name {
         find_callers(&lines, name, from, to)
     } else {
         Vec::new()
     };
 
+    // Cross-file extension when depth >= 1
+    let depth = params.depth.unwrap_or(0).min(5);
+    let (cross_file_callees, cross_file_callers) = if depth >= 1 {
+        let callees = find_cross_file_definitions(root, &calls);
+        let callers = if let Some(ref name) = fn_name {
+            find_cross_file_callers(root, name, &rel)
+        } else {
+            Vec::new()
+        };
+        (callees, callers)
+    } else {
+        (Vec::new(), Vec::new())
+    };
+
     let result_json = serde_json::json!({
         "calls": calls,
         "called_by_in_file": called_by,
+        "cross_file_callees": cross_file_callees,
+        "cross_file_callers": cross_file_callers,
     });
     let token_count = estimate_tokens(&result_json.to_string());
 
@@ -937,7 +954,92 @@ pub fn read_call_graph(root: &Path, params: ReadCallGraphParams) -> anyhow::Resu
         calls,
         called_by_in_file: called_by,
         token_count,
+        cross_file_callees,
+        cross_file_callers,
     })
+}
+
+/// Find files that define any of the given function names (cross-file callees).
+fn find_cross_file_definitions(root: &Path, fn_names: &[String]) -> Vec<serde_json::Value> {
+    if fn_names.is_empty() { return Vec::new(); }
+    let fn_re = Regex::new(
+        r"(?:fn|func|def|function|class)\s+(\w+)\s*[(<]"
+    ).unwrap();
+    let mut results: Vec<serde_json::Value> = Vec::new();
+    let mut found_names = std::collections::HashSet::new();
+
+    for entry in WalkBuilder::new(root)
+        .hidden(false).git_ignore(true).git_global(false).git_exclude(false)
+        .build().flatten()
+    {
+        let path = entry.path();
+        if path.is_dir() { continue; }
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !CODE_EXTENSIONS.contains(&ext) { continue; }
+        let Ok(content) = std::fs::read_to_string(path) else { continue };
+        let rel = path.strip_prefix(root).unwrap_or(path)
+            .to_string_lossy().replace('\\', "/");
+
+        for (i, line) in content.lines().enumerate() {
+            if let Some(cap) = fn_re.captures(line) {
+                let name = cap[1].to_string();
+                if fn_names.contains(&name) && found_names.insert(name.clone()) {
+                    results.push(serde_json::json!({
+                        "function": name,
+                        "file": rel,
+                        "line": i + 1,
+                    }));
+                }
+            }
+        }
+        if found_names.len() >= fn_names.len() { break; }
+    }
+    results
+}
+
+/// Find functions in other files that call `fn_name`.
+fn find_cross_file_callers(root: &Path, fn_name: &str, self_file: &str) -> Vec<serde_json::Value> {
+    let call_re = Regex::new(&format!(r"\b{}\s*\(", regex::escape(fn_name))).unwrap();
+    let fn_re = Regex::new(r"(?:fn|func|def|function)\s+(\w+)\s*[(<]").unwrap();
+    let mut results: Vec<serde_json::Value> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for entry in WalkBuilder::new(root)
+        .hidden(false).git_ignore(true).git_global(false).git_exclude(false)
+        .build().flatten()
+    {
+        let path = entry.path();
+        if path.is_dir() { continue; }
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !CODE_EXTENSIONS.contains(&ext) { continue; }
+        let rel = path.strip_prefix(root).unwrap_or(path)
+            .to_string_lossy().replace('\\', "/");
+        if rel == self_file { continue; } // skip the source file
+
+        let Ok(content) = std::fs::read_to_string(path) else { continue };
+        if !content.contains(fn_name) { continue; }
+
+        let mut current_fn: Option<String> = None;
+        for (i, line) in content.lines().enumerate() {
+            if let Some(cap) = fn_re.captures(line) {
+                current_fn = Some(cap[1].to_string());
+            }
+            if call_re.is_match(line) {
+                if let Some(ref caller) = current_fn {
+                    let key = format!("{}:{}", rel, caller);
+                    if seen.insert(key) {
+                        results.push(serde_json::json!({
+                            "caller": caller,
+                            "file": rel,
+                            "line": i + 1,
+                        }));
+                    }
+                }
+            }
+        }
+        if results.len() >= 50 { break; }
+    }
+    results
 }
 
 fn extract_fn_name(line: &str) -> Option<String> {
@@ -1014,4 +1116,153 @@ fn find_callers(lines: &[&str], fn_name: &str, fn_start: usize, fn_end: usize) -
     }
 
     callers.into_iter().collect()
+}
+
+// ─── read_interface_conformance ───────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadInterfaceConformanceParams {
+    #[schemars(description = "Interface / trait / abstract class name to search for")]
+    pub name: String,
+    #[schemars(description = "Limit search to this file or directory (omit for whole workspace)")]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConformanceEntry {
+    pub type_name: String,
+    pub file: String,
+    pub line: usize,
+    pub language: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReadInterfaceConformanceResult {
+    pub name: String,
+    pub kind: String,
+    pub implementations: Vec<ConformanceEntry>,
+    pub total: usize,
+    pub token_count: usize,
+}
+
+pub fn read_interface_conformance(
+    root: &Path,
+    params: ReadInterfaceConformanceParams,
+) -> anyhow::Result<ReadInterfaceConformanceResult> {
+    anyhow::ensure!(!params.name.is_empty(), "name は空にできません");
+
+    let start = if let Some(ref p) = params.path {
+        safe_path(root, p)?
+    } else {
+        root.to_path_buf()
+    };
+
+    let escaped = regex::escape(&params.name);
+
+    // Per-language patterns: (ext, pattern, group_index_for_type_name, kind)
+    struct Pattern {
+        exts: &'static [&'static str],
+        re_str: String,
+    }
+
+    let patterns = vec![
+        // TypeScript: class Foo implements Bar
+        Pattern {
+            exts: &["ts", "tsx"],
+            re_str: format!(r"(?:class|interface)\s+(\w+)(?:[^{{]*?)implements\s+(?:[^{{]*?)?{}", escaped),
+        },
+        // Rust: impl TraitName for TypeName
+        Pattern {
+            exts: &["rs"],
+            re_str: format!(r"impl(?:<[^>]*>)?\s+{}\s+for\s+(\w+)", escaped),
+        },
+        // Java/Kotlin: class Foo implements Bar / extends Bar
+        Pattern {
+            exts: &["java", "kt", "kts"],
+            re_str: format!(r"(?:class|object)\s+(\w+)(?:[^{{]*?)(?:implements|extends)\s+(?:[^{{]*?)?{}", escaped),
+        },
+        // Go: type assertion pattern — var _ Interface = (*Impl)(nil)
+        Pattern {
+            exts: &["go"],
+            re_str: format!(r"var\s+_\s+{0}\s*=\s*(?:&?\s*(\w+)\{{|(?:\*)?(\w+)\(|(?:\*)?(\w+)\{{)", escaped),
+        },
+        // PHP: class Foo implements Bar
+        Pattern {
+            exts: &["php"],
+            re_str: format!(r"class\s+(\w+)(?:[^{{]*?)implements\s+(?:[^{{]*?)?{}", escaped),
+        },
+        // C#: class Foo : Bar
+        Pattern {
+            exts: &["cs"],
+            re_str: format!(r"(?:class|struct)\s+(\w+)(?:[^{{]*?):\s*(?:[^{{]*?)?{}", escaped),
+        },
+    ];
+
+    let mut implementations = Vec::new();
+
+    for pat in &patterns {
+        let Ok(re) = Regex::new(&pat.re_str) else { continue };
+
+        for entry in WalkBuilder::new(&start)
+            .hidden(false).git_ignore(true).git_global(false).git_exclude(false)
+            .build().flatten()
+        {
+            let path = entry.path();
+            if path.is_dir() { continue; }
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if !pat.exts.contains(&ext) { continue; }
+
+            let Ok(content) = std::fs::read_to_string(path) else { continue };
+            if !content.contains(params.name.as_str()) { continue; }
+
+            let rel = path.strip_prefix(root).unwrap_or(path)
+                .to_string_lossy().replace('\\', "/");
+            let language = match ext {
+                "ts" | "tsx" => "typescript",
+                "rs" => "rust",
+                "java" => "java",
+                "kt" | "kts" => "kotlin",
+                "go" => "go",
+                "php" => "php",
+                "cs" => "c#",
+                _ => ext,
+            };
+
+            for (line_idx, line) in content.lines().enumerate() {
+                if let Some(cap) = re.captures(line) {
+                    // Try groups 1, 2, 3 in order
+                    let type_name = (1..=3)
+                        .find_map(|g| cap.get(g).map(|m| m.as_str().trim().to_string()))
+                        .unwrap_or_default();
+                    if type_name.is_empty() { continue; }
+                    implementations.push(ConformanceEntry {
+                        type_name,
+                        file: rel.clone(),
+                        line: line_idx + 1,
+                        language: language.to_string(),
+                    });
+                }
+            }
+
+            if implementations.len() >= 200 { break; }
+        }
+    }
+
+    // Deduplicate by (type_name, file)
+    let mut seen = std::collections::HashSet::new();
+    implementations.retain(|e| seen.insert(format!("{}:{}", e.file, e.type_name)));
+    implementations.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+
+    let total = implementations.len();
+    let kind = if params.name.starts_with(|c: char| c.is_uppercase()) { "interface" } else { "trait" };
+    let json = serde_json::to_string(&implementations).unwrap_or_default();
+    let token_count = estimate_tokens(&json);
+
+    Ok(ReadInterfaceConformanceResult {
+        name: params.name,
+        kind: kind.to_string(),
+        implementations,
+        total,
+        token_count,
+    })
 }

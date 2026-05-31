@@ -19,17 +19,21 @@ pub mod tools;
 
 use db::Database;
 use tools::{
-    code::{ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams, read_call_graph, read_code_body, read_code_skeleton, read_symbol_usages, read_type_skeleton},
+    batch::{BatchReadParams, batch_read},
+    ci::{ReadCiPipelineParams, read_ci_pipeline},
+    code::{ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams, ReadInterfaceConformanceParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams, read_call_graph, read_code_body, read_code_skeleton, read_interface_conformance, read_symbol_usages, read_type_skeleton},
     css::{ReadCssBodyParams, ReadCssSkeletonParams, read_css_body, read_css_skeleton},
     db_schema::{ReadDbSchemaParams, ReadDbTableParams, read_db_schema, read_db_table},
     deps::{ReadCodeDepsParams, read_code_deps},
     document::{ConvertDocumentParams, convert_document},
     env::{ReadEnvSchemaParams, read_env_schema},
     fs::{ReadDirectoryTreeParams, ReadTokenMapParams, SearchFileParams, read_directory_tree, read_token_map, search_file},
-    git::{ReadChangedFilesParams, ReadGitBlameBodyParams, ReadGitDiffParams, ReadGitLogParams, read_changed_files, read_git_blame_body, read_git_diff, read_git_log},
+    git::{ReadChangedFilesParams, ReadGitBlameBodyParams, ReadGitDiffParams, ReadGitLogParams, ReadGitStashParams, read_changed_files, read_git_blame_body, read_git_diff, read_git_log, read_git_stash},
     graphql::{ReadGraphqlSchemaParams, ReadGraphqlTypeParams, read_graphql_schema, read_graphql_type},
     log::{ReadLogTailParams, ReadStackTraceParams, read_log_tail, read_stack_trace},
+    manifest::{ReadPackageManifestParams, read_package_manifest},
     openapi::{ReadOpenApiParams, read_openapi},
+    stats::{ReadWorkspaceStatsParams, read_workspace_stats},
     json_yaml::{ReadJsonYamlKeysParams, ReadJsonYamlValueParams, read_json_yaml_keys, read_json_yaml_value},
     markdown::{ReadMarkdownSectionParams, ReadMarkdownTocParams, read_markdown_section, read_markdown_toc},
     memory::{MemoryDeleteParams, MemoryGetParams, MemoryListParams, MemorySaveParams, memory_delete, memory_get, memory_list, memory_save},
@@ -67,6 +71,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_git_log",
     "read_git_blame_body",
     "read_changed_files",
+    "read_git_stash",
     // Schema / DSL
     "read_db_schema",
     "read_db_table",
@@ -78,6 +83,11 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_proto_type",
     "read_openapi",
     "read_env_schema",
+    "read_package_manifest",
+    "read_ci_pipeline",
+    "read_workspace_stats",
+    "read_interface_conformance",
+    "batch_read",
     // Notebook
     "read_notebook_cells",
     "read_notebook_cell",
@@ -848,6 +858,8 @@ impl T0k3nServer {
             ok_json(serde_json::json!({
                 "function": result.function, "file": result.file,
                 "calls": result.calls, "called_by_in_file": result.called_by_in_file,
+                "cross_file_callees": result.cross_file_callees,
+                "cross_file_callers": result.cross_file_callers,
                 "token_count": result.token_count,
             }))
         })
@@ -878,6 +890,92 @@ impl T0k3nServer {
                 "base": result.base, "files": result.files,
                 "total_added": result.total_added, "total_deleted": result.total_deleted,
                 "file_count": result.file_count, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    // ─────────────────────────────────────────────
+    // Phase 4 tools
+    // ─────────────────────────────────────────────
+
+    #[tool(description = "List stashes and optionally get diff for a specific stash entry. Omit index to list only.")]
+    async fn read_git_stash(
+        &self,
+        Parameters(params): Parameters<ReadGitStashParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_git_stash", {
+            let result = read_git_stash(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "stashes": result.stashes, "diff": result.diff, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Parse package.json / Cargo.toml / go.mod / pyproject.toml / pom.xml / build.gradle into a unified dependency list. Faster than read_json_yaml_value for multi-ecosystem projects.")]
+    async fn read_package_manifest(
+        &self,
+        Parameters(params): Parameters<ReadPackageManifestParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_package_manifest", {
+            let result = read_package_manifest(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "manifests": result.manifests, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Parse CI pipeline configs (GitHub Actions / GitLab CI / CircleCI) into structured workflow/job/step summary. Omit path to auto-scan workspace.")]
+    async fn read_ci_pipeline(
+        &self,
+        Parameters(params): Parameters<ReadCiPipelineParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_ci_pipeline", {
+            let result = read_ci_pipeline(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "pipelines": result.pipelines, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Get codebase-wide statistics: total files/lines/tokens, per-language breakdown with %, and top-10 largest files. Much faster overview than read_token_map.")]
+    async fn read_workspace_stats(
+        &self,
+        Parameters(params): Parameters<ReadWorkspaceStatsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_workspace_stats", {
+            let result = read_workspace_stats(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "total_files": result.total_files, "total_lines": result.total_lines,
+                "total_tokens": result.total_tokens, "by_language": result.by_language,
+                "largest_files": result.largest_files, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Find all types that implement a given interface/trait/abstract class across the workspace. Supports TypeScript, Rust, Java, Kotlin, Go, PHP, C#.")]
+    async fn read_interface_conformance(
+        &self,
+        Parameters(params): Parameters<ReadInterfaceConformanceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_interface_conformance", {
+            let result = read_interface_conformance(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "name": result.name, "kind": result.kind,
+                "implementations": result.implementations,
+                "total": result.total, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Execute multiple read operations in one call (code_skeleton | code_body | markdown_section | json_value | file_outline). Reduces round-trips when you need several files at once.")]
+    async fn batch_read(
+        &self,
+        Parameters(params): Parameters<BatchReadParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "batch_read", {
+            let result = batch_read(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "results": result.results, "total_token_count": result.total_token_count,
             }))
         })
     }
@@ -955,13 +1053,19 @@ impl ServerHandler for T0k3nServer {
                  - GraphQL: read_graphql_schema → read_graphql_type\n\
                  - Tests: read_test_skeleton (list), read_test_results (parse output)\n\
                  - Types: read_type_skeleton (TS/Go/Rust types with fields)\n\
-                 - Calls: read_call_graph (callers/callees for a function)\n\
+                 - Calls: read_call_graph (callers/callees; depth>=1 for cross-file)\n\
                  - Token map: read_token_map (largest files first)\n\
+                 - Workspace stats: read_workspace_stats (language breakdown)\n\
                  - Changed files: read_changed_files → read_git_diff (per-file)\n\
+                 - Git stash: read_git_stash (list + diff)\n\
                  - Proto: read_proto_schema → read_proto_type\n\
                  - Notebook: read_notebook_cells → read_notebook_cell\n\
                  - Logs: read_log_tail (filter by level/pattern)\n\
-                 - Stack trace: read_stack_trace (auto-resolves source context)"
+                 - Stack trace: read_stack_trace (auto-resolves source context)\n\
+                 - Package deps: read_package_manifest (npm/cargo/go/python/maven/gradle)\n\
+                 - CI pipelines: read_ci_pipeline (GitHub Actions/GitLab/CircleCI)\n\
+                 - Interface impls: read_interface_conformance (TS/Rust/Java/Kotlin/Go)\n\
+                 - Batch reads: batch_read (multiple ops in one call)"
                     .into(),
             ),
             ..Default::default()
