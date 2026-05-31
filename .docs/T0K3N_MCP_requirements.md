@@ -1094,6 +1094,17 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 |---|---|---|
 | `debug_info` | Rust 実装 | サーバー診断情報（バージョン・DB・登録ツール一覧） |
 
+### 分析系（Phase 5）
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_complexity_map` | Rust 実装 | 関数ごとの循環的複雑度（low/medium/high/critical）・リファクタ候補優先順位付け |
+| `read_dead_code` | Rust 実装 | 未使用シンボル検出（コンパイラ・LSP 不要・全言語対応） |
+| `read_refactor_impact` | Rust 実装 | リファクタブラスト半径：呼び出し元・参照ファイル・テスト一覧を 1 コールで |
+| `read_security_surface` | Rust 実装 | 静的セキュリティサーフェス（injection / XSS / secrets / unsafe / path_traversal） |
+| `diff_schemas` | Rust 実装 | git ref 間スキーマ差分（OpenAPI / Prisma / SQL / TypeScript 型） |
+| `read_pr_context` | Rust 実装 | PR 文脈一括ロード（変更ファイルスケルトン + テスト発見 + コミット一覧） |
+
 ---
 
 ## 5. 実装フェーズ
@@ -1161,6 +1172,15 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [x] `read_git_stash`（スタッシュ一覧と diff 取得）
 - [x] `read_interface_conformance`（interface / trait 実装型の全ワークスペース検索）
 - [x] ダッシュボード強化（ツール使用統計・累計トークン節約量の可視化）
+
+### Phase 5 — 差別化分析ツール v2.4+
+
+- [x] `read_complexity_map`（関数ごとの循環的複雑度・リスクレベル分類・コンパイラ不要）
+- [x] `read_dead_code`（未使用シンボル検出・全言語対応・LSP 不要）
+- [x] `read_refactor_impact`（リファクタブラスト半径分析：call_graph + symbol_usages + テスト検出を 1 コールで）
+- [x] `read_security_surface`（静的セキュリティサーフェス：injection / XSS / secrets / unsafe / path_traversal）
+- [x] `diff_schemas`（OpenAPI / Prisma / SQL / TypeScript の git ref 間スキーマ差分）
+- [x] `read_pr_context`（PR 文脈一括ロード：変更ファイルのスケルトン + テスト + コミット一覧）
 
 ---
 

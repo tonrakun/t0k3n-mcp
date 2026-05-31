@@ -22,6 +22,12 @@ use tools::{
     batch::{BatchReadParams, batch_read},
     ci::{ReadCiPipelineParams, read_ci_pipeline},
     code::{ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams, ReadInterfaceConformanceParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams, read_call_graph, read_code_body, read_code_skeleton, read_interface_conformance, read_symbol_usages, read_type_skeleton},
+    complexity::{ReadComplexityMapParams, read_complexity_map},
+    dead_code::{ReadDeadCodeParams, read_dead_code},
+    diff_schemas::{DiffSchemasParams, diff_schemas},
+    impact::{ReadRefactorImpactParams, read_refactor_impact},
+    pr_context::{ReadPrContextParams, read_pr_context},
+    security_surface::{ReadSecuritySurfaceParams, read_security_surface},
     css::{ReadCssBodyParams, ReadCssSkeletonParams, read_css_body, read_css_skeleton},
     db_schema::{ReadDbSchemaParams, ReadDbTableParams, read_db_schema, read_db_table},
     deps::{ReadCodeDepsParams, read_code_deps},
@@ -120,6 +126,13 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "session_restore",
     "session_list",
     "debug_info",
+    // Phase 5 — Differentiating analysis
+    "read_complexity_map",
+    "read_dead_code",
+    "read_refactor_impact",
+    "read_security_surface",
+    "diff_schemas",
+    "read_pr_context",
 ];
 
 #[derive(Clone)]
@@ -991,6 +1004,122 @@ impl T0k3nServer {
     }
 
     // ─────────────────────────────────────────────
+    // Phase 5 — Differentiating analysis tools
+    // ─────────────────────────────────────────────
+
+    #[tool(description = "Compute cyclomatic complexity for every function in a file or directory. Returns functions sorted by complexity with risk level (low/medium/high/critical). Use to identify refactoring targets without running a linter.")]
+    async fn read_complexity_map(
+        &self,
+        Parameters(params): Parameters<ReadComplexityMapParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_complexity_map", {
+            let result = read_complexity_map(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "entries": result.entries,
+                "total_analyzed": result.total_analyzed,
+                "high_risk_count": result.high_risk_count,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Find unused symbols (functions, classes, structs) that are defined but never called across the workspace. Works across all tree-sitter supported languages without a compiler or LSP.")]
+    async fn read_dead_code(
+        &self,
+        Parameters(params): Parameters<ReadDeadCodeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_dead_code", {
+            let result = read_dead_code(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "entries": result.entries,
+                "total_symbols_checked": result.total_symbols_checked,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Blast-radius analysis for a refactor: given a symbol name, returns all callers, all files that reference it, and all test files that cover it — in one call. Combines call_graph + symbol_usages + test discovery.")]
+    async fn read_refactor_impact(
+        &self,
+        Parameters(params): Parameters<ReadRefactorImpactParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_refactor_impact", {
+            let result = read_refactor_impact(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "symbol": result.symbol,
+                "definition_file": result.definition_file,
+                "definition_line": result.definition_line,
+                "direct_callers": result.direct_callers,
+                "direct_callees": result.direct_callees,
+                "referenced_in": result.referenced_in,
+                "total_references": result.total_references,
+                "test_files": result.test_files,
+                "blast_radius": result.blast_radius,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Static security surface scan: finds potential injection vectors, XSS sinks, hardcoded secrets, unsafe code, and path traversal patterns across the codebase. No compiler needed. Categories: injection, xss, secrets, unsafe, path_traversal, all.")]
+    async fn read_security_surface(
+        &self,
+        Parameters(params): Parameters<ReadSecuritySurfaceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_security_surface", {
+            let result = read_security_surface(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "findings": result.findings,
+                "total": result.total,
+                "by_category": result.by_category,
+                "by_severity": result.by_severity,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Diff a schema file (OpenAPI, Prisma/SQL, TypeScript types) between two git refs. Returns added/removed/modified endpoints, tables, or types. Auto-detects schema type from file extension.")]
+    async fn diff_schemas(
+        &self,
+        Parameters(params): Parameters<DiffSchemasParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "diff_schemas", {
+            let result = diff_schemas(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "path": result.path,
+                "schema_type": result.schema_type,
+                "before_ref": result.before_ref,
+                "after_ref": result.after_ref,
+                "added": result.added,
+                "removed": result.removed,
+                "modified": result.modified,
+                "total_changes": result.total_changes,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Load full PR context in one call: changed files with skeletons, diff stats, related test files, and commit list. Pass branch + base to get everything needed for a code review without multiple round-trips.")]
+    async fn read_pr_context(
+        &self,
+        Parameters(params): Parameters<ReadPrContextParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_pr_context", {
+            let result = read_pr_context(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "branch": result.branch,
+                "base": result.base,
+                "changed_files": result.changed_files,
+                "total_files": result.total_files,
+                "total_added": result.total_added,
+                "total_deleted": result.total_deleted,
+                "related_tests": result.related_tests,
+                "commits": result.commits,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    // ─────────────────────────────────────────────
     // Debug tool
     // ─────────────────────────────────────────────
 
@@ -1075,7 +1204,15 @@ impl ServerHandler for T0k3nServer {
                  - Package deps: read_package_manifest (npm/cargo/go/python/maven/gradle)\n\
                  - CI pipelines: read_ci_pipeline (GitHub Actions/GitLab/CircleCI)\n\
                  - Interface impls: read_interface_conformance (TS/Rust/Java/Kotlin/Go)\n\
-                 - Batch reads: batch_read (multiple ops in one call)"
+                 - Batch reads: batch_read (multiple ops in one call)\n\
+                 \n\
+                 PHASE 5 — ANALYSIS:\n\
+                 - Complexity: read_complexity_map (cyclomatic complexity per function)\n\
+                 - Dead code: read_dead_code (unused symbols across workspace)\n\
+                 - Refactor impact: read_refactor_impact (blast radius — callers + tests)\n\
+                 - Security: read_security_surface (injection/XSS/secrets/unsafe patterns)\n\
+                 - Schema diff: diff_schemas (OpenAPI/Prisma/TS changes between git refs)\n\
+                 - PR review: read_pr_context (full PR context — files+skeletons+tests+commits)"
                     .into(),
             ),
             ..Default::default()
