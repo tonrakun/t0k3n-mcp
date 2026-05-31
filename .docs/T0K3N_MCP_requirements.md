@@ -595,6 +595,287 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 
 ---
 
+### 2.17 `read_call_graph` クロスファイル拡張
+
+既存の `read_call_graph`（単一ファイル内 callers/callees）に `depth` パラメータを追加し、ファイルをまたいだ呼び出しグラフをトレースできるようにする。後方互換を維持し、`depth: 0`（デフォルト）で従来動作を保つ。
+
+**変更点（後方互換）**
+
+```ts
+{
+  path: string;
+  function_name: string;
+  direction?: "callers" | "callees" | "both"; // デフォルト: "both"
+  depth?: number; // 0=単一ファイル内のみ（現行動作）、1以上=クロスファイルトレース（デフォルト: 0、最大: 5）
+}
+```
+
+**depth >= 1 の挙動**
+
+- callees: 呼び出し先関数が外部ファイルにある場合、そのファイルを解析して再帰トレース
+- callers: `read_symbol_usages` と同じ手法でワークスペース全体を検索してから解析
+- 循環参照は自動検出してスキップ（visited set 管理）
+
+---
+
+### 2.18 パッケージマニフェスト系（新規）
+
+#### 2.18.1 `read_package_manifest`
+
+`package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod` / `pom.xml` / `build.gradle` を統一フォーマットで返す。`read_json_yaml_value` で個別キーを取得するより効率的で、複数ファイルを横断した依存関係の概観を得られる。
+
+**対応ファイル**
+
+| ファイル | エコシステム |
+|---|---|
+| `package.json` | Node.js / npm / yarn / pnpm |
+| `Cargo.toml` | Rust / Cargo |
+| `pyproject.toml` / `requirements.txt` | Python |
+| `go.mod` | Go |
+| `build.gradle` / `build.gradle.kts` | Java / Kotlin (Gradle) |
+| `pom.xml` | Java (Maven) |
+
+**入力**
+
+```ts
+{
+  path?: string; // 省略時: ワークスペースルートを自動スキャン
+}
+```
+
+**出力**
+
+```ts
+{
+  manifests: {
+    path: string;
+    ecosystem: string;        // "npm" | "cargo" | "python" | "go" | "gradle" | "maven"
+    name?: string;
+    version?: string;
+    dependencies: {
+      name: string;
+      version: string;
+      kind: "runtime" | "dev" | "build" | "optional";
+    }[];
+    scripts?: { [name: string]: string }; // npm scripts / Cargo aliases 等
+  }[];
+  token_count: number;
+}
+```
+
+---
+
+### 2.19 CI パイプライン系（新規）
+
+#### 2.19.1 `read_ci_pipeline`
+
+GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロー構造をコンパクトに返す。大きな CI ファイルを全文読む代わりに使う。
+
+**対応フォーマット**
+
+| 形式 | 検出方法 |
+|---|---|
+| GitHub Actions | `.github/workflows/*.yml` |
+| GitLab CI | `.gitlab-ci.yml` |
+| CircleCI | `.circleci/config.yml` |
+
+**入力**
+
+```ts
+{
+  path?: string; // 省略時: ワークスペースルートを自動スキャン
+}
+```
+
+**出力**
+
+```ts
+{
+  pipelines: {
+    path: string;
+    format: "github-actions" | "gitlab-ci" | "circleci";
+    workflows: {
+      name: string;
+      triggers: string[];       // push / pull_request / schedule 等
+      jobs: {
+        name: string;
+        runs_on?: string;       // ubuntu-latest 等
+        needs?: string[];       // 依存ジョブ
+        steps: string[];        // step name / uses の一覧
+        env_vars: string[];     // 参照している env var 名
+      }[];
+    }[];
+  }[];
+  token_count: number;
+}
+```
+
+---
+
+### 2.20 バッチ読み取り系（新規）
+
+#### 2.20.1 `batch_read`
+
+複数の読み取り操作を 1 回のツール呼び出しで並列実行する。MCP のラウンドトリップを削減し、スケルトン → 本文の一括取得フローを高速化する。
+
+**対応操作**
+
+| operation | 相当ツール |
+|---|---|
+| `code_skeleton` | `read_code_skeleton` |
+| `code_body` | `read_code_body` |
+| `markdown_section` | `read_markdown_section` |
+| `json_value` | `read_json_yaml_value` |
+| `file_outline` | `read_file_outline` |
+
+**入力**
+
+```ts
+{
+  reads: {
+    id: string;               // レスポンス内で結果を識別するためのクライアント指定 ID
+    operation: "code_skeleton" | "code_body" | "markdown_section" | "json_value" | "file_outline";
+    path: string;
+    // operation 別オプション（各ツールの入力と同じ）
+    ids?: string[];           // code_body 用
+    anchors?: string[];       // markdown_section 用
+    key_path?: string;        // json_value 用
+    include_blocks?: boolean; // code_skeleton 用
+  }[];
+}
+```
+
+**出力**
+
+```ts
+{
+  results: {
+    id: string;
+    ok: boolean;
+    data: any;                // 各ツールのレスポンスと同じ構造
+    error?: string;
+    token_count: number;
+  }[];
+  total_token_count: number;
+}
+```
+
+---
+
+### 2.21 ワークスペース統計系（新規）
+
+#### 2.21.1 `read_workspace_stats`
+
+コードベース全体の統計サマリを返す。`read_token_map`（ファイル単位のトークン数一覧）より高レベルな概観で、初回調査時の把握コストを削減する。
+
+**入力**
+
+```ts
+{
+  glob?: string; // フィルタ（例: "src/**/*.ts"）
+}
+```
+
+**出力**
+
+```ts
+{
+  total_files: number;
+  total_lines: number;
+  total_tokens: number;
+  by_language: {
+    language: string;
+    files: number;
+    lines: number;
+    tokens: number;
+    pct: number;              // 全体に占める割合（%）
+  }[];
+  largest_files: {            // トークン数 Top 10
+    path: string;
+    tokens: number;
+  }[];
+  token_count: number;        // このレスポンス自体のトークン数
+}
+```
+
+---
+
+### 2.22 Git スタッシュ系（新規）
+
+#### 2.22.1 `read_git_stash`
+
+スタッシュ一覧と各エントリの diff を token-efficient に返す。
+
+**入力**
+
+```ts
+{
+  index?: number;      // 省略時: 一覧のみ返す。指定時: そのエントリの diff も返す
+  stat_only?: boolean; // true=差分統計のみ（デフォルト: false）
+}
+```
+
+**出力**
+
+```ts
+{
+  stashes: {
+    index: number;
+    name: string;    // "stash@{0}" 形式
+    message: string;
+    date: string;
+    branch: string;
+  }[];
+  diff?: string;     // index 指定時のみ
+  token_count: number;
+}
+```
+
+---
+
+### 2.23 インターフェース適合系（新規）
+
+#### 2.23.1 `read_interface_conformance`
+
+指定した interface / trait / abstract class を実装・継承しているコンクリート型をワークスペース全体から検索する。大規模コードベースでのリファクタリング影響範囲の把握に使う。
+
+**対応言語**
+
+| 言語 | 対象構文 |
+|---|---|
+| TypeScript | `implements InterfaceName` |
+| Go | 構造的型付けのため `read_symbol_usages` ベースで推定 |
+| Rust | `impl TraitName for TypeName` |
+| Java / Kotlin | `implements` / `extends` |
+
+**入力**
+
+```ts
+{
+  name: string;    // interface / trait / abstract class 名
+  path?: string;  // 検索スコープ（省略時: 全ワークスペース）
+}
+```
+
+**出力**
+
+```ts
+{
+  name: string;
+  kind: "interface" | "trait" | "abstract_class";
+  implementations: {
+    type_name: string;
+    path: string;
+    line: number;
+    language: string;
+  }[];
+  total: number;
+  token_count: number;
+}
+```
+
+---
+
 ### 2.12 デバッグ系
 
 #### 2.12.1 `debug_info`
@@ -664,8 +945,11 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 | `read_json_yaml_keys` | Rust 実装 | JSON/YAML/TOML キー構造 |
 | `read_json_yaml_value` | Rust 実装 | キーパス指定で値取得（JSON/YAML/TOML） |
 | `read_type_skeleton` | Rust 実装 | 型定義スケルトン（TS interface/type/enum・Go struct/interface・Rust struct/enum/trait） |
-| `read_call_graph` | Rust 実装 | 関数の呼び出し先・呼び出し元グラフ（単一ファイル内） |
+| `read_call_graph` | Rust 実装 | 関数の呼び出し先・呼び出し元グラフ（単一ファイル内 / depth 指定でクロスファイル対応） |
 | `read_token_map` | Rust 実装 | ワークスペース内ファイルのトークン数マップ（glob フィルタ・降順ソート） |
+| `read_workspace_stats` | Rust 実装 | コードベース全体の言語別統計サマリ（ファイル数・行数・トークン数） |
+| `read_interface_conformance` | Rust 実装 | interface / trait 実装型の検索（TS/Go/Rust/Java/Kotlin） |
+| `batch_read` | Rust 実装 | 複数の読み取り操作を 1 コールで並列実行（ラウンドトリップ削減） |
 
 ### Git 拡張系
 
@@ -675,6 +959,7 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 | `read_git_log` | Rust 実装 | 構造化コミットログ（著者・日付・変更ファイル） |
 | `read_git_blame_body` | Rust 実装 | 関数単位の行 blame（著者・日付） |
 | `read_changed_files` | Rust 実装 | ブランチ間の変更ファイル一覧（ステータス・追加/削除行数） |
+| `read_git_stash` | Rust 実装 | スタッシュ一覧と diff 取得 |
 
 ### DB スキーマ系
 
@@ -770,6 +1055,18 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 |---|---|---|
 | `read_env_schema` | Rust 実装 | .env.example / docker-compose.yml から変数定義抽出 |
 
+### パッケージマニフェスト系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_package_manifest` | Rust 実装 | package.json / Cargo.toml / go.mod 等を統一フォーマットで返す |
+
+### CI パイプライン系
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_ci_pipeline` | Rust 実装 | GitHub Actions / GitLab CI / CircleCI ワークフロー構造取得 |
+
 ### デバッグ系
 
 | ツール | 種別 | 説明 |
@@ -828,6 +1125,21 @@ OpenAPI / Swagger (JSON または YAML) をパースし、エンドポイント�
 - [x] `read_notebook_cells` / `read_notebook_cell`（Jupyter ノートブック段階的読み取り）
 - [x] `read_log_tail`（ログファイル末尾取得・レベル/パターンフィルタ）
 - [x] `read_stack_trace`（スタックトレース→ソースコンテキスト自動解決）
+
+### Phase 4 — 拡張 v2.3+
+
+- [ ] 新言語対応（Java / Kotlin — `read_code_skeleton` / `read_type_skeleton` / `read_call_graph`）
+- [ ] 新言語対応（Swift — iOS 開発向け）
+- [ ] 新言語対応（Ruby — Rails 向け）
+- [ ] 新言語対応（Lua — ゲーム・組み込みスクリプト向け）
+- [ ] `read_call_graph` クロスファイル対応（`depth` パラメータ追加・循環参照検出）
+- [ ] `read_package_manifest`（package.json / Cargo.toml / pyproject.toml / go.mod / pom.xml / build.gradle 統一フォーマット）
+- [ ] `read_ci_pipeline`（GitHub Actions / GitLab CI / CircleCI ワークフロー構造取得）
+- [ ] `batch_read`（複数読み取り操作の 1 コール並列実行）
+- [ ] `read_workspace_stats`（コードベース全体の言語別統計サマリ）
+- [ ] `read_git_stash`（スタッシュ一覧と diff 取得）
+- [ ] `read_interface_conformance`（interface / trait 実装型の全ワークスペース検索）
+- [ ] ダッシュボード強化（ツール使用統計・累計トークン節約量の可視化）
 
 ---
 
