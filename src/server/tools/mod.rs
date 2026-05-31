@@ -13,6 +13,7 @@ pub mod env;
 pub mod fs;
 pub mod git;
 pub mod graphql;
+pub mod help;
 pub mod impact;
 pub mod json_yaml;
 pub mod log;

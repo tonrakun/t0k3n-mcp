@@ -37,6 +37,7 @@ use tools::{
     fs::{ReadDirectoryTreeParams, ReadTokenMapParams, SearchFileParams, read_directory_tree, read_token_map, search_file},
     git::{ReadChangedFilesParams, ReadGitBlameBodyParams, ReadGitDiffParams, ReadGitLogParams, ReadGitStashParams, read_changed_files, read_git_blame_body, read_git_diff, read_git_log, read_git_stash},
     graphql::{ReadGraphqlSchemaParams, ReadGraphqlTypeParams, read_graphql_schema, read_graphql_type},
+    help::{HelpParams, help},
     log::{ReadLogTailParams, ReadStackTraceParams, read_log_tail, read_stack_trace},
     manifest::{ReadPackageManifestParams, read_package_manifest},
     openapi::{ReadOpenApiParams, read_openapi},
@@ -127,6 +128,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "session_restore",
     "session_list",
     "debug_info",
+    "help",
     // Phase 6 — Command execution
     "run_command",
     // Phase 5 — Differentiating analysis
@@ -1146,6 +1148,14 @@ impl T0k3nServer {
         })
     }
 
+    #[tool(description = "List available t0k3n-mcp tools grouped by category. Call this when unsure which tool to use. Categories: file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug.")]
+    async fn help(
+        &self,
+        Parameters(params): Parameters<HelpParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "help", { ok_json(help(params)) })
+    }
+
     #[tool(description = "Returns server diagnostics: version, root path, DB status, and the full list of registered tools. Call this to confirm t0k3n-mcp is active and all tools are registered correctly.")]
     async fn debug_info(&self) -> Result<CallToolResult, McpError> {
         instrument!(self, "debug_info", {
@@ -1186,56 +1196,18 @@ impl ServerHandler for T0k3nServer {
                  on content you do not need. T0K3N-MCP tools reduce token usage by up to 87%.\n\
                  \n\
                  MANDATORY SUBSTITUTIONS — never use the left column when t0k3n-mcp is active:\n\
-                 - Read file        → read_code_skeleton + read_code_body  (code)\n\
-                 - Read file        → read_markdown_toc + read_markdown_section  (markdown)\n\
-                 - Read file        → read_json_yaml_keys + read_json_yaml_value  (json/yaml)\n\
-                 - Glob / ls        → read_directory_tree\n\
-                 - Grep / search    → search_file\n\
-                 - WebFetch         → fetch_webpage + read_webpage_section\n\
-                 - Memory files     → memory_save / memory_get / memory_list\n\
-                 - Task tracking    → task_create / task_update / task_list\n\
+                 - Read file (code)      → read_code_skeleton → read_code_body\n\
+                 - Read file (markdown)  → read_markdown_toc → read_markdown_section\n\
+                 - Read file (json/yaml) → read_json_yaml_keys → read_json_yaml_value\n\
+                 - Any file (auto)       → read_file_outline\n\
+                 - Glob / ls             → read_directory_tree\n\
+                 - Grep / search         → search_file\n\
+                 - WebFetch              → fetch_webpage → read_webpage_section\n\
+                 - Memory files          → memory_save / memory_get / memory_list\n\
+                 - Task tracking         → task_create / task_update / task_list\n\
                  \n\
-                 WORKFLOW (always structure before content):\n\
-                 - Directory: read_directory_tree\n\
-                 - Markdown: read_markdown_toc → read_markdown_section\n\
-                 - Code: read_code_skeleton → read_code_body\n\
-                 - Any file: read_file_outline (auto-detects code/md/json/yaml)\n\
-                 - Dependencies: read_code_deps (imports + imported_by)\n\
-                 - Semantic: semantic_search (natural language → relevant code bodies)\n\
-                 - Git: read_git_diff (compressed diff vs HEAD or any ref)\n\
-                 - JSON/YAML: read_json_yaml_keys → read_json_yaml_value\n\
-                 - Web: fetch_webpage → read_webpage_section\n\
-                 - Docs: convert_document → read_markdown_section(tmp_path)\n\
-                 - Budget: check_budget, compress_text, count_tokens\n\
-                 - Memory: memory_save/get/list/delete\n\
-                 - Tasks: task_create/update/get/list/delete\n\
-                 - Sessions: session_snapshot/restore/list\n\
-                 - DB schema: read_db_schema → read_db_table\n\
-                 - CSS: read_css_skeleton → read_css_body\n\
-                 - GraphQL: read_graphql_schema → read_graphql_type\n\
-                 - Tests: read_test_skeleton (list), read_test_results (parse output)\n\
-                 - Types: read_type_skeleton (TS/Go/Rust types with fields)\n\
-                 - Calls: read_call_graph (callers/callees; depth>=1 for cross-file)\n\
-                 - Token map: read_token_map (largest files first)\n\
-                 - Workspace stats: read_workspace_stats (language breakdown)\n\
-                 - Changed files: read_changed_files → read_git_diff (per-file)\n\
-                 - Git stash: read_git_stash (list + diff)\n\
-                 - Proto: read_proto_schema → read_proto_type\n\
-                 - Notebook: read_notebook_cells → read_notebook_cell\n\
-                 - Logs: read_log_tail (filter by level/pattern)\n\
-                 - Stack trace: read_stack_trace (auto-resolves source context)\n\
-                 - Package deps: read_package_manifest (npm/cargo/go/python/maven/gradle)\n\
-                 - CI pipelines: read_ci_pipeline (GitHub Actions/GitLab/CircleCI)\n\
-                 - Interface impls: read_interface_conformance (TS/Rust/Java/Kotlin/Go)\n\
-                 - Batch reads: batch_read (multiple ops in one call)\n\
-                 \n\
-                 PHASE 5 — ANALYSIS:\n\
-                 - Complexity: read_complexity_map (cyclomatic complexity per function)\n\
-                 - Dead code: read_dead_code (unused symbols across workspace)\n\
-                 - Refactor impact: read_refactor_impact (blast radius — callers + tests)\n\
-                 - Security: read_security_surface (injection/XSS/secrets/unsafe patterns)\n\
-                 - Schema diff: diff_schemas (OpenAPI/Prisma/TS changes between git refs)\n\
-                 - PR review: read_pr_context (full PR context — files+skeletons+tests+commits)"
+                 TOOL DISCOVERY: Call `help` (with optional category param) to find the right tool.\n\
+                 Categories: file / git / schema / web / notebook / test / log / text / memory / task / session / analysis / cmd / debug"
                     .into(),
             ),
             ..Default::default()

@@ -961,6 +961,27 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 ---
 
+### 2.25 ヘルプ・ディスカバリ系（新規）
+
+#### 2.25.1 `help`
+
+**目的**: ツール増加に伴う instructions 肥大化を防ぐ。AI がどのツールを使うべきか不明な時に動的に探索できるようにする。
+
+**引数**:
+
+| パラメータ | 型 | 説明 |
+|---|---|---|
+| `category` | `string?` | カテゴリ名（file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug）。省略時は全カテゴリを返す |
+
+**返値**: カテゴリ → ツール一覧（`name` + `description`）のマップ
+
+**設計方針**:
+- instructions からツール列挙を排除し「不明なときは `help` を呼ぶ」1 行に置き換える
+- ツール追加時は `help` の静的テーブルのみ更新すればよく、instructions は変更不要
+- カテゴリ不明時は利用可能カテゴリ一覧をエラーメッセージに含めて返す
+
+---
+
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -1156,6 +1177,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 | ツール | 種別 | 説明 |
 |---|---|---|
 | `debug_info` | Rust 実装 | サーバー診断情報（バージョン・DB・登録ツール一覧） |
+| `help` | Rust 実装 | カテゴリ別ツール探索（AI がどのツールを使うべきか不明な時に呼ぶ） |
 
 ### 分析系（Phase 5）
 
@@ -1254,6 +1276,11 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 ### Phase 6 — コマンド実行 v2.5+
 
 - [x] `run_command`（コマンド実行＋スマートフィルタリング：成功時サマリ / 失敗時エラー行・警告行抽出）
+
+### Phase 7 — ディスカバリ v2.6+
+
+- [x] `help`（カテゴリ別ツール探索・instructions 肥大化防止）
+- [x] instructions を MANDATORY SUBSTITUTIONS + `help` 呼び出し指示のみにスリム化
 
 ---
 
