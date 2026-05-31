@@ -154,7 +154,17 @@ macro_rules! instrument {
             let __d = __d.clone();
             let __ms = __t.elapsed().as_millis() as u64;
             let __ok = __r.is_ok();
-            tokio::spawn(async move { __d.record_call($name.to_string(), __ms, __ok).await; });
+            // Extract token_count from the JSON response content when available
+            let __tok: Option<u64> = __r.as_ref().ok().and_then(|ctr| {
+                ctr.content.first().and_then(|c| {
+                    serde_json::to_string(c).ok()
+                        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                        .and_then(|v| v.get("text").and_then(|t| t.as_str()).map(|s| s.to_string()))
+                        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+                        .and_then(|v| v.get("token_count").and_then(|tc| tc.as_u64()))
+                })
+            });
+            tokio::spawn(async move { __d.record_call($name.to_string(), __ms, __ok, __tok).await; });
         }
         __r
     }};

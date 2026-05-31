@@ -1139,7 +1139,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [x] `read_workspace_stats`（コードベース全体の言語別統計サマリ）
 - [x] `read_git_stash`（スタッシュ一覧と diff 取得）
 - [x] `read_interface_conformance`（interface / trait 実装型の全ワークスペース検索）
-- [ ] ダッシュボード強化（ツール使用統計・累計トークン節約量の可視化）
+- [x] ダッシュボード強化（ツール使用統計・累計トークン節約量の可視化）
 
 ---
 
