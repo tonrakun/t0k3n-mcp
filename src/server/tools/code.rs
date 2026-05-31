@@ -152,6 +152,25 @@ const PHP_QUERY: &str = "
 (namespace_definition name: (namespace_name) @name) @definition.namespace
 ";
 
+const KOTLIN_QUERY: &str = "
+(function_declaration (simple_identifier) @name) @definition.function
+(class_declaration (type_identifier) @name) @definition.class
+(object_declaration (type_identifier) @name) @definition.object
+";
+
+const SWIFT_QUERY: &str = "
+(function_declaration name: (simple_identifier) @name) @definition.function
+(class_declaration name: (type_identifier) @name) @definition.class
+(struct_declaration name: (type_identifier) @name) @definition.struct
+(enum_declaration name: (type_identifier) @name) @definition.enum
+(protocol_declaration name: (type_identifier) @name) @definition.protocol
+";
+
+const LUA_QUERY: &str = "
+(function_declaration name: (identifier) @name) @definition.function
+(local_function name: (identifier) @name) @definition.function
+";
+
 pub fn ts_setup(ext: &str) -> Option<(tree_sitter::Language, &'static str, &'static str)> {
     match ext {
         "rs" => Some((tree_sitter_rust::LANGUAGE.into(), RUST_QUERY, "rust")),
@@ -165,6 +184,9 @@ pub fn ts_setup(ext: &str) -> Option<(tree_sitter::Language, &'static str, &'sta
         "rb" => Some((tree_sitter_ruby::LANGUAGE.into(), RUBY_QUERY, "ruby")),
         "cs" => Some((tree_sitter_c_sharp::LANGUAGE.into(), CSHARP_QUERY, "csharp")),
         "php" => Some((tree_sitter_php::LANGUAGE_PHP.into(), PHP_QUERY, "php")),
+        "kt" | "kts" => Some((tree_sitter_kotlin_ng::LANGUAGE.into(), KOTLIN_QUERY, "kotlin")),
+        "swift" => Some((tree_sitter_swift::LANGUAGE.into(), SWIFT_QUERY, "swift")),
+        "lua" => Some((tree_sitter_lua::LANGUAGE.into(), LUA_QUERY, "lua")),
         _ => None,
     }
 }

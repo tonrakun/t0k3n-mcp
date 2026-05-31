@@ -1128,17 +1128,17 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 ### Phase 4 — 拡張 v2.3+
 
-- [ ] 新言語対応（Java / Kotlin — `read_code_skeleton` / `read_type_skeleton` / `read_call_graph`）
-- [ ] 新言語対応（Swift — iOS 開発向け）
-- [ ] 新言語対応（Ruby — Rails 向け）
-- [ ] 新言語対応（Lua — ゲーム・組み込みスクリプト向け）
-- [ ] `read_call_graph` クロスファイル対応（`depth` パラメータ追加・循環参照検出）
-- [ ] `read_package_manifest`（package.json / Cargo.toml / pyproject.toml / go.mod / pom.xml / build.gradle 統一フォーマット）
-- [ ] `read_ci_pipeline`（GitHub Actions / GitLab CI / CircleCI ワークフロー構造取得）
-- [ ] `batch_read`（複数読み取り操作の 1 コール並列実行）
-- [ ] `read_workspace_stats`（コードベース全体の言語別統計サマリ）
-- [ ] `read_git_stash`（スタッシュ一覧と diff 取得）
-- [ ] `read_interface_conformance`（interface / trait 実装型の全ワークスペース検索）
+- [x] 新言語対応（Java / Kotlin — `read_code_skeleton` / `read_type_skeleton` / `read_call_graph`）
+- [x] 新言語対応（Swift — iOS 開発向け）
+- [x] 新言語対応（Ruby — Rails 向け）
+- [x] 新言語対応（Lua — ゲーム・組み込みスクリプト向け）
+- [x] `read_call_graph` クロスファイル対応（`depth` パラメータ追加・循環参照検出）
+- [x] `read_package_manifest`（package.json / Cargo.toml / pyproject.toml / go.mod / pom.xml / build.gradle 統一フォーマット）
+- [x] `read_ci_pipeline`（GitHub Actions / GitLab CI / CircleCI ワークフロー構造取得）
+- [x] `batch_read`（複数読み取り操作の 1 コール並列実行）
+- [x] `read_workspace_stats`（コードベース全体の言語別統計サマリ）
+- [x] `read_git_stash`（スタッシュ一覧と diff 取得）
+- [x] `read_interface_conformance`（interface / trait 実装型の全ワークスペース検索）
 - [ ] ダッシュボード強化（ツール使用統計・累計トークン節約量の可視化）
 
 ---
