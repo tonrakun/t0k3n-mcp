@@ -121,65 +121,121 @@ pub fn read_markdown_section(root: &Path, params: ReadMarkdownSectionParams) -> 
     Ok(ReadMarkdownSectionResult { sections, token_count })
 }
 
+struct HeadingLine {
+    line_idx: usize,
+    level: usize,
+    title: String,
+    anchor: String,
+}
+
+/// Scan raw lines for ATX headings, skipping fenced code blocks.
+/// Anchors are computed with the same `make_anchor` used by `extract_toc`,
+/// so lookups by anchor match regardless of inline formatting (backticks etc.).
+fn scan_headings(lines: &[&str]) -> Vec<HeadingLine> {
+    let mut in_fence = false;
+    let mut fence_marker = "```";
+    let mut out = Vec::new();
+
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        if !in_fence && (trimmed.starts_with("```") || trimmed.starts_with("~~~")) {
+            in_fence = true;
+            fence_marker = if trimmed.starts_with("```") { "```" } else { "~~~" };
+            continue;
+        }
+        if in_fence {
+            if trimmed.starts_with(fence_marker) {
+                in_fence = false;
+            }
+            continue;
+        }
+        if !line.starts_with('#') {
+            continue;
+        }
+        let level = line.chars().take_while(|&c| c == '#').count();
+        if level > 6 {
+            continue;
+        }
+        let rest = &line[level..];
+        if !rest.is_empty() && !rest.starts_with(' ') && !rest.starts_with('\t') {
+            continue; // not a heading (e.g. "#hashtag")
+        }
+        let mut title = rest.trim();
+        // strip optional ATX closing sequence ("## Title ##")
+        let without_closing = title.trim_end_matches('#');
+        if without_closing.len() != title.len() && (without_closing.is_empty() || without_closing.ends_with(' ')) {
+            title = without_closing.trim_end();
+        }
+        let title = title.replace('`', "").replace("**", "");
+        let anchor = make_anchor(&title);
+        out.push(HeadingLine { line_idx: i, level, title, anchor });
+    }
+    out
+}
+
 pub fn extract_sections(content: &str, anchors: &[String]) -> Vec<SectionContent> {
     let lines: Vec<&str> = content.lines().collect();
-    let toc = extract_toc(content);
+    let headings = scan_headings(&lines);
 
     let mut results = Vec::new();
 
     for anchor in anchors {
-        let Some(idx) = toc.iter().position(|e| &e.anchor == anchor) else {
+        let Some(idx) = headings.iter().position(|h| &h.anchor == anchor) else {
             continue;
         };
-        let entry = &toc[idx];
-        let next_same_or_higher = toc[idx + 1..]
+        let h = &headings[idx];
+        let end_line = headings[idx + 1..]
             .iter()
-            .find(|e| e.level <= entry.level)
-            .map(|e| e.anchor.clone());
+            .find(|n| n.level <= h.level)
+            .map(|n| n.line_idx)
+            .unwrap_or(lines.len());
 
-        let section_lines = extract_section_lines(&lines, &entry.title, next_same_or_higher.as_deref());
         results.push(SectionContent {
             anchor: anchor.clone(),
-            title: entry.title.clone(),
-            content: section_lines.join("\n"),
+            title: h.title.clone(),
+            content: lines[h.line_idx..end_line].join("\n"),
         });
     }
     results
 }
 
-fn extract_section_lines<'a>(lines: &[&'a str], title: &str, until_title: Option<&str>) -> Vec<String> {
-    let mut in_section = false;
-    let mut result = Vec::new();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    for line in lines {
-        let stripped = line.trim_start_matches('#').trim();
-        if line.starts_with('#') {
-            if stripped.eq_ignore_ascii_case(title) {
-                in_section = true;
-                result.push(line.to_string());
-                continue;
-            }
-            if in_section {
-                if let Some(end) = until_title {
-                    if stripped.eq_ignore_ascii_case(end) {
-                        break;
-                    }
-                } else {
-                    // stop at same or higher level heading
-                    let current_level = line.chars().take_while(|&c| c == '#').count();
-                    let start_level = result
-                        .first()
-                        .map(|l: &String| l.chars().take_while(|&c| c == '#').count())
-                        .unwrap_or(6);
-                    if current_level <= start_level {
-                        break;
-                    }
-                }
-            }
-        }
-        if in_section {
-            result.push(line.to_string());
-        }
+    const DOC: &str = "# T\n\n## 1. A\n\n### 1.1 First\n\nbody1\n\n### 1.2 Second\n\nbody2\n\n## 2. B\n\n### 2.1 `with_code`（拡張）\n\nbody3\n\n```sh\n# not a heading\n```\n\n### 2.2 Last\n\nbody4\n";
+
+    #[test]
+    fn section_stops_at_next_same_level_heading() {
+        let sections = extract_sections(DOC, &["11-first".to_string()]);
+        assert_eq!(sections.len(), 1);
+        assert!(sections[0].content.contains("body1"));
+        assert!(!sections[0].content.contains("body2"));
+        assert!(!sections[0].content.contains("## 2. B"));
     }
-    result
+
+    #[test]
+    fn section_with_inline_code_heading_matches() {
+        let toc = extract_toc(DOC);
+        let anchor = toc.iter().find(|e| e.title.contains("with_code")).unwrap().anchor.clone();
+        let sections = extract_sections(DOC, &[anchor]);
+        assert_eq!(sections.len(), 1);
+        assert!(sections[0].content.contains("body3"));
+        assert!(!sections[0].content.contains("body4"));
+    }
+
+    #[test]
+    fn hash_inside_code_fence_does_not_terminate_section() {
+        let sections = extract_sections(DOC, &["21-withcode拡張".to_string()]);
+        assert_eq!(sections.len(), 1);
+        assert!(sections[0].content.contains("not a heading"));
+    }
+
+    #[test]
+    fn higher_level_heading_terminates_section() {
+        let sections = extract_sections(DOC, &["12-second".to_string()]);
+        assert_eq!(sections.len(), 1);
+        assert!(sections[0].content.contains("body2"));
+        assert!(!sections[0].content.contains("## 2. B"));
+    }
 }
