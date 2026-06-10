@@ -49,6 +49,14 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Output format: compact (default, token-efficient text) or json (legacy)
+    let format = args
+        .windows(2)
+        .find(|w| w[0] == "--format")
+        .and_then(|w| server::tools::render::OutputFormat::parse(&w[1]))
+        .unwrap_or(server::tools::render::OutputFormat::Compact);
+    server::set_output_format(format);
+
     let no_dashboard = args.iter().any(|a| a == "--no-dashboard");
     let open_browser = args.iter().any(|a| a == "--open-browser");
     let port = args

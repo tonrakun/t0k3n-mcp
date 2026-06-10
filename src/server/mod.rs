@@ -18,6 +18,7 @@ mod db;
 pub mod tools;
 
 use db::Database;
+use tools::render::OutputFormat;
 use tools::{
     batch::{BatchReadParams, batch_read},
     ci::{ReadCiPipelineParams, read_ci_pipeline},
@@ -153,13 +154,41 @@ fn err(msg: impl std::fmt::Display) -> McpError {
     McpError::internal_error(msg.to_string(), None)
 }
 
+static OUTPUT_FORMAT: std::sync::OnceLock<OutputFormat> = std::sync::OnceLock::new();
+
+/// Set once at startup (before serving). Defaults to Compact when unset.
+pub fn set_output_format(format: OutputFormat) {
+    let _ = OUTPUT_FORMAT.set(format);
+}
+
+fn output_format() -> OutputFormat {
+    *OUTPUT_FORMAT.get().unwrap_or(&OutputFormat::Compact)
+}
+
 fn ok_json<T: Serialize>(v: T) -> Result<CallToolResult, McpError> {
-    let s = serde_json::to_string_pretty(&v).map_err(|e| err(e))?;
+    let s = match output_format() {
+        OutputFormat::Json => serde_json::to_string_pretty(&v).map_err(|e| err(e))?,
+        OutputFormat::Compact => {
+            let value = serde_json::to_value(&v).map_err(|e| err(e))?;
+            tools::render::to_compact_text(&value)
+        }
+    };
     Ok(CallToolResult::success(vec![Content::text(s)]))
 }
 
 fn ok_text(s: String) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::success(vec![Content::text(s)]))
+}
+
+/// Pull `token_count` out of a tool response rendered as JSON or compact text.
+fn extract_token_count(text: &str) -> Option<u64> {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+        if let Some(tc) = v.get("token_count").and_then(|tc| tc.as_u64()) {
+            return Some(tc);
+        }
+    }
+    text.lines()
+        .find_map(|l| l.trim().strip_prefix("token_count: ").and_then(|n| n.trim().parse().ok()))
 }
 
 /// Wraps a tool body: captures timing, records to dashboard on completion.
@@ -172,14 +201,13 @@ macro_rules! instrument {
             let __d = __d.clone();
             let __ms = __t.elapsed().as_millis() as u64;
             let __ok = __r.is_ok();
-            // Extract token_count from the JSON response content when available
+            // Extract token_count from the response content (JSON or compact text)
             let __tok: Option<u64> = __r.as_ref().ok().and_then(|ctr| {
                 ctr.content.first().and_then(|c| {
                     serde_json::to_string(c).ok()
                         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
                         .and_then(|v| v.get("text").and_then(|t| t.as_str()).map(|s| s.to_string()))
-                        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-                        .and_then(|v| v.get("token_count").and_then(|tc| tc.as_u64()))
+                        .and_then(|text| extract_token_count(&text))
                 })
             });
             tokio::spawn(async move { __d.record_call($name.to_string(), __ms, __ok, __tok).await; });

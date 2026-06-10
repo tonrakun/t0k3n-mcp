@@ -25,6 +25,7 @@ pub mod openapi;
 pub mod outline;
 pub mod pr_context;
 pub mod proto;
+pub mod render;
 pub mod search;
 pub mod security_surface;
 pub mod session;
