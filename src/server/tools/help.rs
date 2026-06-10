@@ -41,6 +41,7 @@ fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("read_interface_conformance","types implementing interface/trait"),
         ("search_file",               "keyword/regex search with context lines"),
         ("semantic_search",           "natural language → relevant code bodies"),
+        ("read_context_pack",         "one-call task context: ranked files+symbols+bodies within budget"),
         ("read_symbol_usages",        "all usages of a symbol across workspace"),
         ("read_json_yaml_keys",       "key structure of JSON/YAML/TOML"),
         ("read_json_yaml_value",      "value at a key path"),

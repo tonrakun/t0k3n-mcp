@@ -25,6 +25,7 @@ use tools::{
     cmd::{RunCommandParams, run_command},
     code::{ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams, ReadInterfaceConformanceParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams, read_call_graph, read_code_body, read_code_skeleton, read_interface_conformance, read_symbol_usages, read_type_skeleton},
     complexity::{ReadComplexityMapParams, read_complexity_map},
+    context_pack::{ReadContextPackParams, read_context_pack},
     dead_code::{ReadDeadCodeParams, read_dead_code},
     diff_schemas::{DiffSchemasParams, diff_schemas},
     impact::{ReadRefactorImpactParams, read_refactor_impact},
@@ -74,6 +75,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_code_deps",
     "read_file_outline",
     "semantic_search",
+    "read_context_pack",
     "read_symbol_usages",
     "read_type_skeleton",
     "read_call_graph",
@@ -425,6 +427,25 @@ impl T0k3nServer {
             self.ok_delta(key, serde_json::json!({
                 "path": result.path, "kind": result.kind, "language": result.language,
                 "outline": result.outline, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "One-call task context collection: ranks workspace files and symbols by relevance to a task description, returns ranked files + relevant signatures + top symbol bodies, greedily filled up to a token budget. Replaces the tree→search→skeleton→body round-trip sequence when starting a task. No subprocess needed (lexical ranking).")]
+    async fn read_context_pack(
+        &self,
+        Parameters(params): Parameters<ReadContextPackParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_context_pack", {
+            let result = read_context_pack(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "keywords": result.keywords,
+                "files": result.files,
+                "symbols": result.symbols,
+                "bodies": result.bodies,
+                "bodies_omitted_for_budget": result.bodies_omitted_for_budget,
+                "budget": result.budget,
+                "token_count": result.token_count,
             }))
         })
     }
