@@ -32,6 +32,7 @@ use tools::{
     security_surface::{ReadSecuritySurfaceParams, read_security_surface},
     css::{ReadCssBodyParams, ReadCssSkeletonParams, read_css_body, read_css_skeleton},
     db_schema::{ReadDbSchemaParams, ReadDbTableParams, read_db_schema, read_db_table},
+    delta::{Delta, DeltaResetParams, ReadLedger},
     deps::{ReadCodeDepsParams, read_code_deps},
     document::{ConvertDocumentParams, convert_document},
     env::{ReadEnvSchemaParams, read_env_schema},
@@ -130,6 +131,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "session_list",
     "debug_info",
     "help",
+    "delta_reset",
     // Phase 6 — Command execution
     "run_command",
     // Phase 5 — Differentiating analysis
@@ -146,6 +148,7 @@ pub struct T0k3nServer {
     pub root: PathBuf,
     db: Arc<Mutex<Database>>,
     web_cache: Arc<Mutex<HashMap<String, String>>>,
+    ledger: Arc<Mutex<ReadLedger>>,
     tool_router: ToolRouter<Self>,
     pub dashboard: Option<Arc<DashboardState>>,
 }
@@ -191,6 +194,11 @@ fn extract_token_count(text: &str) -> Option<u64> {
         .find_map(|l| l.trim().strip_prefix("token_count: ").and_then(|n| n.trim().parse().ok()))
 }
 
+/// Ledger key for delta reads: tool name + canonical params.
+fn delta_key<P: Serialize>(tool: &str, params: &P) -> String {
+    format!("{tool}:{}", serde_json::to_string(params).unwrap_or_default())
+}
+
 /// Wraps a tool body: captures timing, records to dashboard on completion.
 /// The inner async block contains the `?` operators so early-exit errors are still recorded.
 macro_rules! instrument {
@@ -229,6 +237,7 @@ impl T0k3nServer {
             root: root_path,
             db: Arc::new(Mutex::new(db)),
             web_cache: Arc::new(Mutex::new(HashMap::new())),
+            ledger: Arc::new(Mutex::new(ReadLedger::new())),
             tool_router: Self::tool_router(),
             dashboard,
         };
@@ -241,6 +250,36 @@ impl T0k3nServer {
         server
     }
 
+    /// Render a tool response, consulting the delta-read ledger first.
+    /// Repeat reads of unchanged content return a tiny "unchanged" stub;
+    /// changed content returns a unified diff when that is cheaper.
+    fn ok_delta(&self, key: String, v: serde_json::Value) -> Result<CallToolResult, McpError> {
+        let rendered = match output_format() {
+            OutputFormat::Json => serde_json::to_string_pretty(&v).map_err(|e| err(e))?,
+            OutputFormat::Compact => tools::render::to_compact_text(&v),
+        };
+        let delta = self.ledger.lock().unwrap().check_and_update(&key, &rendered);
+        match delta {
+            Delta::Full => ok_text(rendered),
+            Delta::Unchanged { full_tokens } => ok_json(serde_json::json!({
+                "unchanged": true,
+                "note": "Identical to what you already received earlier this session — content not re-sent. Call delta_reset (optionally with a path pattern) and retry if you need the full content again.",
+                "full_token_count": full_tokens,
+                "token_count": 50,
+            })),
+            Delta::Diff { diff, full_tokens } => {
+                let token_count = tools::fs::estimate_tokens(&diff);
+                ok_json(serde_json::json!({
+                    "changed": true,
+                    "diff": diff,
+                    "note": "Unified diff against what you received earlier this session. Call delta_reset and retry for the full content.",
+                    "full_token_count": full_tokens,
+                    "token_count": token_count,
+                }))
+            }
+        }
+    }
+
     // ─────────────────────────────────────────────
     // File reading tools
     // ─────────────────────────────────────────────
@@ -251,8 +290,9 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadDirectoryTreeParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_directory_tree", {
+            let key = delta_key("read_directory_tree", &params);
             let result = read_directory_tree(&self.root, params).map_err(|e| err(e))?;
-            ok_json(serde_json::json!({ "tree": result.tree, "token_count": result.token_count }))
+            self.ok_delta(key, serde_json::json!({ "tree": result.tree, "token_count": result.token_count }))
         })
     }
 
@@ -262,8 +302,9 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadMarkdownTocParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_markdown_toc", {
+            let key = delta_key("read_markdown_toc", &params);
             let result = read_markdown_toc(&self.root, params).map_err(|e| err(e))?;
-            ok_json(serde_json::json!({ "toc": result.toc, "token_count": result.token_count }))
+            self.ok_delta(key, serde_json::json!({ "toc": result.toc, "token_count": result.token_count }))
         })
     }
 
@@ -273,8 +314,9 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadMarkdownSectionParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_markdown_section", {
+            let key = delta_key("read_markdown_section", &params);
             let result = read_markdown_section(&self.root, params).map_err(|e| err(e))?;
-            ok_json(serde_json::json!({ "sections": result.sections, "token_count": result.token_count }))
+            self.ok_delta(key, serde_json::json!({ "sections": result.sections, "token_count": result.token_count }))
         })
     }
 
@@ -295,8 +337,9 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadJsonYamlKeysParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_json_yaml_keys", {
+            let key = delta_key("read_json_yaml_keys", &params);
             let result = read_json_yaml_keys(&self.root, params).map_err(|e| err(e))?;
-            ok_json(serde_json::json!({ "keys": result.keys, "token_count": result.token_count }))
+            self.ok_delta(key, serde_json::json!({ "keys": result.keys, "token_count": result.token_count }))
         })
     }
 
@@ -306,8 +349,9 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadJsonYamlValueParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_json_yaml_value", {
+            let key = delta_key("read_json_yaml_value", &params);
             let result = read_json_yaml_value(&self.root, params).map_err(|e| err(e))?;
-            ok_json(serde_json::json!({ "value": result.value, "token_count": result.token_count }))
+            self.ok_delta(key, serde_json::json!({ "value": result.value, "token_count": result.token_count }))
         })
     }
 
@@ -317,8 +361,9 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadCodeSkeletonParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_skeleton", {
+            let key = delta_key("read_code_skeleton", &params);
             let result = read_code_skeleton(&self.root, params).map_err(|e| err(e))?;
-            ok_json(serde_json::json!({ "language": result.language, "skeleton": result.skeleton, "token_count": result.token_count }))
+            self.ok_delta(key, serde_json::json!({ "language": result.language, "skeleton": result.skeleton, "token_count": result.token_count }))
         })
     }
 
@@ -328,8 +373,9 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadCodeBodyParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_body", {
+            let key = delta_key("read_code_body", &params);
             let result = read_code_body(&self.root, params).map_err(|e| err(e))?;
-            ok_json(serde_json::json!({ "items": result.items, "token_count": result.token_count }))
+            self.ok_delta(key, serde_json::json!({ "items": result.items, "token_count": result.token_count }))
         })
     }
 
@@ -354,8 +400,9 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadFileOutlineParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_file_outline", {
+            let key = delta_key("read_file_outline", &params);
             let result = read_file_outline(&self.root, params).map_err(|e| err(e))?;
-            ok_json(serde_json::json!({
+            self.ok_delta(key, serde_json::json!({
                 "path": result.path, "kind": result.kind, "language": result.language,
                 "outline": result.outline, "token_count": result.token_count,
             }))
@@ -896,8 +943,9 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadTypeSkeletonParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_type_skeleton", {
+            let key = delta_key("read_type_skeleton", &params);
             let result = read_type_skeleton(&self.root, params).map_err(|e| err(e))?;
-            ok_json(serde_json::json!({
+            self.ok_delta(key, serde_json::json!({
                 "path": result.path, "language": result.language,
                 "types": result.types, "token_count": result.token_count,
             }))
@@ -1173,6 +1221,17 @@ impl T0k3nServer {
                 "warnings":    result.warnings,
                 "token_count": result.token_count,
             }))
+        })
+    }
+
+    #[tool(description = "Reset the delta-read ledger. After this, read tools return full content again instead of 'unchanged'/diff stubs. Call when you no longer have earlier tool output in context (e.g. after conversation compaction). Optional pattern narrows the reset to matching keys (e.g. a file path).")]
+    async fn delta_reset(
+        &self,
+        Parameters(params): Parameters<DeltaResetParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "delta_reset", {
+            let cleared = self.ledger.lock().unwrap().clear(params.pattern.as_deref());
+            ok_json(serde_json::json!({ "cleared_entries": cleared, "token_count": 10 }))
         })
     }
 

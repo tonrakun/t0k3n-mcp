@@ -5,6 +5,7 @@ pub mod code;
 pub mod complexity;
 pub mod css;
 pub mod db_schema;
+pub mod delta;
 pub mod dead_code;
 pub mod deps;
 pub mod diff_schemas;

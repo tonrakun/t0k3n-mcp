@@ -87,6 +87,7 @@ fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("compress_text",          "noise removal and compression"),
         ("count_tokens",           "token count for any text"),
         ("check_budget",           "token budget status and strategy"),
+        ("delta_reset",            "reset delta-read ledger (full content on next read)"),
         ("summarize_conversation", "summarize conversation history"),
     ]);
     cat!("memory", [
