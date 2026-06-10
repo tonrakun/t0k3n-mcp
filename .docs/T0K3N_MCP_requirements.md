@@ -1034,6 +1034,8 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 | `read_workspace_stats` | Rust 実装 | コードベース全体の言語別統計サマリ（ファイル数・行数・トークン数） |
 | `read_interface_conformance` | Rust 実装 | interface / trait 実装型の検索（TS/Go/Rust/Java/Kotlin） |
 | `batch_read` | Rust 実装 | 複数の読み取り操作を 1 コールで並列実行（ラウンドトリップ削減） |
+| `patch_symbol` | Rust 実装 | skeleton ID 指定でシンボル本文を置換（全文ロード不要の書き込み） |
+| `read_context_pack` | Rust 実装 | タスク記述からランク付きファイル+シンボル+本文をバジェット内で1コール収集 |
 
 ### Git 拡張系
 
@@ -1120,6 +1122,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 | `count_tokens` | Rust 実装 | トークン数計測 |
 | `summarize_conversation` | Rust 実装 | 会話履歴要約 |
 | `check_budget` | Rust 実装 | トークンバジェット管理・戦略返却 |
+| `delta_reset` | Rust 実装 | デルタリード台帳のクリア（次回readで全文返却） |
 
 ### 記憶系
 
@@ -1281,6 +1284,25 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 - [x] `help`（カテゴリ別ツール探索・instructions 肥大化防止）
 - [x] instructions を MANDATORY SUBSTITUTIONS + `help` 呼び出し指示のみにスリム化
+
+### Phase 8 — トークン削減第2世代 v2.7+
+
+「1回の読み取りを小さくする」最適化に加え、(1) 再読の抑制、(2) JSON 構造オーバーヘッド、(3) 書き込み側、(4) 探索往復回数 を削減対象に拡張する。
+
+- [x] markdown セクション抽出バグ修正（次見出しで打ち切られず EOF まで返る問題・インラインコード見出しの不一致。`read_markdown_section` / `read_webpage_section` 両方に影響）
+- [x] コンパクト出力フォーマット（デフォルト有効・`--format json` で従来出力）
+  - 全ツール共通の出口（`ok_json`）で汎用レンダリング: 同種オブジェクト配列→パイプ区切りテーブル（キーは1回のみ）、null/空コンテナ省略、複数行文字列→インデントブロック
+  - レスポンスあたり 20〜40% 削減、ツール個別変更ゼロ
+- [x] デルタリード（セッション読み取り台帳）
+  - 高頻度 read 系 10 ツールで tool+params をキーに前回送信内容を記録
+  - 同一内容の再読 → 約50トークンの `unchanged` スタブ / 変更あり → unified diff（全文の60%以下の場合のみ）
+  - `delta_reset` ツールで台帳クリア（コンテキスト圧縮後など）
+- [x] `patch_symbol`（シンボル単位書き込み）
+  - skeleton ID の行範囲を新しい本文で置換。skeleton → body 読み → body 書きが全文ロードなしで完結
+  - `expected_name` による陳腐化検知、`dry_run` プレビュー、CRLF/末尾改行保持
+- [x] `read_context_pack`（タスク駆動一括コンテキスト収集）
+  - クエリの字句スコアリング（パス・内容・シンボル名/シグネチャ）でファイル/シンボルをランク付けし、トークンバジェット内に貪欲詰め（ランキング+シグネチャ常時、本文は上位から）
+  - 探索フェーズの tree → search → skeleton → body 往復を 1 コールに置換
 
 ---
 

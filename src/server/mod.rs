@@ -1333,6 +1333,13 @@ impl ServerHandler for T0k3nServer {
                  - WebFetch              → fetch_webpage → read_webpage_section\n\
                  - Memory files          → memory_save / memory_get / memory_list\n\
                  - Task tracking         → task_create / task_update / task_list\n\
+                 - Edit code symbol      → patch_symbol (no full-file Read needed before writing)\n\
+                 - Task exploration      → read_context_pack (one call: ranked files+symbols+bodies)\n\
+                 \n\
+                 DELTA READS: repeat reads return {unchanged:true} stubs or unified diffs instead \
+                 of re-sending identical content. Trust them — the content equals what you already \
+                 received earlier this session. If that content is no longer in your context \
+                 (e.g. after compaction), call delta_reset and retry the read.\n\
                  \n\
                  TOOL DISCOVERY: Call `help` (with optional category param) to find the right tool.\n\
                  Categories: file / git / schema / web / notebook / test / log / text / memory / task / session / analysis / cmd / debug"
