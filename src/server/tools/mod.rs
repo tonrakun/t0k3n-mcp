@@ -24,6 +24,7 @@ pub mod memory;
 pub mod notebook;
 pub mod openapi;
 pub mod outline;
+pub mod patch;
 pub mod pr_context;
 pub mod proto;
 pub mod render;

@@ -49,6 +49,7 @@ use tools::{
     memory::{MemoryDeleteParams, MemoryGetParams, MemoryListParams, MemorySaveParams, memory_delete, memory_get, memory_list, memory_save},
     notebook::{ReadNotebookCellParams, ReadNotebookCellsParams, read_notebook_cell, read_notebook_cells},
     outline::{ReadFileOutlineParams, read_file_outline},
+    patch::{PatchSymbolParams, patch_symbol},
     proto::{ReadProtoSchemaParams, ReadProtoTypeParams, read_proto_schema, read_proto_type},
     search::{SemanticSearchParams, semantic_search},
     session::{SessionListParams, SessionRestoreParams, SessionSnapshotParams, session_list, session_restore, session_snapshot},
@@ -69,6 +70,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_json_yaml_value",
     "read_code_skeleton",
     "read_code_body",
+    "patch_symbol",
     "read_code_deps",
     "read_file_outline",
     "semantic_search",
@@ -376,6 +378,24 @@ impl T0k3nServer {
             let key = delta_key("read_code_body", &params);
             let result = read_code_body(&self.root, params).map_err(|e| err(e))?;
             self.ok_delta(key, serde_json::json!({ "items": result.items, "token_count": result.token_count }))
+        })
+    }
+
+    #[tool(description = "Replace one symbol's source by skeleton ID — write counterpart of read_code_body. Flow: read_code_skeleton → read_code_body(id) → patch_symbol(id, new_body). Pass expected_name to guard against stale line numbers; re-run read_code_skeleton after each successful patch before patching the same file again. dry_run previews the diff.")]
+    async fn patch_symbol(
+        &self,
+        Parameters(params): Parameters<PatchSymbolParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "patch_symbol", {
+            let result = patch_symbol(&self.root, params).map_err(|e| err(e))?;
+            ok_json(serde_json::json!({
+                "written": result.written,
+                "new_id": result.new_id,
+                "lines_before": result.lines_before,
+                "lines_after": result.lines_after,
+                "diff": result.diff,
+                "token_count": tools::fs::estimate_tokens(&result.diff),
+            }))
         })
     }
 

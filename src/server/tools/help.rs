@@ -32,6 +32,7 @@ fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("read_markdown_section",     "extract sections by anchor"),
         ("read_code_skeleton",        "function/struct/class signatures only"),
         ("read_code_body",            "full body of skeleton items by ID"),
+        ("patch_symbol",              "replace a symbol's source by skeleton ID (write)"),
         ("read_code_deps",            "imports + imported_by dependency graph"),
         ("read_type_skeleton",        "TS/Go/Rust type definitions with fields"),
         ("read_call_graph",           "callers/callees; depth>=1 for cross-file"),
