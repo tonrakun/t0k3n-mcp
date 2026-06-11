@@ -6,7 +6,7 @@ description = "Token-saving MCP server for AI coding tools"
 license = "MIT"
 
 [[bin]]
-name = "t0k3n-mcp"
+name = "t0k3n"
 path = "src/main.rs"
 
 [dependencies]

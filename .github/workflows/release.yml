@@ -18,20 +18,20 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: t0k3n-mcp-linux-x86_64
+            artifact: t0k3n-linux-x86_64
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact: t0k3n-mcp-linux-aarch64
+            artifact: t0k3n-linux-aarch64
             cross: true
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact: t0k3n-mcp-macos-x86_64
+            artifact: t0k3n-macos-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact: t0k3n-mcp-macos-aarch64
+            artifact: t0k3n-macos-aarch64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: t0k3n-mcp-windows-x86_64.exe
+            artifact: t0k3n-windows-x86_64.exe
 
     steps:
       - uses: actions/checkout@v4
@@ -69,12 +69,12 @@ jobs:
       - name: Rename binary (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          cp target/${{ matrix.target }}/release/t0k3n-mcp ${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/t0k3n ${{ matrix.artifact }}
 
       - name: Rename binary (Windows)
         if: matrix.os == 'windows-latest'
         run: |
-          Copy-Item "target\${{ matrix.target }}\release\t0k3n-mcp.exe" "${{ matrix.artifact }}"
+          Copy-Item "target\${{ matrix.target }}\release\t0k3n.exe" "${{ matrix.artifact }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

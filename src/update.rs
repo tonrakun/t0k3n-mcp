@@ -14,22 +14,19 @@ pub fn spawn_update_check(dashboard: Option<Arc<DashboardState>>) {
     });
 }
 
-async fn check_for_updates(dashboard: Option<Arc<DashboardState>>) -> anyhow::Result<()> {
+/// Fetches the latest release version (without the leading `v`) from GitHub.
+pub(crate) async fn fetch_latest_version() -> anyhow::Result<String> {
     let url = format!(
         "https://api.github.com/repos/{}/releases/latest",
         GITHUB_REPO
     );
 
     let client = reqwest::Client::builder()
-        .user_agent(format!("t0k3n-mcp/{CURRENT_VERSION}"))
+        .user_agent(format!("t0k3n/{CURRENT_VERSION}"))
         .timeout(std::time::Duration::from_secs(8))
         .build()?;
 
-    let resp = client.get(&url).send().await?;
-    if !resp.status().is_success() {
-        return Ok(());
-    }
-
+    let resp = client.get(&url).send().await?.error_for_status()?;
     let body = resp.text().await?;
     let json: serde_json::Value = serde_json::from_str(&body)?;
     let tag = json["tag_name"]
@@ -38,14 +35,18 @@ async fn check_for_updates(dashboard: Option<Arc<DashboardState>>) -> anyhow::Re
         .trim_start_matches('v');
 
     if tag.is_empty() {
-        return Ok(());
+        anyhow::bail!("latest release has no tag_name");
     }
+    Ok(tag.to_string())
+}
+
+async fn check_for_updates(dashboard: Option<Arc<DashboardState>>) -> anyhow::Result<()> {
+    let tag = &fetch_latest_version().await?;
 
     let info = match compare_semver(CURRENT_VERSION, tag) {
         Ordering::Less => {
             tracing::info!(
-                "⬆ Update available: v{CURRENT_VERSION} → v{tag} \
-                 — https://github.com/{GITHUB_REPO}/releases/latest"
+                "⬆ Update available: v{CURRENT_VERSION} → v{tag} — run `t0k3n upgrade`"
             );
             UpdateInfo { available: Some(tag.to_string()), kind: UpdateKind::Available }
         }
@@ -56,7 +57,7 @@ async fn check_for_updates(dashboard: Option<Arc<DashboardState>>) -> anyhow::Re
             UpdateInfo { available: Some(tag.to_string()), kind: UpdateKind::Beta }
         }
         Ordering::Equal => {
-            tracing::debug!("t0k3n-mcp v{CURRENT_VERSION} is up to date");
+            tracing::debug!("t0k3n v{CURRENT_VERSION} is up to date");
             UpdateInfo { available: None, kind: UpdateKind::UpToDate }
         }
     };
@@ -70,7 +71,7 @@ async fn check_for_updates(dashboard: Option<Arc<DashboardState>>) -> anyhow::Re
 
 /// Compares two version strings of the form "MAJOR.MINOR.PATCH".
 /// Returns `a.cmp(b)` in semver order.
-fn compare_semver(a: &str, b: &str) -> Ordering {
+pub(crate) fn compare_semver(a: &str, b: &str) -> Ordering {
     let parse_parts = |v: &str| -> Vec<u64> {
         // Strip any pre-release suffix (e.g. "1.2.0-beta.1" → [1, 2, 0])
         let base = v.split('-').next().unwrap_or(v);

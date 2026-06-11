@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rmcp::{ServiceExt, transport::stdio};
 
+mod cli;
 mod dashboard;
 mod security;
 mod server;
@@ -16,8 +17,29 @@ async fn main() -> Result<()> {
     // --version / -V: print and exit before any logging or server setup,
     // so install scripts can probe the binary without it blocking on stdio
     if args.iter().any(|a| a == "--version" || a == "-V") {
-        println!("t0k3n-mcp {}", env!("CARGO_PKG_VERSION"));
+        println!("t0k3n {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
+    }
+
+    // Subcommands run and exit before the MCP server starts.
+    // No args (or flags only) keeps the legacy behavior: start the server.
+    match args.get(1).map(String::as_str) {
+        Some("upgrade") => return cli::upgrade().await,
+        Some("setup") => return cli::setup(args.get(2).map(String::as_str)),
+        Some("version") => {
+            println!("t0k3n {}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        Some("help") | Some("--help") | Some("-h") => {
+            cli::print_help();
+            return Ok(());
+        }
+        Some(other) if !other.starts_with('-') => {
+            eprintln!("Unknown command: {other}\n");
+            cli::print_help();
+            std::process::exit(2);
+        }
+        _ => {}
     }
 
     tracing_subscriber::fmt()
@@ -38,7 +60,7 @@ async fn main() -> Result<()> {
     let list_tools = args.iter().any(|a| a == "--list-tools");
     if list_tools {
         eprintln!(
-            "t0k3n-mcp v{} — {} tools registered:",
+            "t0k3n v{} — {} tools registered:",
             env!("CARGO_PKG_VERSION"),
             server::REGISTERED_TOOLS.len()
         );
@@ -72,7 +94,7 @@ async fn main() -> Result<()> {
         .and_then(|w| w[1].parse::<u16>().ok())
         .unwrap_or(DASHBOARD_PORT);
 
-    tracing::info!("Starting t0k3n-mcp with root: {}", root);
+    tracing::info!("Starting t0k3n with root: {}", root);
 
     // ── Dashboard ──────────────────────────────────────────────
     let dashboard = if no_dashboard {
