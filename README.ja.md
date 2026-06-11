@@ -80,7 +80,13 @@ curl -fsSL https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.sh 
 irm https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.ps1 | iex
 ```
 
-Unix は `~/.local/bin/t0k3n-mcp`、Windows は `%USERPROFILE%\.local\bin\t0k3n-mcp.exe` にインストールされ、PATH にも自動追加されます。
+Unix は `~/.t0k3n-mcp/t0k3n`、Windows は `%USERPROFILE%\t0k3n-mcp\t0k3n.exe` にインストールされ、PATH にも追加されます（管理者権限は不要）。
+
+2回目以降の更新はスクリプト不要です：
+
+```bash
+t0k3n upgrade
+```
 
 <details>
 <summary>ソースからビルド</summary>
@@ -89,7 +95,7 @@ Unix は `~/.local/bin/t0k3n-mcp`、Windows は `%USERPROFILE%\.local\bin\t0k3n-
 git clone https://github.com/tonrakun/t0k3n-mcp
 cd t0k3n-mcp
 cargo build --release
-# → ./target/release/t0k3n-mcp
+# → ./target/release/t0k3n
 ```
 
 Rust 以外の依存はありません。Node.js / npm / Python 不要。
@@ -102,12 +108,20 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 
 ### Claude Code (`.mcp.json`)
 
+プロジェクトディレクトリで実行するだけです：
+
+```bash
+t0k3n setup
+```
+
+`.mcp.json` が生成（既存の場合はマージ）されます：
+
 ```json
 {
   "mcpServers": {
     "t0k3n": {
-      "command": "/path/to/t0k3n-mcp",
-      "args": ["--root", "/path/to/your/project"]
+      "command": "/path/to/t0k3n",
+      "args": []
     }
   }
 }
@@ -116,6 +130,16 @@ Rust 以外の依存はありません。Node.js / npm / Python 不要。
 ### Cursor / Cline / Windsurf
 
 同じ設定を各クライアントの MCP 設定ファイルに追加するだけです。
+
+### コマンド
+
+| コマンド | 説明 |
+|----------|------|
+| `t0k3n` | MCP サーバーを起動（stdio、引数なしがデフォルト） |
+| `t0k3n upgrade` | 最新リリースをダウンロードしてその場で自己更新 |
+| `t0k3n setup [dir]` | `.mcp.json` を生成・マージ（デフォルト: カレントディレクトリ） |
+| `t0k3n version` | バージョンを表示 |
+| `t0k3n help` | ヘルプを表示 |
 
 ### オプション
 

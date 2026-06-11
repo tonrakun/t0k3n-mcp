@@ -82,7 +82,13 @@ curl -fsSL https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.sh 
 irm https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.ps1 | iex
 ```
 
-Installs to `~/.local/bin/t0k3n-mcp` (Unix) or `%USERPROFILE%\.local\bin\t0k3n-mcp.exe` (Windows) and adds it to your PATH.
+Installs to `~/.t0k3n-mcp/t0k3n` (Unix) or `%USERPROFILE%\t0k3n-mcp\t0k3n.exe` (Windows) and adds it to your PATH — no elevation required.
+
+After that, updating never needs the script again:
+
+```bash
+t0k3n upgrade
+```
 
 <details>
 <summary>Build from source</summary>
@@ -91,24 +97,41 @@ Installs to `~/.local/bin/t0k3n-mcp` (Unix) or `%USERPROFILE%\.local\bin\t0k3n-m
 git clone https://github.com/tonrakun/t0k3n-mcp
 cd t0k3n-mcp
 cargo build --release
+# → ./target/release/t0k3n
 ```
 
 </details>
 
 ## Quick Start
 
-Add to `.mcp.json`:
+Run in your project directory:
+
+```bash
+t0k3n setup
+```
+
+This writes (or merges into) `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "t0k3n": {
-      "command": "/path/to/t0k3n-mcp",
-      "args": ["--root", "/path/to/your/project"]
+      "command": "/path/to/t0k3n",
+      "args": []
     }
   }
 }
 ```
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `t0k3n` | Start the MCP server (stdio; MCP clients launch it with no subcommand) |
+| `t0k3n upgrade` | Download the latest release and replace the binary in place |
+| `t0k3n setup [dir]` | Write or merge `.mcp.json` (default: current directory) |
+| `t0k3n version` | Print version |
+| `t0k3n help` | Show help |
 
 ## CLI Options
 
