@@ -11,6 +11,15 @@ const DASHBOARD_PORT: u16 = 14123;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+
+    // --version / -V: print and exit before any logging or server setup,
+    // so install scripts can probe the binary without it blocking on stdio
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("t0k3n-mcp {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -18,8 +27,6 @@ async fn main() -> Result<()> {
         )
         .with_writer(std::io::stderr)
         .init();
-
-    let args: Vec<String> = std::env::args().collect();
 
     // Parse CLI flags
     let root = args
