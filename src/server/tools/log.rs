@@ -5,7 +5,7 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::safe_path;
+use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
 
 // ─── read_log_tail ────────────────────────────────────────────────────────────
@@ -86,8 +86,7 @@ pub fn read_log_tail(root: &Path, params: ReadLogTailParams) -> anyhow::Result<R
 
     let result_lines: Vec<String> = filtered.into_iter().rev().take(max_lines).rev().collect();
 
-    let rel = file_path.strip_prefix(root).unwrap_or(&file_path)
-        .to_string_lossy().replace('\\', "/");
+    let rel = rel_display(root, &file_path);
     let token_count = estimate_tokens(&result_lines.join("\n"));
 
     Ok(ReadLogTailResult {

@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::fs::estimate_tokens;
-use crate::security::safe_path;
+use crate::security::{rel_display, scoped_root};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadSecuritySurfaceParams {
@@ -121,11 +121,8 @@ pub fn read_security_surface(
         }
     });
 
-    let search_root = if let Some(ref p) = params.path {
-        safe_path(root, p).map_err(|e| anyhow::anyhow!("{e}"))?
-    } else {
-        root.to_path_buf()
-    };
+    let search_root =
+        scoped_root(root, params.path.as_deref()).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let mut findings: Vec<SecurityFinding> = Vec::new();
 
@@ -149,11 +146,7 @@ pub fn read_security_surface(
         let Ok(content) = std::fs::read_to_string(path) else {
             continue;
         };
-        let rel = path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = rel_display(root, path);
 
         for (line_idx, line) in content.lines().enumerate() {
             let trimmed = line.trim();

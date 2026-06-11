@@ -10,6 +10,7 @@ use super::code::{
     read_call_graph, read_symbol_usages,
 };
 use super::fs::estimate_tokens;
+use crate::security::{rel_display, scoped_root};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadRefactorImpactParams {
@@ -142,11 +143,7 @@ fn find_definition(
     symbol: &str,
     hint_path: Option<&str>,
 ) -> (Option<String>, Option<usize>) {
-    let search_root = if let Some(p) = hint_path {
-        root.join(p)
-    } else {
-        root.to_path_buf()
-    };
+    let search_root = scoped_root(root, hint_path).unwrap_or_else(|_| root.to_path_buf());
 
     // Definition patterns: `fn symbol`, `class symbol`, `struct symbol`, `def symbol`, etc.
     let patterns: Vec<String> = vec![
@@ -189,11 +186,7 @@ fn find_definition(
         let Ok(content) = std::fs::read_to_string(path) else {
             continue;
         };
-        let rel = path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = rel_display(root, path);
 
         for (line_idx, line) in content.lines().enumerate() {
             for pat in &patterns {

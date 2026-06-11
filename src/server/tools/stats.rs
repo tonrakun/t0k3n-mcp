@@ -6,6 +6,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::fs::estimate_tokens;
+use crate::security::rel_display;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadWorkspaceStatsParams {
@@ -56,8 +57,7 @@ pub fn read_workspace_stats(root: &Path, params: ReadWorkspaceStatsParams) -> an
         let path = entry.path();
         if path.is_dir() { continue; }
 
-        let rel = path.strip_prefix(root).unwrap_or(path)
-            .to_string_lossy().replace('\\', "/");
+        let rel = rel_display(root, path);
 
         if let Some(ref re) = glob_re {
             if !re.is_match(&rel) { continue; }

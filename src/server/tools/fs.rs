@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Write as FmtWrite;
 use std::path::Path;
 
-use crate::security::safe_path;
+use crate::security::{rel_display, safe_path, scoped_root};
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadDirectoryTreeParams {
@@ -21,11 +21,7 @@ pub struct DirectoryTreeResult {
 }
 
 pub fn read_directory_tree(root: &Path, params: ReadDirectoryTreeParams) -> anyhow::Result<DirectoryTreeResult> {
-    let start = if let Some(ref p) = params.path {
-        safe_path(root, p)?
-    } else {
-        root.to_path_buf()
-    };
+    let start = scoped_root(root, params.path.as_deref())?;
     let depth = params.depth.unwrap_or(3).min(10);
 
     let mut out = String::new();
@@ -146,11 +142,7 @@ pub struct ReadTokenMapResult {
 }
 
 pub fn read_token_map(root: &Path, params: ReadTokenMapParams) -> anyhow::Result<ReadTokenMapResult> {
-    let start = if let Some(ref p) = params.path {
-        safe_path(root, p)?
-    } else {
-        root.to_path_buf()
-    };
+    let start = scoped_root(root, params.path.as_deref())?;
 
     let limit = params.limit.unwrap_or(50).min(200);
     let glob_pat = params.glob.as_deref();
@@ -176,8 +168,7 @@ pub fn read_token_map(root: &Path, params: ReadTokenMapParams) -> anyhow::Result
         let path = entry.path().to_path_buf();
         if path.is_dir() { continue; }
 
-        let rel = path.strip_prefix(root).unwrap_or(&path)
-            .to_string_lossy().replace('\\', "/");
+        let rel = rel_display(root, &path);
 
         // Apply glob filter
         if let Some(ref re) = glob_re {

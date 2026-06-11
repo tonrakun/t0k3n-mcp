@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::code::{ReadCodeSkeletonParams, read_code_skeleton};
 use super::fs::estimate_tokens;
+use crate::security::rel_display;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadPrContextParams {
@@ -250,11 +251,7 @@ fn find_related_tests(
         if path.is_dir() {
             continue;
         }
-        let rel = path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = rel_display(root, path);
 
         if rel == source_path {
             continue;

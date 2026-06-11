@@ -4,7 +4,7 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::safe_path;
+use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
 
 // ─── read_graphql_schema ──────────────────────────────────────────────────────
@@ -36,8 +36,7 @@ pub fn read_graphql_schema(root: &Path, params: ReadGraphqlSchemaParams) -> anyh
     let file_path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
-    let rel = file_path.strip_prefix(root).unwrap_or(&file_path)
-        .to_string_lossy().replace('\\', "/");
+    let rel = rel_display(root, &file_path);
 
     let types = parse_graphql_schema(&content);
     let json = serde_json::to_string(&types).unwrap_or_default();

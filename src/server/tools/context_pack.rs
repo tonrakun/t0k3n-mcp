@@ -11,7 +11,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::security::safe_path;
+use crate::security::{rel_display, safe_path, scoped_root};
 use super::code::{ReadCodeSkeletonParams, read_code_skeleton};
 use super::fs::estimate_tokens;
 
@@ -117,10 +117,7 @@ pub fn read_context_pack(root: &Path, params: ReadContextPackParams) -> anyhow::
         anyhow::bail!("no usable keywords in query — include identifiers, file names or concepts (min 3 chars)");
     }
 
-    let scope = match &params.path {
-        Some(p) => safe_path(root, p)?,
-        None => root.to_path_buf(),
-    };
+    let scope = scoped_root(root, params.path.as_deref())?;
 
     // 1. rank files by path + content keyword hits
     let mut scored_files: Vec<(String, usize)> = Vec::new();
@@ -143,7 +140,7 @@ pub fn read_context_pack(root: &Path, params: ReadContextPackParams) -> anyhow::
         if entry.metadata().map(|m| m.len() > MAX_FILE_BYTES).unwrap_or(true) {
             continue;
         }
-        let rel = p.strip_prefix(root).unwrap_or(p).to_string_lossy().replace('\\', "/");
+        let rel = rel_display(root, p);
         let path_score = score_text(&rel.to_lowercase(), &keywords, 1) * 5;
         let content_score = std::fs::read_to_string(p)
             .map(|c| score_text(&c.to_lowercase(), &keywords, 20))

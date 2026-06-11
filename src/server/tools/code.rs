@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::security::safe_path;
+use crate::security::{rel_display, safe_path, scoped_root};
 use super::fs::estimate_tokens;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -615,11 +615,7 @@ pub fn read_symbol_usages(root: &Path, params: ReadSymbolUsagesParams) -> anyhow
         anyhow::bail!("symbol は空にできません");
     }
 
-    let start = if let Some(ref p) = params.path {
-        safe_path(root, p)?
-    } else {
-        root.to_path_buf()
-    };
+    let start = scoped_root(root, params.path.as_deref())?;
 
     let pattern = format!(r"\b{}\b", regex::escape(&params.symbol));
     let re = Regex::new(&pattern)
@@ -644,8 +640,7 @@ pub fn read_symbol_usages(root: &Path, params: ReadSymbolUsagesParams) -> anyhow
 
         let Ok(content) = std::fs::read_to_string(path) else { continue };
         let lines: Vec<&str> = content.lines().collect();
-        let rel = path.strip_prefix(root).unwrap_or(path)
-            .to_string_lossy().replace('\\', "/");
+        let rel = rel_display(root, path);
 
         for (i, line) in lines.iter().enumerate() {
             if !re.is_match(line) { continue; }
@@ -697,8 +692,7 @@ pub fn read_type_skeleton(root: &Path, params: ReadTypeSkeletonParams) -> anyhow
     let content = std::fs::read_to_string(&path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let rel = path.strip_prefix(root).unwrap_or(&path)
-        .to_string_lossy().replace('\\', "/");
+    let rel = rel_display(root, &path);
 
     let (language, types) = match ext {
         "ts" | "tsx" => parse_ts_types(&content),
@@ -924,8 +918,7 @@ pub fn read_call_graph(root: &Path, params: ReadCallGraphParams) -> anyhow::Resu
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
     let lines: Vec<&str> = content.lines().collect();
-    let rel = file_path.strip_prefix(root).unwrap_or(&file_path)
-        .to_string_lossy().replace('\\', "/");
+    let rel = rel_display(root, &file_path);
 
     // Parse the function_id to get line range
     let parts: Vec<&str> = params.function_id.rsplitn(2, ':').collect();
@@ -999,8 +992,7 @@ fn find_cross_file_definitions(root: &Path, fn_names: &[String]) -> Vec<serde_js
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
         if !CODE_EXTENSIONS.contains(&ext) { continue; }
         let Ok(content) = std::fs::read_to_string(path) else { continue };
-        let rel = path.strip_prefix(root).unwrap_or(path)
-            .to_string_lossy().replace('\\', "/");
+        let rel = rel_display(root, path);
 
         for (i, line) in content.lines().enumerate() {
             if let Some(cap) = fn_re.captures(line) {
@@ -1034,8 +1026,7 @@ fn find_cross_file_callers(root: &Path, fn_name: &str, self_file: &str) -> Vec<s
         if path.is_dir() { continue; }
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
         if !CODE_EXTENSIONS.contains(&ext) { continue; }
-        let rel = path.strip_prefix(root).unwrap_or(path)
-            .to_string_lossy().replace('\\', "/");
+        let rel = rel_display(root, path);
         if rel == self_file { continue; } // skip the source file
 
         let Ok(content) = std::fs::read_to_string(path) else { continue };
@@ -1173,11 +1164,7 @@ pub fn read_interface_conformance(
 ) -> anyhow::Result<ReadInterfaceConformanceResult> {
     anyhow::ensure!(!params.name.is_empty(), "name は空にできません");
 
-    let start = if let Some(ref p) = params.path {
-        safe_path(root, p)?
-    } else {
-        root.to_path_buf()
-    };
+    let start = scoped_root(root, params.path.as_deref())?;
 
     let escaped = regex::escape(&params.name);
 
@@ -1237,8 +1224,7 @@ pub fn read_interface_conformance(
             let Ok(content) = std::fs::read_to_string(path) else { continue };
             if !content.contains(params.name.as_str()) { continue; }
 
-            let rel = path.strip_prefix(root).unwrap_or(path)
-                .to_string_lossy().replace('\\', "/");
+            let rel = rel_display(root, path);
             let language = match ext {
                 "ts" | "tsx" => "typescript",
                 "rs" => "rust",

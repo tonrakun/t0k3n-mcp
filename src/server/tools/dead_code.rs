@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::code::{ReadCodeSkeletonParams, ReadSymbolUsagesParams, read_code_skeleton, read_symbol_usages};
 use super::fs::estimate_tokens;
-use crate::security::safe_path;
+use crate::security::{rel_display, scoped_root};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadDeadCodeParams {
@@ -56,11 +56,8 @@ pub fn read_dead_code(
     let include_exported = params.include_exported.unwrap_or(false);
     let limit = params.limit.unwrap_or(50);
 
-    let search_root = if let Some(ref p) = params.path {
-        safe_path(root, p).map_err(|e| anyhow::anyhow!("{e}"))?
-    } else {
-        root.to_path_buf()
-    };
+    let search_root =
+        scoped_root(root, params.path.as_deref()).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // Collect all code files
     let mut code_files: Vec<String> = Vec::new();
@@ -80,11 +77,7 @@ pub fn read_dead_code(
         if !CODE_EXTS.contains(&ext) {
             continue;
         }
-        let rel = path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = rel_display(root, path);
         code_files.push(rel);
     }
 
@@ -191,4 +184,23 @@ fn is_symbol_exported(signature: &str) -> bool {
         || signature.starts_with("export default ")
         || signature.contains("public ")
         || signature.contains("Public ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: with a `path` param the walk root used to come back
+    /// canonicalized (`\\?\` verbatim on Windows), so every collected rel
+    /// path was unreadable and zero symbols were checked.
+    #[test]
+    fn scoped_scan_checks_symbols() {
+        let params = ReadDeadCodeParams {
+            path: Some("src".to_string()),
+            include_exported: None,
+            limit: None,
+        };
+        let result = read_dead_code(std::path::Path::new("."), params).unwrap();
+        assert!(result.total_symbols_checked > 0, "scoped scan must check symbols");
+    }
 }

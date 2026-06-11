@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::code::{ReadCodeSkeletonParams, read_code_skeleton};
 use super::fs::estimate_tokens;
-use crate::security::safe_path;
+use crate::security::{rel_display, scoped_root};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadComplexityMapParams {
@@ -44,11 +44,8 @@ pub fn read_complexity_map(
     let min_complexity = params.min_complexity.unwrap_or(1);
     let limit = params.limit.unwrap_or(50);
 
-    let search_root = if let Some(ref p) = params.path {
-        safe_path(root, p).map_err(|e| anyhow::anyhow!("{e}"))?
-    } else {
-        root.to_path_buf()
-    };
+    let search_root =
+        scoped_root(root, params.path.as_deref()).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let code_exts = [
         "rs", "py", "js", "jsx", "ts", "tsx", "go", "cpp", "cc", "cxx", "c",
@@ -78,11 +75,7 @@ pub fn read_complexity_map(
         let Ok(content) = std::fs::read_to_string(path) else {
             continue;
         };
-        let rel = path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let rel = rel_display(root, path);
 
         let skeleton_params = ReadCodeSkeletonParams {
             path: rel.clone(),
@@ -203,4 +196,24 @@ fn kw_count(s: &str, kw: &str) -> usize {
         pos += i + kw.len();
     }
     n
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: with a `path` param the walk root used to come back
+    /// canonicalized (`\\?\` verbatim on Windows), every rel path failed to
+    /// strip, the skeleton re-read failed, and the result was silently empty.
+    #[test]
+    fn scoped_scan_analyzes_files() {
+        let params = ReadComplexityMapParams {
+            path: Some("src".to_string()),
+            min_complexity: None,
+            limit: None,
+        };
+        let result = read_complexity_map(std::path::Path::new("."), params).unwrap();
+        assert!(result.total_analyzed > 0, "scoped scan must analyze functions");
+        assert!(result.entries.iter().all(|e| e.path.starts_with("src/")));
+    }
 }

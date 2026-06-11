@@ -4,7 +4,7 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::safe_path;
+use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -67,8 +67,7 @@ pub fn read_ci_pipeline(root: &Path, params: ReadCiPipelineParams) -> anyhow::Re
                 let path = entry.path();
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                 if ext != "yml" && ext != "yaml" { continue; }
-                let rel = path.strip_prefix(root).unwrap_or(&path)
-                    .to_string_lossy().replace('\\', "/");
+                let rel = rel_display(root, &path);
                 if let Some(pipeline) = parse_ci_file(&path, &rel) {
                     pipelines.push(pipeline);
                 }

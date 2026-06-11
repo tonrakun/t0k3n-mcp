@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::security::safe_path;
+use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
 
 // ─── read_notebook_cells ──────────────────────────────────────────────────────
@@ -62,8 +62,7 @@ pub fn read_notebook_cells(root: &Path, params: ReadNotebookCellsParams) -> anyh
         NotebookCellEntry { index: i, cell_type, execution_count, source_preview, output_count, line_count }
     }).collect();
 
-    let rel = file_path.strip_prefix(root).unwrap_or(&file_path)
-        .to_string_lossy().replace('\\', "/");
+    let rel = rel_display(root, &file_path);
     let json = serde_json::to_string(&cells).unwrap_or_default();
     let token_count = estimate_tokens(&json);
 
@@ -157,8 +156,7 @@ pub fn read_notebook_cell(root: &Path, params: ReadNotebookCellParams) -> anyhow
         vec![]
     };
 
-    let rel = file_path.strip_prefix(root).unwrap_or(&file_path)
-        .to_string_lossy().replace('\\', "/");
+    let rel = rel_display(root, &file_path);
     let combined = format!("{}{}", source, outputs.iter().filter_map(|o| o.text.as_deref()).collect::<Vec<_>>().join(""));
     let token_count = estimate_tokens(&combined);
 

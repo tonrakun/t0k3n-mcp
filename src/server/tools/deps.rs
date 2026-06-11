@@ -5,7 +5,7 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::safe_path;
+use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -210,19 +210,13 @@ fn resolve_js_path(dir: &Path, src: &str, root: &Path) -> Option<String> {
             PathBuf::from(format!("{}{}", base.display(), ext))
         };
         if candidate.exists() {
-            return candidate
-                .strip_prefix(root)
-                .ok()
-                .map(|p| p.to_string_lossy().replace('\\', "/"));
+            return Some(rel_display(root, &candidate));
         }
     }
     for idx in &["index.ts", "index.tsx", "index.js", "index.jsx"] {
         let candidate = base.join(idx);
         if candidate.exists() {
-            return candidate
-                .strip_prefix(root)
-                .ok()
-                .map(|p| p.to_string_lossy().replace('\\', "/"));
+            return Some(rel_display(root, &candidate));
         }
     }
     None
@@ -262,10 +256,7 @@ fn extract_go_imports(content: &str) -> Vec<DepImport> {
 // ─── imported_by scan ─────────────────────────────────────────────────────────
 
 fn scan_imported_by(root: &Path, target: &Path, target_ext: &str) -> Vec<String> {
-    let rel_target = match target.strip_prefix(root) {
-        Ok(p) => p,
-        Err(_) => return vec![],
-    };
+    let rel_target = rel_display(root, target);
     let stem = match target.file_stem().and_then(|s| s.to_str()) {
         Some(s) if !s.is_empty() => s.to_string(),
         _ => return vec![],
@@ -284,7 +275,8 @@ fn scan_imported_by(root: &Path, target: &Path, target_ext: &str) -> Vec<String>
 
     for entry in Walk::new(root).flatten() {
         let path = entry.path();
-        if path == target {
+        let rel = rel_display(root, path);
+        if rel == rel_target {
             continue;
         }
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -292,10 +284,8 @@ fn scan_imported_by(root: &Path, target: &Path, target_ext: &str) -> Vec<String>
             continue;
         }
         let Ok(content) = std::fs::read_to_string(path) else { continue };
-        if content.contains(stem.as_str()) && references_target(&content, &stem, ext, rel_target) {
-            if let Ok(rel) = path.strip_prefix(root) {
-                results.push(rel.to_string_lossy().replace('\\', "/"));
-            }
+        if content.contains(stem.as_str()) && references_target(&content, &stem, ext) {
+            results.push(rel);
         }
         if results.len() >= 200 {
             break;
@@ -305,7 +295,7 @@ fn scan_imported_by(root: &Path, target: &Path, target_ext: &str) -> Vec<String>
     results
 }
 
-fn references_target(content: &str, stem: &str, ext: &str, _rel_target: &Path) -> bool {
+fn references_target(content: &str, stem: &str, ext: &str) -> bool {
     match ext {
         "rs" => content.lines().any(|l| {
             let l = l.trim();

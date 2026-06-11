@@ -4,7 +4,7 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::safe_path;
+use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
 
 // ─── read_proto_schema ────────────────────────────────────────────────────────
@@ -39,8 +39,7 @@ pub fn read_proto_schema(root: &Path, params: ReadProtoSchemaParams) -> anyhow::
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
 
-    let rel = file_path.strip_prefix(root).unwrap_or(&file_path)
-        .to_string_lossy().replace('\\', "/");
+    let rel = rel_display(root, &file_path);
 
     let syntax = extract_proto_meta(&content, r#"syntax\s*=\s*"([^"]+)""#);
     let package = extract_proto_meta(&content, r"^package\s+([\w.]+)\s*;");

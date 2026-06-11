@@ -5,7 +5,7 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::safe_path;
+use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
 
 // ─── read_db_schema ──────────────────────────────────────────────────────────
@@ -41,8 +41,7 @@ pub fn read_db_schema(root: &Path, params: ReadDbSchemaParams) -> anyhow::Result
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
     let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let rel = file_path.strip_prefix(root).unwrap_or(&file_path)
-        .to_string_lossy().replace('\\', "/");
+    let rel = rel_display(root, &file_path);
 
     let (format, tables) = if ext == "prisma" {
         ("prisma".to_string(), parse_prisma_schema(&content))
