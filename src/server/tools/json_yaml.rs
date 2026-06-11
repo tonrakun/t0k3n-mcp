@@ -48,12 +48,11 @@ fn collect_keys(value: &Value, prefix: &str, max_depth: usize, current_depth: us
                 collect_keys(v, &key, max_depth, current_depth + 1, keys);
             }
         }
-        Value::Array(arr) => {
-            if !arr.is_empty() {
+        Value::Array(arr)
+            if !arr.is_empty() => {
                 let key = format!("{}[0]", prefix);
                 collect_keys(&arr[0], &key, max_depth, current_depth + 1, keys);
             }
-        }
         _ => {}
     }
 }

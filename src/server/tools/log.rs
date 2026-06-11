@@ -53,7 +53,7 @@ pub fn read_log_tail(root: &Path, params: ReadLogTailParams) -> anyhow::Result<R
 
     let level_filter = params.level.as_deref().map(|l| l.to_uppercase());
     let pattern_re = params.pattern.as_deref()
-        .map(|p| Regex::new(p))
+        .map(Regex::new)
         .transpose()
         .map_err(|e| anyhow::anyhow!("無効な正規表現: {e}"))?;
 
@@ -73,12 +73,10 @@ pub fn read_log_tail(root: &Path, params: ReadLogTailParams) -> anyhow::Result<R
     let filtered: Vec<String> = all_lines[scan_start..]
         .iter()
         .filter(|line| {
-            if let Some(ref lvl) = level_filter {
-                if detect_log_level(line) != lvl.as_str() { return false; }
-            }
-            if let Some(ref re) = pattern_re {
-                if !re.is_match(line) { return false; }
-            }
+            if let Some(ref lvl) = level_filter
+                && detect_log_level(line) != lvl.as_str() { return false; }
+            if let Some(ref re) = pattern_re
+                && !re.is_match(line) { return false; }
             true
         })
         .map(|s| s.to_string())

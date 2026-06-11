@@ -139,16 +139,14 @@ pub fn task_list(db: &Database, params: TaskListParams) -> Result<Vec<TaskEntry>
         .query_map([], row_to_task)?
         .filter_map(|r| r.ok())
         .filter(|t| {
-            if let Some(s) = &params.status {
-                if &t.status != s {
+            if let Some(s) = &params.status
+                && &t.status != s {
                     return false;
                 }
-            }
-            if let Some(tag) = &params.tag {
-                if !t.tags.contains(tag) {
+            if let Some(tag) = &params.tag
+                && !t.tags.contains(tag) {
                     return false;
                 }
-            }
             true
         })
         .collect();

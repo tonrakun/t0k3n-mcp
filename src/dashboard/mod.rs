@@ -146,7 +146,7 @@ impl DashboardState {
                 "tool": name,
                 "calls": stat.calls,
                 "errors": stat.errors,
-                "avg_duration_ms": if stat.calls > 0 { stat.total_duration_ms / stat.calls } else { 0 },
+                "avg_duration_ms": stat.total_duration_ms.checked_div(stat.calls).unwrap_or(0),
                 "total_tokens": stat.total_tokens,
             })
         }).collect();

@@ -174,9 +174,9 @@ fn output_format() -> OutputFormat {
 
 fn ok_json<T: Serialize>(v: T) -> Result<CallToolResult, McpError> {
     let s = match output_format() {
-        OutputFormat::Json => serde_json::to_string_pretty(&v).map_err(|e| err(e))?,
+        OutputFormat::Json => serde_json::to_string_pretty(&v).map_err(err)?,
         OutputFormat::Compact => {
-            let value = serde_json::to_value(&v).map_err(|e| err(e))?;
+            let value = serde_json::to_value(&v).map_err(err)?;
             tools::render::to_compact_text(&value)
         }
     };
@@ -189,11 +189,10 @@ fn ok_text(s: String) -> Result<CallToolResult, McpError> {
 
 /// Pull `token_count` out of a tool response rendered as JSON or compact text.
 fn extract_token_count(text: &str) -> Option<u64> {
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
-        if let Some(tc) = v.get("token_count").and_then(|tc| tc.as_u64()) {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text)
+        && let Some(tc) = v.get("token_count").and_then(|tc| tc.as_u64()) {
             return Some(tc);
         }
-    }
     text.lines()
         .find_map(|l| l.trim().strip_prefix("token_count: ").and_then(|n| n.trim().parse().ok()))
 }
@@ -259,7 +258,7 @@ impl T0k3nServer {
     /// changed content returns a unified diff when that is cheaper.
     fn ok_delta(&self, key: String, v: serde_json::Value) -> Result<CallToolResult, McpError> {
         let rendered = match output_format() {
-            OutputFormat::Json => serde_json::to_string_pretty(&v).map_err(|e| err(e))?,
+            OutputFormat::Json => serde_json::to_string_pretty(&v).map_err(err)?,
             OutputFormat::Compact => tools::render::to_compact_text(&v),
         };
         let delta = self.ledger.lock().unwrap().check_and_update(&key, &rendered);
@@ -295,7 +294,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_directory_tree", {
             let key = delta_key("read_directory_tree", &params);
-            let result = read_directory_tree(&self.root, params).map_err(|e| err(e))?;
+            let result = read_directory_tree(&self.root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "tree": result.tree, "token_count": result.token_count }))
         })
     }
@@ -307,7 +306,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_markdown_toc", {
             let key = delta_key("read_markdown_toc", &params);
-            let result = read_markdown_toc(&self.root, params).map_err(|e| err(e))?;
+            let result = read_markdown_toc(&self.root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "toc": result.toc, "token_count": result.token_count }))
         })
     }
@@ -319,7 +318,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_markdown_section", {
             let key = delta_key("read_markdown_section", &params);
-            let result = read_markdown_section(&self.root, params).map_err(|e| err(e))?;
+            let result = read_markdown_section(&self.root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "sections": result.sections, "token_count": result.token_count }))
         })
     }
@@ -330,7 +329,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<SearchFileParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "search_file", {
-            let result = search_file(&self.root, params).map_err(|e| err(e))?;
+            let result = search_file(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({ "matches": result.matches, "token_count": result.token_count }))
         })
     }
@@ -342,7 +341,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_json_yaml_keys", {
             let key = delta_key("read_json_yaml_keys", &params);
-            let result = read_json_yaml_keys(&self.root, params).map_err(|e| err(e))?;
+            let result = read_json_yaml_keys(&self.root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "keys": result.keys, "token_count": result.token_count }))
         })
     }
@@ -354,7 +353,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_json_yaml_value", {
             let key = delta_key("read_json_yaml_value", &params);
-            let result = read_json_yaml_value(&self.root, params).map_err(|e| err(e))?;
+            let result = read_json_yaml_value(&self.root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "value": result.value, "token_count": result.token_count }))
         })
     }
@@ -366,7 +365,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_skeleton", {
             let key = delta_key("read_code_skeleton", &params);
-            let result = read_code_skeleton(&self.root, params).map_err(|e| err(e))?;
+            let result = read_code_skeleton(&self.root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "language": result.language, "skeleton": result.skeleton, "token_count": result.token_count }))
         })
     }
@@ -378,7 +377,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_body", {
             let key = delta_key("read_code_body", &params);
-            let result = read_code_body(&self.root, params).map_err(|e| err(e))?;
+            let result = read_code_body(&self.root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "items": result.items, "token_count": result.token_count }))
         })
     }
@@ -389,7 +388,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<PatchSymbolParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "patch_symbol", {
-            let result = patch_symbol(&self.root, params).map_err(|e| err(e))?;
+            let result = patch_symbol(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "written": result.written,
                 "new_id": result.new_id,
@@ -407,7 +406,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadCodeDepsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_deps", {
-            let result = read_code_deps(&self.root, params).map_err(|e| err(e))?;
+            let result = read_code_deps(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "language": result.language,
                 "imports": result.imports, "imported_by": result.imported_by,
@@ -423,7 +422,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_file_outline", {
             let key = delta_key("read_file_outline", &params);
-            let result = read_file_outline(&self.root, params).map_err(|e| err(e))?;
+            let result = read_file_outline(&self.root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({
                 "path": result.path, "kind": result.kind, "language": result.language,
                 "outline": result.outline, "token_count": result.token_count,
@@ -437,7 +436,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadContextPackParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_context_pack", {
-            let result = read_context_pack(&self.root, params).map_err(|e| err(e))?;
+            let result = read_context_pack(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "keywords": result.keywords,
                 "files": result.files,
@@ -456,7 +455,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<SemanticSearchParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "semantic_search", {
-            let result = semantic_search(&self.root, params).map_err(|e| err(e))?;
+            let result = semantic_search(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({ "items": result.items, "token_count": result.token_count }))
         })
     }
@@ -467,7 +466,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadGitDiffParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_diff", {
-            let result = read_git_diff(&self.root, params).map_err(|e| err(e))?;
+            let result = read_git_diff(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({ "diff": result.diff, "token_count": result.token_count }))
         })
     }
@@ -478,7 +477,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadGitLogParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_log", {
-            let result = read_git_log(&self.root, params).map_err(|e| err(e))?;
+            let result = read_git_log(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({ "entries": result.entries, "token_count": result.token_count }))
         })
     }
@@ -489,7 +488,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadGitBlameBodyParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_blame_body", {
-            let result = read_git_blame_body(&self.root, params).map_err(|e| err(e))?;
+            let result = read_git_blame_body(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({ "path": result.path, "lines": result.lines, "token_count": result.token_count }))
         })
     }
@@ -500,7 +499,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadSymbolUsagesParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_symbol_usages", {
-            let result = read_symbol_usages(&self.root, params).map_err(|e| err(e))?;
+            let result = read_symbol_usages(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "symbol": result.symbol, "usages": result.usages,
                 "total": result.total, "truncated": result.truncated,
@@ -515,7 +514,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadOpenApiParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_openapi", {
-            let result = read_openapi(&self.root, params).map_err(|e| err(e))?;
+            let result = read_openapi(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "title": result.title, "version": result.version,
                 "base_url": result.base_url, "spec_version": result.spec_version,
@@ -530,7 +529,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadEnvSchemaParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_env_schema", {
-            let result = read_env_schema(&self.root, params).map_err(|e| err(e))?;
+            let result = read_env_schema(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({ "vars": result.vars, "sources": result.sources, "token_count": result.token_count }))
         })
     }
@@ -546,7 +545,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "fetch_webpage", {
             let cache = self.web_cache.clone();
-            let result = fetch_webpage(params, cache).await.map_err(|e| err(e))?;
+            let result = fetch_webpage(params, cache).await.map_err(err)?;
             ok_json(serde_json::json!({ "toc": result.toc, "token_count": result.token_count, "cached": result.cached }))
         })
     }
@@ -558,7 +557,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_webpage_section", {
             let cache = self.web_cache.clone();
-            let result = read_webpage_section(params, cache).map_err(|e| err(e))?;
+            let result = read_webpage_section(params, cache).map_err(err)?;
             ok_json(serde_json::json!({ "sections": result.sections, "token_count": result.token_count }))
         })
     }
@@ -573,7 +572,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ConvertDocumentParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "convert_document", {
-            let result = convert_document(&self.root, params).map_err(|e| err(e))?;
+            let result = convert_document(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({ "toc": result.toc, "tmp_path": result.tmp_path, "token_count": result.token_count }))
         })
     }
@@ -625,7 +624,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "memory_save", {
             let db = self.db.lock().unwrap();
-            ok_text(memory_save(&db, params).map_err(|e| err(e))?)
+            ok_text(memory_save(&db, params).map_err(err)?)
         })
     }
 
@@ -636,7 +635,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "memory_get", {
             let db = self.db.lock().unwrap();
-            ok_json(memory_get(&db, params).map_err(|e| err(e))?)
+            ok_json(memory_get(&db, params).map_err(err)?)
         })
     }
 
@@ -647,7 +646,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "memory_list", {
             let db = self.db.lock().unwrap();
-            let entries = memory_list(&db, params).map_err(|e| err(e))?;
+            let entries = memory_list(&db, params).map_err(err)?;
             let count = entries.len();
             ok_json(serde_json::json!({ "memories": entries, "count": count }))
         })
@@ -660,7 +659,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "memory_delete", {
             let db = self.db.lock().unwrap();
-            ok_text(memory_delete(&db, params).map_err(|e| err(e))?)
+            ok_text(memory_delete(&db, params).map_err(err)?)
         })
     }
 
@@ -675,7 +674,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "task_create", {
             let db = self.db.lock().unwrap();
-            ok_json(task_create(&db, params).map_err(|e| err(e))?)
+            ok_json(task_create(&db, params).map_err(err)?)
         })
     }
 
@@ -686,7 +685,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "task_get", {
             let db = self.db.lock().unwrap();
-            ok_json(task_get(&db, params).map_err(|e| err(e))?)
+            ok_json(task_get(&db, params).map_err(err)?)
         })
     }
 
@@ -697,7 +696,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "task_update", {
             let db = self.db.lock().unwrap();
-            ok_json(task_update(&db, params).map_err(|e| err(e))?)
+            ok_json(task_update(&db, params).map_err(err)?)
         })
     }
 
@@ -708,7 +707,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "task_list", {
             let db = self.db.lock().unwrap();
-            let tasks = task_list(&db, params).map_err(|e| err(e))?;
+            let tasks = task_list(&db, params).map_err(err)?;
             let count = tasks.len();
             ok_json(serde_json::json!({ "tasks": tasks, "count": count }))
         })
@@ -721,7 +720,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "task_delete", {
             let db = self.db.lock().unwrap();
-            ok_text(task_delete(&db, params).map_err(|e| err(e))?)
+            ok_text(task_delete(&db, params).map_err(err)?)
         })
     }
 
@@ -736,7 +735,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "session_snapshot", {
             let db = self.db.lock().unwrap();
-            ok_json(session_snapshot(&db, params).map_err(|e| err(e))?)
+            ok_json(session_snapshot(&db, params).map_err(err)?)
         })
     }
 
@@ -747,7 +746,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "session_restore", {
             let db = self.db.lock().unwrap();
-            ok_json(session_restore(&db, params).map_err(|e| err(e))?)
+            ok_json(session_restore(&db, params).map_err(err)?)
         })
     }
 
@@ -758,7 +757,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "session_list", {
             let db = self.db.lock().unwrap();
-            let sessions = session_list(&db, params).map_err(|e| err(e))?;
+            let sessions = session_list(&db, params).map_err(err)?;
             let count = sessions.len();
             ok_json(serde_json::json!({ "sessions": sessions, "count": count }))
         })
@@ -774,7 +773,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadDbSchemaParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_db_schema", {
-            let result = read_db_schema(&self.root, params).map_err(|e| err(e))?;
+            let result = read_db_schema(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "format": result.format,
                 "tables": result.tables, "token_count": result.token_count,
@@ -788,7 +787,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadDbTableParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_db_table", {
-            let result = read_db_table(&self.root, params).map_err(|e| err(e))?;
+            let result = read_db_table(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "name": result.name, "kind": result.kind,
                 "fields": result.fields, "token_count": result.token_count,
@@ -802,7 +801,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadCssSkeletonParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_css_skeleton", {
-            let result = read_css_skeleton(&self.root, params).map_err(|e| err(e))?;
+            let result = read_css_skeleton(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "selectors": result.selectors, "token_count": result.token_count,
             }))
@@ -815,7 +814,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadCssBodyParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_css_body", {
-            let result = read_css_body(&self.root, params).map_err(|e| err(e))?;
+            let result = read_css_body(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({ "items": result.items, "token_count": result.token_count }))
         })
     }
@@ -826,7 +825,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadGraphqlSchemaParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_graphql_schema", {
-            let result = read_graphql_schema(&self.root, params).map_err(|e| err(e))?;
+            let result = read_graphql_schema(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "types": result.types, "token_count": result.token_count,
             }))
@@ -839,7 +838,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadGraphqlTypeParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_graphql_type", {
-            let result = read_graphql_type(&self.root, params).map_err(|e| err(e))?;
+            let result = read_graphql_type(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "name": result.name, "kind": result.kind,
                 "fields": result.fields, "token_count": result.token_count,
@@ -853,7 +852,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadProtoSchemaParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_proto_schema", {
-            let result = read_proto_schema(&self.root, params).map_err(|e| err(e))?;
+            let result = read_proto_schema(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "syntax": result.syntax, "package": result.package,
                 "types": result.types, "token_count": result.token_count,
@@ -867,7 +866,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadProtoTypeParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_proto_type", {
-            let result = read_proto_type(&self.root, params).map_err(|e| err(e))?;
+            let result = read_proto_type(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "name": result.name, "kind": result.kind,
                 "fields": result.fields, "token_count": result.token_count,
@@ -885,7 +884,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadNotebookCellsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_notebook_cells", {
-            let result = read_notebook_cells(&self.root, params).map_err(|e| err(e))?;
+            let result = read_notebook_cells(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "nbformat": result.nbformat,
                 "cells": result.cells, "token_count": result.token_count,
@@ -899,7 +898,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadNotebookCellParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_notebook_cell", {
-            let result = read_notebook_cell(&self.root, params).map_err(|e| err(e))?;
+            let result = read_notebook_cell(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "index": result.index, "cell_type": result.cell_type,
                 "execution_count": result.execution_count, "source": result.source,
@@ -918,7 +917,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadLogTailParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_log_tail", {
-            let result = read_log_tail(&self.root, params).map_err(|e| err(e))?;
+            let result = read_log_tail(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "total_lines": result.total_lines,
                 "returned_lines": result.returned_lines, "level_counts": result.level_counts,
@@ -933,7 +932,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadStackTraceParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_stack_trace", {
-            let result = read_stack_trace(&self.root, params).map_err(|e| err(e))?;
+            let result = read_stack_trace(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "total_frames": result.total_frames, "resolved_frames": result.resolved_frames,
                 "frames": result.frames, "token_count": result.token_count,
@@ -951,7 +950,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadTestSkeletonParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_test_skeleton", {
-            let result = read_test_skeleton(&self.root, params).map_err(|e| err(e))?;
+            let result = read_test_skeleton(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "framework": result.framework,
                 "tests": result.tests, "token_count": result.token_count,
@@ -965,7 +964,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadTestResultsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_test_results", {
-            let result = read_test_results(&self.root, params).map_err(|e| err(e))?;
+            let result = read_test_results(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "framework": result.framework, "summary": result.summary,
                 "suites": result.suites, "failures": result.failures,
@@ -985,7 +984,7 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_type_skeleton", {
             let key = delta_key("read_type_skeleton", &params);
-            let result = read_type_skeleton(&self.root, params).map_err(|e| err(e))?;
+            let result = read_type_skeleton(&self.root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({
                 "path": result.path, "language": result.language,
                 "types": result.types, "token_count": result.token_count,
@@ -999,7 +998,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadCallGraphParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_call_graph", {
-            let result = read_call_graph(&self.root, params).map_err(|e| err(e))?;
+            let result = read_call_graph(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "function": result.function, "file": result.file,
                 "calls": result.calls, "called_by_in_file": result.called_by_in_file,
@@ -1016,7 +1015,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadTokenMapParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_token_map", {
-            let result = read_token_map(&self.root, params).map_err(|e| err(e))?;
+            let result = read_token_map(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "files": result.files, "total_tokens": result.total_tokens,
                 "file_count": result.file_count, "token_count": result.token_count,
@@ -1030,7 +1029,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadChangedFilesParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_changed_files", {
-            let result = read_changed_files(&self.root, params).map_err(|e| err(e))?;
+            let result = read_changed_files(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "base": result.base, "files": result.files,
                 "total_added": result.total_added, "total_deleted": result.total_deleted,
@@ -1049,7 +1048,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadGitStashParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_stash", {
-            let result = read_git_stash(&self.root, params).map_err(|e| err(e))?;
+            let result = read_git_stash(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "stashes": result.stashes, "diff": result.diff, "token_count": result.token_count,
             }))
@@ -1062,7 +1061,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadPackageManifestParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_package_manifest", {
-            let result = read_package_manifest(&self.root, params).map_err(|e| err(e))?;
+            let result = read_package_manifest(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "manifests": result.manifests, "token_count": result.token_count,
             }))
@@ -1075,7 +1074,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadCiPipelineParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_ci_pipeline", {
-            let result = read_ci_pipeline(&self.root, params).map_err(|e| err(e))?;
+            let result = read_ci_pipeline(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "pipelines": result.pipelines, "token_count": result.token_count,
             }))
@@ -1088,7 +1087,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadWorkspaceStatsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_workspace_stats", {
-            let result = read_workspace_stats(&self.root, params).map_err(|e| err(e))?;
+            let result = read_workspace_stats(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "total_files": result.total_files, "total_lines": result.total_lines,
                 "total_tokens": result.total_tokens, "by_language": result.by_language,
@@ -1103,7 +1102,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadInterfaceConformanceParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_interface_conformance", {
-            let result = read_interface_conformance(&self.root, params).map_err(|e| err(e))?;
+            let result = read_interface_conformance(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "name": result.name, "kind": result.kind,
                 "implementations": result.implementations,
@@ -1118,7 +1117,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<BatchReadParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "batch_read", {
-            let result = batch_read(&self.root, params).map_err(|e| err(e))?;
+            let result = batch_read(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "results": result.results, "total_token_count": result.total_token_count,
             }))
@@ -1135,7 +1134,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadComplexityMapParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_complexity_map", {
-            let result = read_complexity_map(&self.root, params).map_err(|e| err(e))?;
+            let result = read_complexity_map(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "entries": result.entries,
                 "total_analyzed": result.total_analyzed,
@@ -1151,7 +1150,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadDeadCodeParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_dead_code", {
-            let result = read_dead_code(&self.root, params).map_err(|e| err(e))?;
+            let result = read_dead_code(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "entries": result.entries,
                 "total_symbols_checked": result.total_symbols_checked,
@@ -1166,7 +1165,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadRefactorImpactParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_refactor_impact", {
-            let result = read_refactor_impact(&self.root, params).map_err(|e| err(e))?;
+            let result = read_refactor_impact(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "symbol": result.symbol,
                 "definition_file": result.definition_file,
@@ -1188,7 +1187,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadSecuritySurfaceParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_security_surface", {
-            let result = read_security_surface(&self.root, params).map_err(|e| err(e))?;
+            let result = read_security_surface(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "findings": result.findings,
                 "total": result.total,
@@ -1205,7 +1204,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<DiffSchemasParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "diff_schemas", {
-            let result = diff_schemas(&self.root, params).map_err(|e| err(e))?;
+            let result = diff_schemas(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path,
                 "schema_type": result.schema_type,
@@ -1226,7 +1225,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadPrContextParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_pr_context", {
-            let result = read_pr_context(&self.root, params).map_err(|e| err(e))?;
+            let result = read_pr_context(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "branch": result.branch,
                 "base": result.base,
@@ -1251,7 +1250,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<RunCommandParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "run_command", {
-            let result = run_command(&self.root, params).map_err(|e| err(e))?;
+            let result = run_command(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "command":     result.command,
                 "exit_code":   result.exit_code,

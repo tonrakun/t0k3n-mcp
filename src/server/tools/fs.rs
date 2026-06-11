@@ -25,7 +25,7 @@ pub fn read_directory_tree(root: &Path, params: ReadDirectoryTreeParams) -> anyh
     let depth = params.depth.unwrap_or(3).min(10);
 
     let mut out = String::new();
-    let _ = write!(out, "./\n");
+    let _ = writeln!(out, "./");
 
     let walker = WalkBuilder::new(&start)
         .max_depth(Some(depth))
@@ -177,13 +177,12 @@ pub fn read_token_map(root: &Path, params: ReadTokenMapParams) -> anyhow::Result
         }
 
         // Skip obviously binary files by extension
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if matches!(ext, "png" | "jpg" | "jpeg" | "gif" | "ico" | "svg" | "woff" | "woff2"
+        if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && matches!(ext, "png" | "jpg" | "jpeg" | "gif" | "ico" | "svg" | "woff" | "woff2"
                 | "ttf" | "eot" | "mp4" | "webm" | "mp3" | "zip" | "tar" | "gz"
                 | "exe" | "dll" | "so" | "dylib" | "bin" | "db" | "sqlite" | "lock") {
                 continue;
             }
-        }
 
         let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
         // Estimate tokens cheaply: read first 64KB, extrapolate
@@ -193,7 +192,7 @@ pub fn read_token_map(root: &Path, params: ReadTokenMapParams) -> anyhow::Result
     }
 
     let file_count = entries.len();
-    entries.sort_by(|a, b| b.estimated_tokens.cmp(&a.estimated_tokens));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.estimated_tokens));
     entries.truncate(limit);
 
     let json = serde_json::to_string(&entries).unwrap_or_default();

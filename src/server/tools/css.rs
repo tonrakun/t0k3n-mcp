@@ -151,8 +151,8 @@ pub fn read_css_body(root: &Path, params: ReadCssBodyParams) -> anyhow::Result<R
         let parts: Vec<&str> = id.rsplitn(2, ':').collect();
         if parts.len() == 2 {
             let range: Vec<&str> = parts[0].splitn(2, '-').collect();
-            if range.len() == 2 {
-                if let (Ok(start), Ok(end)) =
+            if range.len() == 2
+                && let (Ok(start), Ok(end)) =
                     (range[0].parse::<usize>(), range[1].parse::<usize>())
                 {
                     let from = start.saturating_sub(1); // 0-indexed selector line
@@ -165,7 +165,6 @@ pub fn read_css_body(root: &Path, params: ReadCssBodyParams) -> anyhow::Result<R
                     items.push(CssBodyItem { id: id.clone(), selector, content: body });
                     continue;
                 }
-            }
         }
         items.push(CssBodyItem {
             id: id.clone(),

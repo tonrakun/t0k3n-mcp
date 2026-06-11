@@ -80,11 +80,10 @@ pub fn memory_list(db: &Database, params: MemoryListParams) -> Result<Vec<Memory
         MemoryEntry { id, key, value, tags, created_at, updated_at }
     })
     .filter(|e| {
-        if let Some(tag) = &params.tag {
-            if !e.tags.contains(tag) {
+        if let Some(tag) = &params.tag
+            && !e.tags.contains(tag) {
                 return false;
             }
-        }
         if let Some(search) = &params.search {
             let s = search.to_lowercase();
             if !e.key.to_lowercase().contains(&s) && !e.value.to_lowercase().contains(&s) {

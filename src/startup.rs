@@ -66,11 +66,10 @@ pub fn detect_languages(root: &Path, max_languages: usize) -> Vec<DetectedLangua
         if !path.is_file() {
             continue;
         }
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            if let Some(lang) = ext_to_lang(&ext.to_lowercase()) {
+        if let Some(ext) = path.extension().and_then(|e| e.to_str())
+            && let Some(lang) = ext_to_lang(&ext.to_lowercase()) {
                 *counts.entry(lang).or_insert(0) += 1;
             }
-        }
     }
 
     // Also check manifest files for additional context
@@ -81,7 +80,7 @@ pub fn detect_languages(root: &Path, max_languages: usize) -> Vec<DetectedLangua
         .map(|(name, file_count)| DetectedLanguage { name, file_count })
         .collect();
 
-    langs.sort_by(|a, b| b.file_count.cmp(&a.file_count));
+    langs.sort_by_key(|l| std::cmp::Reverse(l.file_count));
     langs.truncate(max_languages);
     langs
 }

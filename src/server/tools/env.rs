@@ -63,9 +63,8 @@ pub fn read_env_schema(root: &Path, params: ReadEnvSchemaParams) -> anyhow::Resu
         for dc in &["docker-compose.yml", "docker-compose.yaml"] {
             let candidate = root.join(dc);
             if !candidate.exists() { continue; }
-            if let Ok(vars) = parse_docker_compose(&candidate, dc) {
-                if !vars.is_empty() { sources.push(dc.to_string()); all_vars.extend(vars); }
-            }
+            if let Ok(vars) = parse_docker_compose(&candidate, dc)
+                && !vars.is_empty() { sources.push(dc.to_string()); all_vars.extend(vars); }
         }
     }
 
@@ -153,11 +152,7 @@ fn parse_docker_compose(path: &Path, source: &str) -> anyhow::Result<Vec<EnvVarE
                     if s.is_empty() { None } else { Some(s.to_string()) }
                 } else if let Some(n) = v.as_i64() {
                     Some(n.to_string())
-                } else if let Some(b) = v.as_bool() {
-                    Some(b.to_string())
-                } else {
-                    None
-                };
+                } else { v.as_bool().map(|b| b.to_string()) };
                 vars.push(EnvVarEntry {
                     key: key.to_string(),
                     required: default_value.is_none(),

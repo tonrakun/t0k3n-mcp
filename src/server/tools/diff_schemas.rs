@@ -269,14 +269,13 @@ fn parse_db_tables(content: &str, schema_type: &str) -> HashMap<String, Vec<Stri
                 }
             } else if trimmed == "}" {
                 current = None;
-            } else if let Some(ref name) = current {
-                if !trimmed.is_empty() && !trimmed.starts_with("//") && !trimmed.starts_with("@@") {
+            } else if let Some(ref name) = current
+                && !trimmed.is_empty() && !trimmed.starts_with("//") && !trimmed.starts_with("@@") {
                     let field_name = trimmed.split_whitespace().next().unwrap_or("").to_string();
                     if !field_name.is_empty() {
                         tables.entry(name.clone()).or_default().push(field_name);
                     }
                 }
-            }
         } else {
             // SQL
             let upper = trimmed.to_uppercase();
@@ -289,14 +288,13 @@ fn parse_db_tables(content: &str, schema_type: &str) -> HashMap<String, Vec<Stri
                 }
             } else if trimmed.starts_with(");") || trimmed == ");" {
                 current = None;
-            } else if let Some(ref name) = current {
-                if !trimmed.is_empty() && !trimmed.starts_with("--") {
+            } else if let Some(ref name) = current
+                && !trimmed.is_empty() && !trimmed.starts_with("--") {
                     let col = trimmed.split_whitespace().next().unwrap_or("").trim_matches('`').trim_matches('"').to_string();
                     if !col.is_empty() && !col.to_uppercase().starts_with("PRIMARY") && !col.to_uppercase().starts_with("UNIQUE") && !col.to_uppercase().starts_with("INDEX") && !col.to_uppercase().starts_with("KEY") {
                         tables.entry(name.clone()).or_default().push(col);
                     }
                 }
-            }
         }
     }
     tables

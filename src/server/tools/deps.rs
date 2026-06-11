@@ -126,7 +126,7 @@ fn extract_python_imports(content: &str) -> Vec<DepImport> {
             let symbols: Vec<String> = names_raw
                 .trim_matches(|c| c == '(' || c == ')')
                 .split(',')
-                .map(|s| s.trim().split_whitespace().next().unwrap_or("").to_string())
+                .map(|s| s.split_whitespace().next().unwrap_or("").to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
             imports.push(DepImport {
@@ -164,7 +164,7 @@ fn extract_js_imports(content: &str, file_path: &Path, root: &Path) -> Vec<DepIm
             .map(|m| {
                 m.as_str()
                     .split(',')
-                    .map(|s| s.trim().split_whitespace().next().unwrap_or("").to_string())
+                    .map(|s| s.split_whitespace().next().unwrap_or("").to_string())
                     .filter(|s| !s.is_empty())
                     .collect()
             })
@@ -184,7 +184,7 @@ fn extract_js_imports(content: &str, file_path: &Path, root: &Path) -> Vec<DepIm
             .map(|m| {
                 m.as_str()
                     .split(',')
-                    .map(|s| s.trim().split_whitespace().next().unwrap_or("").to_string())
+                    .map(|s| s.split_whitespace().next().unwrap_or("").to_string())
                     .filter(|s| !s.is_empty())
                     .collect()
             })
@@ -241,12 +241,12 @@ fn extract_go_imports(content: &str) -> Vec<DepImport> {
             }
             if let Some(cap) = block_path_re.captures(trimmed) {
                 let path = cap[1].to_string();
-                let name = path.split('/').last().unwrap_or(&path).to_string();
+                let name = path.split('/').next_back().unwrap_or(&path).to_string();
                 imports.push(DepImport { raw: path, resolved: None, symbols: vec![name] });
             }
         } else if let Some(cap) = single_re.captures(trimmed) {
             let path = cap[1].to_string();
-            let name = path.split('/').last().unwrap_or(&path).to_string();
+            let name = path.split('/').next_back().unwrap_or(&path).to_string();
             imports.push(DepImport { raw: path, resolved: None, symbols: vec![name] });
         }
     }

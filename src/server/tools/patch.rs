@@ -63,14 +63,13 @@ pub fn patch_symbol(root: &Path, params: PatchSymbolParams) -> anyhow::Result<Pa
     }
 
     let old_range = &lines[start - 1..end];
-    if let Some(name) = &params.expected_name {
-        if !old_range.iter().any(|l| l.contains(name.as_str())) {
+    if let Some(name) = &params.expected_name
+        && !old_range.iter().any(|l| l.contains(name.as_str())) {
             anyhow::bail!(
                 "expected_name '{}' not found in lines {}-{} — skeleton is stale, re-run read_code_skeleton",
                 name, start, end
             );
         }
-    }
 
     let new_body_lines: Vec<&str> = params.new_body.lines().collect();
     let mut new_lines: Vec<&str> = Vec::with_capacity(lines.len());
@@ -84,7 +83,7 @@ pub fn patch_symbol(root: &Path, params: PatchSymbolParams) -> anyhow::Result<Pa
         new_content.push_str(eol);
     }
 
-    let diff = similar::TextDiff::from_lines(&old_range.join("\n"), &params.new_body)
+    let diff = similar::TextDiff::from_lines(old_range.join("\n"), &params.new_body)
         .unified_diff()
         .context_radius(2)
         .header("before", "after")

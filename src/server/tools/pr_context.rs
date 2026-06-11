@@ -116,7 +116,7 @@ pub fn read_pr_context(root: &Path, params: ReadPrContextParams) -> anyhow::Resu
     let total_deleted: i64 = all_files.iter().map(|(_, _, d)| *d).sum();
 
     // Sort by (|added + deleted|) desc to prioritize most-changed files
-    all_files.sort_by(|(_, a1, d1), (_, a2, d2)| (a2 + d2).cmp(&(a1 + d1)));
+    all_files.sort_by_key(|(_, a, d)| std::cmp::Reverse(a + d));
 
     let files_for_skeleton = all_files.iter().take(max_files);
 

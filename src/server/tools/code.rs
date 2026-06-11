@@ -43,11 +43,10 @@ pub fn read_code_skeleton(root: &Path, params: ReadCodeSkeletonParams) -> anyhow
 
 fn parse_skeleton(content: &str, ext: &str) -> (String, Vec<SkeletonItem>) {
     // tree-sitter first, regex fallback
-    if let Some((lang_name, items)) = try_parse_ts(content, ext) {
-        if !items.is_empty() {
+    if let Some((lang_name, items)) = try_parse_ts(content, ext)
+        && !items.is_empty() {
             return (lang_name.to_string(), items);
         }
-    }
     let lang_name = match ext {
         "rs" => "rust",
         "py" => "python",
@@ -559,15 +558,14 @@ pub fn read_code_body(root: &Path, params: ReadCodeBodyParams) -> anyhow::Result
         let parts: Vec<&str> = id.rsplitn(2, ':').collect();
         if parts.len() == 2 {
             let range: Vec<&str> = parts[0].splitn(2, '-').collect();
-            if range.len() == 2 {
-                if let (Ok(start), Ok(end)) = (range[0].parse::<usize>(), range[1].parse::<usize>()) {
+            if range.len() == 2
+                && let (Ok(start), Ok(end)) = (range[0].parse::<usize>(), range[1].parse::<usize>()) {
                     let start = start.saturating_sub(1);
                     let end = end.min(lines.len());
                     let body = lines[start..end].join("\n");
                     items.push(CodeBodyItem { id: id.clone(), content: body });
                     continue;
                 }
-            }
         }
         items.push(CodeBodyItem { id: id.clone(), content: format!("Error: invalid id '{}'", id) });
     }
@@ -725,7 +723,7 @@ fn parse_ts_types(content: &str) -> (String, Vec<TypeItem>) {
             // For `type Foo = ...` without braces (union, intersection, alias)
             if kind == "type" && !lines[i].contains('{') {
                 let end_line = i + 1;
-                let value = lines[i].splitn(2, '=').nth(1)
+                let value = lines[i].split_once('=').map(|x| x.1)
                     .unwrap_or("").trim().to_string();
                 items.push(TypeItem {
                     id: format!("type:{}-{}", start_line, end_line),
@@ -748,11 +746,10 @@ fn parse_ts_types(content: &str) -> (String, Vec<TypeItem>) {
                 depth += opens - closes;
                 if opens > 0 { found_open = true; }
 
-                if found_open && depth == 1 && j > i {
-                    if let Some(fc) = re_field_ts.captures(lines[j]) {
-                        fields.push(fc[0].trim().trim_end_matches(|c| c == ',' || c == ';').to_string());
+                if found_open && depth == 1 && j > i
+                    && let Some(fc) = re_field_ts.captures(lines[j]) {
+                        fields.push(fc[0].trim().trim_end_matches([',', ';']).to_string());
                     }
-                }
                 if found_open && depth <= 0 { break; }
                 j += 1;
             }
@@ -808,11 +805,10 @@ fn parse_go_types(content: &str) -> (String, Vec<TypeItem>) {
                 let closes = l.chars().filter(|&c| c == '}').count() as i32;
                 depth += opens - closes;
 
-                if depth == 1 && j > i {
-                    if let Some(fc) = re_field.captures(lines[j]) {
+                if depth == 1 && j > i
+                    && let Some(fc) = re_field.captures(lines[j]) {
                         fields.push(fc[0].trim().to_string());
                     }
-                }
                 if depth <= 0 && opens + closes > 0 { break; }
                 j += 1;
             }
@@ -866,11 +862,10 @@ fn parse_rust_types(content: &str) -> (String, Vec<TypeItem>) {
                 depth += opens - closes;
                 if opens > 0 { found_open = true; }
 
-                if found_open && depth == 1 && j > i {
-                    if let Some(fc) = re_field.captures(lines[j]) {
+                if found_open && depth == 1 && j > i
+                    && let Some(fc) = re_field.captures(lines[j]) {
                         fields.push(fc[0].trim().trim_end_matches(',').to_string());
                     }
-                }
                 if found_open && depth <= 0 { break; }
                 j += 1;
             }
@@ -1037,8 +1032,8 @@ fn find_cross_file_callers(root: &Path, fn_name: &str, self_file: &str) -> Vec<s
             if let Some(cap) = fn_re.captures(line) {
                 current_fn = Some(cap[1].to_string());
             }
-            if call_re.is_match(line) {
-                if let Some(ref caller) = current_fn {
+            if call_re.is_match(line)
+                && let Some(ref caller) = current_fn {
                     let key = format!("{}:{}", rel, caller);
                     if seen.insert(key) {
                         results.push(serde_json::json!({
@@ -1048,7 +1043,6 @@ fn find_cross_file_callers(root: &Path, fn_name: &str, self_file: &str) -> Vec<s
                         }));
                     }
                 }
-            }
         }
         if results.len() >= 50 { break; }
     }
@@ -1119,13 +1113,11 @@ fn find_callers(lines: &[&str], fn_name: &str, fn_start: usize, fn_end: usize) -
         // Skip calls from within the function itself
         if i >= fn_start && i < fn_end { continue; }
 
-        if call_re.is_match(line) {
-            if let Some(ref caller) = current_fn {
-                if current_fn_start < fn_start || current_fn_start >= fn_end {
+        if call_re.is_match(line)
+            && let Some(ref caller) = current_fn
+                && (current_fn_start < fn_start || current_fn_start >= fn_end) {
                     callers.insert(caller.clone());
                 }
-            }
-        }
     }
 
     callers.into_iter().collect()

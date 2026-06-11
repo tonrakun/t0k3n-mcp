@@ -76,20 +76,18 @@ pub fn read_ci_pipeline(root: &Path, params: ReadCiPipelineParams) -> anyhow::Re
         // GitLab CI
         for name in &[".gitlab-ci.yml", ".gitlab-ci.yaml"] {
             let p = root.join(name);
-            if p.exists() {
-                if let Some(pipeline) = parse_ci_file(&p, name) {
+            if p.exists()
+                && let Some(pipeline) = parse_ci_file(&p, name) {
                     pipelines.push(pipeline);
                 }
-            }
         }
         // CircleCI
         for name in &[".circleci/config.yml", ".circleci/config.yaml"] {
             let p = root.join(name);
-            if p.exists() {
-                if let Some(pipeline) = parse_ci_file(&p, name) {
+            if p.exists()
+                && let Some(pipeline) = parse_ci_file(&p, name) {
                     pipelines.push(pipeline);
                 }
-            }
         }
     }
 
@@ -201,15 +199,14 @@ fn parse_gitlab_ci(doc: &serde_yaml::Value) -> Vec<CiWorkflow> {
     ];
 
     let mut triggers = Vec::new();
-    if let Some(workflow) = doc.get("workflow") {
-        if let Some(rules) = workflow.get("rules").and_then(|r| r.as_sequence()) {
+    if let Some(workflow) = doc.get("workflow")
+        && let Some(rules) = workflow.get("rules").and_then(|r| r.as_sequence()) {
             for rule in rules {
                 if let Some(cond) = rule.get("if").and_then(|r| r.as_str()) {
                     triggers.push(cond.to_string());
                 }
             }
         }
-    }
     if triggers.is_empty() { triggers.push("push".to_string()); }
 
     let mut jobs = Vec::new();

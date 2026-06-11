@@ -59,9 +59,8 @@ pub fn read_workspace_stats(root: &Path, params: ReadWorkspaceStatsParams) -> an
 
         let rel = rel_display(root, path);
 
-        if let Some(ref re) = glob_re {
-            if !re.is_match(&rel) { continue; }
-        }
+        if let Some(ref re) = glob_re
+            && !re.is_match(&rel) { continue; }
 
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_string();
         let language = ext_to_language(&ext);
@@ -91,7 +90,7 @@ pub fn read_workspace_stats(root: &Path, params: ReadWorkspaceStatsParams) -> an
             LanguageStat { language: lang, files, lines, tokens, pct }
         })
         .collect();
-    by_language_vec.sort_by(|a, b| b.tokens.cmp(&a.tokens));
+    by_language_vec.sort_by_key(|l| std::cmp::Reverse(l.tokens));
 
     all_files.sort_by(|(_, a), (_, b)| b.cmp(a));
     let largest_files: Vec<LargestFile> = all_files.into_iter().take(10)

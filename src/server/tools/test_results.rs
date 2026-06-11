@@ -81,17 +81,15 @@ pub fn read_test_results(root: &Path, params: ReadTestResultsParams) -> anyhow::
 }
 
 fn detect_framework(text: &str, hint: Option<&str>) -> String {
-    if let Some(h) = hint {
-        if h != "auto" { return h.to_string(); }
-    }
+    if let Some(h) = hint
+        && h != "auto" { return h.to_string(); }
     // Jest/Vitest: PASS/FAIL lines with file paths, bullet symbols
     if (text.contains("\nPASS ") || text.contains("\nFAIL ")) && text.contains(" ms)") {
         return "jest".to_string();
     }
     // pytest: module::test_name PASSED/FAILED
-    if text.contains(" PASSED") || text.contains(" FAILED") {
-        if text.contains("::") { return "pytest".to_string(); }
-    }
+    if (text.contains(" PASSED") || text.contains(" FAILED"))
+        && text.contains("::") { return "pytest".to_string(); }
     // cargo test
     if text.contains("test result:") || (text.contains("... ok") && text.contains("running ")) {
         return "cargo".to_string();
@@ -159,11 +157,10 @@ fn parse_jest(text: &str) -> (TestSummary, Vec<TestSuiteEntry>, Vec<TestFailure>
             total_failed  = cap.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
             total_skipped = cap.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
             total_passed  = cap.get(3).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-        } else if let Some(cap) = re_duration.captures(line) {
-            if let Ok(s) = cap[1].parse::<f64>() {
+        } else if let Some(cap) = re_duration.captures(line)
+            && let Ok(s) = cap[1].parse::<f64>() {
                 duration_ms = Some((s * 1000.0) as u64);
             }
-        }
     }
 
     if !current_suite.is_empty() {
@@ -212,11 +209,10 @@ fn parse_pytest(text: &str) -> (TestSummary, Vec<TestSuiteEntry>, Vec<TestFailur
             if let Some(m) = cap.get(1) { total_failed  = m.as_str().parse().unwrap_or(0); }
             if let Some(m) = cap.get(2) { total_passed  = m.as_str().parse().unwrap_or(0); }
             if let Some(m) = cap.get(3) { total_skipped = m.as_str().parse().unwrap_or(0); }
-        } else if let Some(cap) = re_duration.captures(line) {
-            if let Ok(s) = cap[1].parse::<f64>() {
+        } else if let Some(cap) = re_duration.captures(line)
+            && let Ok(s) = cap[1].parse::<f64>() {
                 duration_ms = Some((s * 1000.0) as u64);
             }
-        }
     }
 
     let suites: Vec<TestSuiteEntry> = suite_map.into_values().collect();

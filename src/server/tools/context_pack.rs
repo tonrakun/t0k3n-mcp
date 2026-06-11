@@ -150,7 +150,7 @@ pub fn read_context_pack(root: &Path, params: ReadContextPackParams) -> anyhow::
             scored_files.push((rel, score));
         }
     }
-    scored_files.sort_by(|a, b| b.1.cmp(&a.1));
+    scored_files.sort_by_key(|f| std::cmp::Reverse(f.1));
     scored_files.truncate(max_files);
 
     // 2. skeletons for the top files, score symbols
@@ -177,7 +177,7 @@ pub fn read_context_pack(root: &Path, params: ReadContextPackParams) -> anyhow::
             }
         }
     }
-    symbols.sort_by(|a, b| b.score.cmp(&a.score));
+    symbols.sort_by_key(|s| std::cmp::Reverse(s.score));
 
     // 3. greedy fill: ranking + signatures are always in; bodies until budget
     let mut used = estimate_tokens(&serde_json::to_string(&files).unwrap_or_default())

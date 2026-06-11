@@ -160,11 +160,10 @@ pub fn read_security_surface(
             }
 
             for rule in RULES {
-                if let Some(ref cats) = active_categories {
-                    if !cats.contains(&rule.category.to_string()) {
+                if let Some(ref cats) = active_categories
+                    && !cats.contains(&rule.category.to_string()) {
                         continue;
                     }
-                }
                 if !line.contains(rule.pattern) {
                     continue;
                 }

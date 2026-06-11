@@ -117,7 +117,7 @@ pub fn read_complexity_map(
         }
     }
 
-    entries.sort_by(|a, b| b.complexity.cmp(&a.complexity));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.complexity));
     let high_risk_count = entries
         .iter()
         .filter(|e| e.risk == "high" || e.risk == "critical")

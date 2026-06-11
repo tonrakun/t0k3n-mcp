@@ -217,15 +217,14 @@ fn parse_porcelain_blame(output: &str) -> Vec<BlameLineEntry> {
             }
         } else {
             let mut iter = line.splitn(4, ' ');
-            if let (Some(sha), Some(_orig), Some(final_line)) = (iter.next(), iter.next(), iter.next()) {
-                if sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit()) {
+            if let (Some(sha), Some(_orig), Some(final_line)) = (iter.next(), iter.next(), iter.next())
+                && sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit()) {
                     cur_sha = sha.to_string();
                     cur_line_no = final_line.parse().unwrap_or(0);
                     if let Some((a, _)) = sha_cache.get(&cur_sha) {
                         pending_author = a.clone();
                     }
                 }
-            }
         }
     }
     entries

@@ -99,11 +99,10 @@ pub fn semantic_search(root: &Path, params: SemanticSearchParams) -> Result<Sema
 fn extract_ids(response: &str) -> Vec<String> {
     let start = response.find('[');
     let end = response.rfind(']');
-    if let (Some(s), Some(e)) = (start, end) {
-        if let Ok(ids) = serde_json::from_str::<Vec<String>>(&response[s..=e]) {
+    if let (Some(s), Some(e)) = (start, end)
+        && let Ok(ids) = serde_json::from_str::<Vec<String>>(&response[s..=e]) {
             return ids;
         }
-    }
     vec![]
 }
 

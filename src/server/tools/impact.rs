@@ -101,7 +101,7 @@ pub fn read_refactor_impact(
         let fn_id = if let Some(line) = def_line {
             format!("function:{}-{}", line, line + 10)
         } else {
-            format!("function:0-0")
+            "function:0-0".to_string()
         };
         let cg_params = ReadCallGraphParams {
             path: df.clone(),

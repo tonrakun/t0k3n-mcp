@@ -48,16 +48,14 @@ pub fn extract_toc(content: &str) -> Vec<TocEntry> {
                 current_level = Some(heading_level_to_u8(level));
                 current_text.clear();
             }
-            Event::Text(t) => {
-                if current_level.is_some() {
+            Event::Text(t)
+                if current_level.is_some() => {
                     current_text.push_str(&t);
                 }
-            }
-            Event::Code(t) => {
-                if current_level.is_some() {
+            Event::Code(t)
+                if current_level.is_some() => {
                     current_text.push_str(&t);
                 }
-            }
             Event::End(TagEnd::Heading(_)) => {
                 if let Some(level) = current_level.take() {
                     let title = current_text.trim().to_string();

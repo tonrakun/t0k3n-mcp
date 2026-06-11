@@ -142,7 +142,7 @@ fn extract_errors(lines: &[&str]) -> Vec<String> {
                 let prev = lines[i - 1];
                 if !prev.trim().is_empty()
                     && !is_noise_line(prev)
-                    && result.last().map_or(true, |l: &String| l.trim() != prev.trim())
+                    && result.last().is_none_or(|l: &String| l.trim() != prev.trim())
                 {
                     result.push(format!("  {prev}"));
                 }
