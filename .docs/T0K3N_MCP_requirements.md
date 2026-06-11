@@ -971,14 +971,18 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 | パラメータ | 型 | 説明 |
 |---|---|---|
-| `category` | `string?` | カテゴリ名（file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug）。省略時は全カテゴリを返す |
+| `category` | `string?` | カテゴリ名（file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug）。省略時はカテゴリ名一覧のみ。`"all"` で全カタログ |
 
-**返値**: カテゴリ → ツール一覧（`name` + `description`）のマップ
+**返値**:
+- 省略時: カテゴリ名の配列 + 使い方ヒント（最小トークン）
+- カテゴリ指定時: そのカテゴリのツール一覧（`name` + `description`）
+- `"all"`: 全カテゴリ → ツール一覧のマップ
 
 **設計方針**:
 - instructions からツール列挙を排除し「不明なときは `help` を呼ぶ」1 行に置き換える
 - ツール追加時は `help` の静的テーブルのみ更新すればよく、instructions は変更不要
 - カテゴリ不明時は利用可能カテゴリ一覧をエラーメッセージに含めて返す
+- instructions はツール列挙ではなく原則駆動（フル読み禁止 / skeleton→body 2段階読み / check_budget / batch_read / help 案内）。DELTA READS の挙動説明は help で発見できないため instructions に維持する
 
 ---
 
@@ -1284,6 +1288,8 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 - [x] `help`（カテゴリ別ツール探索・instructions 肥大化防止）
 - [x] instructions を MANDATORY SUBSTITUTIONS + `help` 呼び出し指示のみにスリム化
+- [x] `help` 引数なし時はカテゴリ名一覧のみ返すよう変更（全カタログは `help("all")`、ツール説明・スキーマ説明も追従）
+- [x] instructions を原則駆動に書き直し（代替表を廃止し、フル読み禁止 / skeleton→body / check_budget / batch_read / help 案内の5原則 + DELTA READS 維持。500トークン以内）
 
 ### Phase 8 — トークン削減第2世代 v2.7+
 

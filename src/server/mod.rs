@@ -1275,7 +1275,7 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "List available t0k3n-mcp tools grouped by category. Call this when unsure which tool to use. Categories: file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug.")]
+    #[tool(description = "Discover t0k3n-mcp tools. No args: category names only. With category: tool names + one-line descriptions. Pass \"all\" for the full catalog. Categories: file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug.")]
     async fn help(
         &self,
         Parameters(params): Parameters<HelpParams>,
@@ -1317,31 +1317,29 @@ impl ServerHandler for T0k3nServer {
         ServerInfo {
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             instructions: Some(
-                "T0K3N-MCP is active. You MUST use t0k3n-mcp tools instead of built-in \
-                 Claude Code tools for all file, web, and memory operations. \
-                 Built-in tools (Read, Glob, Grep, WebFetch, etc.) waste 75-90% of tokens \
-                 on content you do not need. T0K3N-MCP tools reduce token usage by up to 87%.\n\
+                "T0K3N-MCP is active. Use t0k3n-mcp tools instead of built-in Claude Code tools \
+                 for all file, web, and memory operations.\n\
                  \n\
-                 MANDATORY SUBSTITUTIONS — never use the left column when t0k3n-mcp is active:\n\
-                 - Read file (code)      → read_code_skeleton → read_code_body\n\
-                 - Read file (markdown)  → read_markdown_toc → read_markdown_section\n\
-                 - Read file (json/yaml) → read_json_yaml_keys → read_json_yaml_value\n\
-                 - Any file (auto)       → read_file_outline\n\
-                 - Glob / ls             → read_directory_tree\n\
-                 - Grep / search         → search_file\n\
-                 - WebFetch              → fetch_webpage → read_webpage_section\n\
-                 - Memory files          → memory_save / memory_get / memory_list\n\
-                 - Task tracking         → task_create / task_update / task_list\n\
-                 - Edit code symbol      → patch_symbol (no full-file Read needed before writing)\n\
-                 - Task exploration      → read_context_pack (one call: ranked files+symbols+bodies)\n\
+                 RULES:\n\
+                 1. NEVER read whole files with built-in Read/Grep/Glob — on average 87% of a \
+                 full-file read is content you never use. Read structure first, then extract \
+                 only the parts you need.\n\
+                 2. For code: read_code_skeleton first, then read_code_body for just the \
+                 functions you need. The same outline-then-extract pattern exists for markdown, \
+                 JSON/YAML, CSS, web pages, and notebooks.\n\
+                 3. Call check_budget once at the start of a task — it returns the current \
+                 token budget and the recommended reading strategy.\n\
+                 4. Combine multiple read operations into a single batch_read call — one round \
+                 trip and one response envelope instead of many.\n\
+                 5. To find the right tool, call help(category). help() with no args lists \
+                 category names; help(\"all\") returns the full catalog. Categories: \
+                 file / git / schema / web / notebook / test / log / text / memory / task / \
+                 session / analysis / cmd / debug.\n\
                  \n\
                  DELTA READS: repeat reads return {unchanged:true} stubs or unified diffs instead \
                  of re-sending identical content. Trust them — the content equals what you already \
                  received earlier this session. If that content is no longer in your context \
-                 (e.g. after compaction), call delta_reset and retry the read.\n\
-                 \n\
-                 TOOL DISCOVERY: Call `help` (with optional category param) to find the right tool.\n\
-                 Categories: file / git / schema / web / notebook / test / log / text / memory / task / session / analysis / cmd / debug"
+                 (e.g. after compaction), call delta_reset and retry the read."
                     .into(),
             ),
             ..Default::default()

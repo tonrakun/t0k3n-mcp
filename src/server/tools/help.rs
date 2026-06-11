@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct HelpParams {
     #[schemars(
-        description = "Category filter: file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug. Omit to list all categories."
+        description = "Category filter: file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug. Omit to list category names only; pass \"all\" for the full catalog."
     )]
     pub category: Option<String>,
 }
@@ -132,7 +132,15 @@ fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
 pub fn help(params: HelpParams) -> serde_json::Value {
     let all = catalog();
     match params.category.as_deref() {
-        None | Some("all") => serde_json::to_value(all).unwrap_or_default(),
+        None => {
+            let mut categories: Vec<&str> = all.keys().copied().collect();
+            categories.sort_unstable();
+            serde_json::json!({
+                "categories": categories,
+                "usage": "help(category) → tool names + descriptions for that category; help(\"all\") → full catalog",
+            })
+        }
+        Some("all") => serde_json::to_value(all).unwrap_or_default(),
         Some(cat) => {
             let key = cat.to_lowercase();
             if let Some(tools) = all.get(key.as_str()) {
