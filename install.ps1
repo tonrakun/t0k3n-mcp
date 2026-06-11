@@ -19,7 +19,7 @@ function Fail([string]$Message) {
 }
 
 # Run the binary with a timeout so a misbehaving exe can never hang the installer.
-# stderr is swallowed: pre-2.4.1 binaries ignore --version and boot the server,
+# stderr is swallowed: pre-2.5.0 binaries ignore --version and boot the server,
 # which would otherwise spill its startup logs into the installer output.
 function Get-BinaryVersion([string]$Path) {
     $stdout = [System.IO.Path]::GetTempFileName()
@@ -68,7 +68,7 @@ if ($IsUpdate) {
         $InstalledVersion = Get-BinaryVersion $BinPath
     }
     if ($InstalledVersion) { Write-Ok "Installed: v$InstalledVersion" }
-    else                   { Write-Info "Installed version unknown (pre-2.4.1 binary)" }
+    else                   { Write-Info "Installed version unknown (pre-2.5.0 binary)" }
 
     if ($LatestVersion -and $InstalledVersion -eq $LatestVersion) {
         Write-Host ""

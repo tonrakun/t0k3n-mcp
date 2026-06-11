@@ -72,7 +72,7 @@ if [ "$IS_UPDATE" = 1 ]; then
     if [ -n "$INSTALLED_VERSION" ]; then
         ok "Installed: v${INSTALLED_VERSION}"
     else
-        info "Installed version unknown (pre-2.4.1 binary)"
+        info "Installed version unknown (pre-2.5.0 binary)"
     fi
     if [ -n "$LATEST_VERSION" ] && [ "$INSTALLED_VERSION" = "$LATEST_VERSION" ]; then
         echo ""

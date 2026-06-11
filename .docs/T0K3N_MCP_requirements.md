@@ -1304,6 +1304,21 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
   - クエリの字句スコアリング（パス・内容・シンボル名/シグネチャ）でファイル/シンボルをランク付けし、トークンバジェット内に貪欲詰め（ランキング+シグネチャ常時、本文は上位から）
   - 探索フェーズの tree → search → skeleton → body 往復を 1 コールに置換
 
+### Phase 9 — 保守・インストーラ改善 v2.5.0
+
+- [x] スコープ付きディレクトリ走査の Windows バグ修正
+  - `safe_path` の canonicalize が返す `\\?\` verbatim パスにより `strip_prefix(root)` が常に失敗し、`read_complexity_map` / `read_dead_code` が 0 件、`read_code_deps` の imported_by が常に空になっていた
+  - `security::scoped_root` / `security::rel_display` 共通ヘルパー導入（20 箇所超の重複 strip_prefix チェーンを集約）
+  - `safe_path` の `..` アンダーフロー拒否（相対 root 時に traversal チェックが素通りだった穴を `PathTraversal` エラーで防止）
+- [x] clippy 全警告解消（let-chains 化・`sort_by_key(Reverse)` 等）
+- [x] `--version` / `-V` フラグ（ログ・サーバー起動前に即出力。インストーラの検証用）
+- [x] インストールスクリプト UX 改善（install.ps1 / install.sh）
+  - 4 ステップ進捗表示（最新リリース確認 → 導入済みバージョン確認 → ダウンロード → インストール+検証）
+  - 最新版導入済みならスキップ・ダウンロードサイズ検証・更新前後バージョンのサマリ表示
+  - `INSTALL_DIR/VERSION` ファイルでバージョン管理（旧バイナリのプローブは 5 秒タイムアウトでガード）
+- [x] Windows アップデート失敗修正
+  - MCP サーバー実行中は exe がロックされ `Remove-Item` が必ず失敗していた → リネーム方式スワップに変更（実行中でもリネームは可能）。旧バイナリは次回実行時にクリーンアップ
+
 ---
 
 ## 6. 決定事項
