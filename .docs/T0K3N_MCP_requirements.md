@@ -1336,6 +1336,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [x] `t0k3n version` / `t0k3n help`
 - [x] インストールスクリプトを薄いブートストラップに縮小（ダウンロード → 配置 → ユーザー PATH 追加のみ。昇格不要。更新は `t0k3n upgrade` に移譲）
 - [x] アップデート通知を `t0k3n upgrade` の案内に変更
+- [x] リリース CI の GitHub Actions を Node 24 対応メジャーへ更新（checkout v6 / cache v5 / upload-artifact v7 / download-artifact v8 / action-gh-release v3。2026-06-16 の Node 24 強制デフォルト化対応）
 
 ---
 
