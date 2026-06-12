@@ -157,6 +157,17 @@ pub fn read_css_body(root: &Path, params: ReadCssBodyParams) -> anyhow::Result<R
                 {
                     let from = start.saturating_sub(1); // 0-indexed selector line
                     let to = end.min(lines.len());
+                    if from >= to {
+                        items.push(CssBodyItem {
+                            id: id.clone(),
+                            selector: String::new(),
+                            content: format!(
+                                "Error: id '{id}' is out of range (file has {} lines). Re-run read_css_skeleton for fresh ids.",
+                                lines.len()
+                            ),
+                        });
+                        continue;
+                    }
                     let body = lines[from..to].join("\n");
                     let selector = skeleton.iter()
                         .find(|s| &s.id == id)
@@ -176,4 +187,21 @@ pub fn read_css_body(root: &Path, params: ReadCssBodyParams) -> anyhow::Result<R
     let json = serde_json::to_string(&items).unwrap_or_default();
     let token_count = estimate_tokens(&json);
     Ok(ReadCssBodyResult { items, token_count })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_css_body_out_of_range_id_returns_error_not_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.css"), ".x { color: red; }\n").unwrap();
+        let r = read_css_body(dir.path(), ReadCssBodyParams {
+            path: "a.css".into(),
+            ids: vec![".x:100-120".into()],
+        }).unwrap();
+        assert_eq!(r.items.len(), 1);
+        assert!(r.items[0].content.contains("out of range"));
+    }
 }

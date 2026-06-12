@@ -562,6 +562,16 @@ pub fn read_code_body(root: &Path, params: ReadCodeBodyParams) -> anyhow::Result
                 && let (Ok(start), Ok(end)) = (range[0].parse::<usize>(), range[1].parse::<usize>()) {
                     let start = start.saturating_sub(1);
                     let end = end.min(lines.len());
+                    if start >= end {
+                        items.push(CodeBodyItem {
+                            id: id.clone(),
+                            content: format!(
+                                "Error: id '{id}' is out of range (file has {} lines). Re-run read_code_skeleton for fresh ids.",
+                                lines.len()
+                            ),
+                        });
+                        continue;
+                    }
                     let body = lines[start..end].join("\n");
                     items.push(CodeBodyItem { id: id.clone(), content: body });
                     continue;
@@ -925,6 +935,11 @@ pub fn read_call_graph(root: &Path, params: ReadCallGraphParams) -> anyhow::Resu
 
     let from = start.saturating_sub(1);
     let to = end.min(lines.len());
+    anyhow::ensure!(
+        from < to,
+        "function_id の行範囲がファイル外です（ファイルは {} 行）。read_code_skeleton を再実行してください",
+        lines.len()
+    );
 
     let fn_name = extract_fn_name(lines[from]);
     let body = lines[from..to].join("\n");
@@ -1265,4 +1280,37 @@ pub fn read_interface_conformance(
         total,
         token_count,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup(content: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.rs"), content).unwrap();
+        dir
+    }
+
+    #[test]
+    fn read_code_body_out_of_range_id_returns_error_not_panic() {
+        let dir = setup("fn a() {}\nfn b() {}\n");
+        let r = read_code_body(dir.path(), ReadCodeBodyParams {
+            path: "a.rs".into(),
+            ids: vec!["function:100-120".into()],
+        }).unwrap();
+        assert_eq!(r.items.len(), 1);
+        assert!(r.items[0].content.contains("out of range"));
+    }
+
+    #[test]
+    fn read_call_graph_out_of_range_id_errors_not_panics() {
+        let dir = setup("fn a() {}\n");
+        let err = read_call_graph(dir.path(), ReadCallGraphParams {
+            path: "a.rs".into(),
+            function_id: "function:100-120".into(),
+            depth: None,
+        }).unwrap_err();
+        assert!(err.to_string().contains("read_code_skeleton"));
+    }
 }
