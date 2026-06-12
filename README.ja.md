@@ -121,7 +121,7 @@ t0k3n setup
   "mcpServers": {
     "t0k3n": {
       "command": "/path/to/t0k3n",
-      "args": []
+      "args": ["--root", "/path/to/your-project"]
     }
   }
 }
@@ -137,7 +137,7 @@ t0k3n setup
 |----------|------|
 | `t0k3n` | MCP サーバーを起動（stdio、引数なしがデフォルト） |
 | `t0k3n upgrade` | 最新リリースをダウンロードしてその場で自己更新 |
-| `t0k3n setup [dir]` | `.mcp.json` を生成・マージ（デフォルト: カレントディレクトリ） |
+| `t0k3n setup [dir]` | `.mcp.json` を生成・マージし、そのディレクトリを `--root` に設定（デフォルト: カレントディレクトリ） |
 | `t0k3n version` | バージョンを表示 |
 | `t0k3n help` | ヘルプを表示 |
 

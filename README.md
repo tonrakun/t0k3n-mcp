@@ -117,7 +117,7 @@ This writes (or merges into) `.mcp.json`:
   "mcpServers": {
     "t0k3n": {
       "command": "/path/to/t0k3n",
-      "args": []
+      "args": ["--root", "/path/to/your-project"]
     }
   }
 }
@@ -129,7 +129,7 @@ This writes (or merges into) `.mcp.json`:
 |---------|-------------|
 | `t0k3n` | Start the MCP server (stdio; MCP clients launch it with no subcommand) |
 | `t0k3n upgrade` | Download the latest release and replace the binary in place |
-| `t0k3n setup [dir]` | Write or merge `.mcp.json` (default: current directory) |
+| `t0k3n setup [dir]` | Write or merge `.mcp.json` with `--root` pinned to that directory (default: current directory) |
 | `t0k3n version` | Print version |
 | `t0k3n help` | Show help |
 

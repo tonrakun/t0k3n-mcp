@@ -1333,6 +1333,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
   - Windows はリネーム方式スワップ（実行中でも更新可能）、Unix は rename(2) でアトミック置換
   - 同ディレクトリに旧名 `t0k3n-mcp` バイナリがあれば一緒に更新（既存 `.mcp.json` 互換維持）
 - [x] `t0k3n setup [dir]` サブコマンド（`.mcp.json` の生成・既存設定へのマージ）
+  - [x] `--root` は必須指定のため、setup 実行ディレクトリ（または指定 dir）の絶対パスを `args` に常に出力
 - [x] `t0k3n version` / `t0k3n help`
 - [x] インストールスクリプトを薄いブートストラップに縮小（ダウンロード → 配置 → ユーザー PATH 追加のみ。昇格不要。更新は `t0k3n upgrade` に移譲）
 - [x] アップデート通知を `t0k3n upgrade` の案内に変更

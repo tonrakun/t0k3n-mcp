@@ -26,7 +26,7 @@ USAGE:
 
 COMMANDS:
     upgrade               Download the latest release and replace this binary in place
-    setup [dir]           Write or merge .mcp.json pointing at this binary (default: current dir)
+    setup [dir]           Write or merge .mcp.json pointing at this binary with --root set to dir (default: current dir)
     version               Print version and exit
     help                  Show this help
 
@@ -202,6 +202,10 @@ pub fn setup(dir: Option<&str>) -> Result<()> {
     if !target_dir.is_dir() {
         bail!("not a directory: {}", target_dir.display());
     }
+    // --root is mandatory for the server; a relative path would silently depend
+    // on the client's working directory, so always pin the absolute path.
+    let target_dir = std::path::absolute(&target_dir)
+        .with_context(|| format!("could not resolve absolute path: {}", target_dir.display()))?;
     let config_path = target_dir.join(".mcp.json");
     let exe = std::env::current_exe().context("could not locate the running executable")?;
 
@@ -226,7 +230,7 @@ pub fn setup(dir: Option<&str>) -> Result<()> {
         "t0k3n".to_string(),
         serde_json::json!({
             "command": exe.to_string_lossy(),
-            "args": [],
+            "args": ["--root", target_dir.to_string_lossy()],
         }),
     );
 
@@ -252,6 +256,11 @@ mod tests {
         let json: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
         assert!(json["mcpServers"]["t0k3n"]["command"].is_string());
+        let expected_root = std::path::absolute(dir.path()).unwrap();
+        assert_eq!(
+            json["mcpServers"]["t0k3n"]["args"],
+            serde_json::json!(["--root", expected_root.to_string_lossy()])
+        );
 
         // Merging keeps other servers intact
         std::fs::write(
