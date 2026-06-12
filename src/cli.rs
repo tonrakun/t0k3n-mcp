@@ -7,7 +7,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::update;
 
-const GITHUB_REPO: &str = "tonrakun/T0K3N-MCP";
+const GITHUB_REPO: &str = "tonrakun/t0k3n-mcp";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Legacy binary name kept in sync so pre-rename `.mcp.json` configs keep working.

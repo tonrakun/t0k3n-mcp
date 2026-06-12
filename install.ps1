@@ -3,7 +3,7 @@
 #   t0k3n upgrade / t0k3n setup
 $ErrorActionPreference = "Stop"
 
-$Repo       = "tonrakun/T0K3N-MCP"
+$Repo       = "tonrakun/t0k3n-mcp"
 $Artifact   = "t0k3n-windows-x86_64.exe"
 $InstallDir = "$env:USERPROFILE\t0k3n-mcp"
 $BinPath    = "$InstallDir\t0k3n.exe"

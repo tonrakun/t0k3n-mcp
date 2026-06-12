@@ -73,13 +73,13 @@ Total                                      1,312 tokens  ← 74% reduction
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tonrakun/t0k3n-mcp/main/install.sh | bash
 ```
 
 **Windows (PowerShell)**
 
 ```powershell
-irm https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/tonrakun/t0k3n-mcp/main/install.ps1 | iex
 ```
 
 Installs to `~/.t0k3n-mcp/t0k3n` (Unix) or `%USERPROFILE%\t0k3n-mcp\t0k3n.exe` (Windows) and adds it to your PATH — no elevation required.

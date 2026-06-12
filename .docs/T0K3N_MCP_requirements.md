@@ -53,7 +53,7 @@
 
 #### バージョンチェック仕様
 
-- GitHub API（`GET /repos/tonrakun/T0K3N-MCP/releases/latest`）から最新リリースの `tag_name` を取得する
+- GitHub API（`GET /repos/tonrakun/t0k3n-mcp/releases/latest`）から最新リリースの `tag_name` を取得する
 - 実行中バージョンと semver 比較する
 - `実行中 < 最新リリース` → `info: ⬆ Update available: vX.X.X → vY.Y.Y` + リリース URL をログ出力
 - `実行中 > 最新リリース` → `info: 🧪 Beta Preview: running vX.X.X (latest release: vY.Y.Y)` をログ出力

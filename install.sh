@@ -4,7 +4,7 @@
 #   t0k3n upgrade / t0k3n setup
 set -euo pipefail
 
-REPO="tonrakun/T0K3N-MCP"
+REPO="tonrakun/t0k3n-mcp"
 INSTALL_DIR="${HOME}/.t0k3n-mcp"
 BIN_PATH="${INSTALL_DIR}/t0k3n"
 

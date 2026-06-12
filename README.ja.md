@@ -71,13 +71,13 @@ read_code_body(["function:54-67"])   →    150 トークン（対象関数の�
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tonrakun/t0k3n-mcp/main/install.sh | bash
 ```
 
 **Windows（PowerShell）**
 
 ```powershell
-irm https://raw.githubusercontent.com/tonrakun/T0K3N-MCP/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/tonrakun/t0k3n-mcp/main/install.ps1 | iex
 ```
 
 Unix は `~/.t0k3n-mcp/t0k3n`、Windows は `%USERPROFILE%\t0k3n-mcp\t0k3n.exe` にインストールされ、PATH にも追加されます（管理者権限は不要）。
