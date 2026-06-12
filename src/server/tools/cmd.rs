@@ -70,8 +70,9 @@ pub fn run_command(root: &Path, params: RunCommandParams) -> anyhow::Result<RunC
         .map_err(|e| anyhow::anyhow!("コマンド起動失敗: {e}"))?;
 
     // Run in a thread so we can enforce a timeout via channel recv_timeout.
-    // If the timeout fires the child is orphaned (best-effort); the thread will
-    // eventually clean up when the process finishes on its own.
+    // On timeout the child's process tree is killed so it does not keep
+    // running (and holding locks/ports) after we report the failure.
+    let child_pid = child.id();
     let (tx, rx) = mpsc::channel::<std::io::Result<std::process::Output>>();
     std::thread::spawn(move || {
         let _ = tx.send(child.wait_with_output());
@@ -80,8 +81,9 @@ pub fn run_command(root: &Path, params: RunCommandParams) -> anyhow::Result<RunC
     let output = match rx.recv_timeout(timeout) {
         Ok(result) => result.map_err(|e| anyhow::anyhow!("実行失敗: {e}"))?,
         Err(_) => {
+            kill_process_tree(child_pid);
             return Err(anyhow::anyhow!(
-                "タイムアウト: コマンドが {} 秒以内に完了しませんでした。\
+                "タイムアウト: コマンドが {} 秒以内に完了しなかったため強制終了しました。\
                  timeout_secs を増やすか、コマンドを確認してください。",
                 timeout.as_secs()
             ));
@@ -128,6 +130,23 @@ pub fn run_command(root: &Path, params: RunCommandParams) -> anyhow::Result<RunC
         warnings,
         token_count,
     })
+}
+
+/// Kill a timed-out child and its descendants (best-effort).
+#[cfg(windows)]
+fn kill_process_tree(pid: u32) {
+    let _ = Command::new("taskkill")
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .output();
+}
+
+#[cfg(not(windows))]
+fn kill_process_tree(pid: u32) {
+    // sh -c runs the command as a direct child of `pid`; killing it is enough
+    // for the common case. Grandchildren that double-fork are not chased.
+    let _ = Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .output();
 }
 
 // ─── Output classification ────────────────────────────────────────────────────
