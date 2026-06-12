@@ -71,7 +71,7 @@ pub struct CountTokensResult {
 pub fn count_tokens(params: CountTokensParams) -> CountTokensResult {
     CountTokensResult {
         token_count: estimate_tokens(&params.text),
-        char_count: params.text.len(),
+        char_count: params.text.chars().count(),
         line_count: params.text.lines().count(),
     }
 }
@@ -161,16 +161,57 @@ pub struct SummarizeConversationResult {
 
 pub fn summarize_conversation(params: SummarizeConversationParams) -> SummarizeConversationResult {
     let max_tokens = params.max_tokens.unwrap_or(500);
-    // Simple extractive summarization: take first N tokens worth of content
+    // Simple extractive summarization: take first N tokens worth of content.
+    // Slice on char boundaries — byte slicing panics on multibyte (CJK) text.
     let target_chars = max_tokens * 4;
-    let summary = if params.text.len() <= target_chars {
-        params.text.clone()
-    } else {
-        let truncated = &params.text[..target_chars];
-        // Find last complete sentence
-        let end = truncated.rfind(['.', '!', '?']).map(|i| i + 1).unwrap_or(target_chars);
-        format!("{}...\n\n[Conversation truncated to fit token budget]", &params.text[..end])
+    let cut = params.text
+        .char_indices()
+        .nth(target_chars)
+        .map(|(i, _)| i);
+    let summary = match cut {
+        None => params.text.clone(),
+        Some(cut) => {
+            let truncated = &params.text[..cut];
+            // Find last complete sentence (ASCII and CJK sentence enders)
+            let end = truncated
+                .rfind(['.', '!', '?', '。', '！', '？'])
+                .map(|i| i + truncated[i..].chars().next().map_or(0, char::len_utf8))
+                .unwrap_or(cut);
+            format!("{}...\n\n[Conversation truncated to fit token budget]", &params.text[..end])
+        }
     };
     let token_count = estimate_tokens(&summary);
     SummarizeConversationResult { summary, token_count }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summarize_truncates_multibyte_text_without_panic() {
+        // 3-byte chars: byte slicing at char index N would land mid-codepoint
+        let text = "これはとても長い日本語の会話です。".repeat(200);
+        let result = summarize_conversation(SummarizeConversationParams {
+            text,
+            max_tokens: Some(10),
+        });
+        assert!(result.summary.contains("[Conversation truncated"));
+        assert!(result.summary.contains('。'));
+    }
+
+    #[test]
+    fn summarize_returns_short_text_unchanged() {
+        let result = summarize_conversation(SummarizeConversationParams {
+            text: "short".to_string(),
+            max_tokens: Some(500),
+        });
+        assert_eq!(result.summary, "short");
+    }
+
+    #[test]
+    fn count_tokens_counts_chars_not_bytes() {
+        let result = count_tokens(CountTokensParams { text: "日本語".to_string() });
+        assert_eq!(result.char_count, 3);
+    }
 }
