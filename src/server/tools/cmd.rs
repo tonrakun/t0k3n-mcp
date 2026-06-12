@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
 use std::sync::mpsc;
@@ -150,6 +151,114 @@ fn kill_process_tree(pid: u32) {
 }
 
 // ─── Output classification ────────────────────────────────────────────────────
+
+// ─── command delta ledger ────────────────────────────────────────────────────
+
+const MAX_CMD_ENTRIES: usize = 128;
+
+/// Per-session ledger of previous run_command results, keyed by command+cwd.
+/// Repeat runs of the same command return only what changed (new/resolved
+/// errors and warnings) instead of re-sending output already in context —
+/// the build/test fix loop reruns one command many times with ~90% identical
+/// output.
+pub struct CmdLedger {
+    entries: HashMap<String, CmdRecord>,
+}
+
+struct CmdRecord {
+    success: bool,
+    summary: String,
+    errors: Vec<String>,
+    warnings: Vec<String>,
+}
+
+/// Delta between the previous and current run of the same command.
+pub struct CmdDeltaReport {
+    pub success_changed: bool,
+    /// Sent when the pass/fail state flipped, or on success when the summary
+    /// text differs (covers commands whose success output matters, e.g. git).
+    pub summary: Option<String>,
+    pub new_errors: Vec<String>,
+    pub resolved_errors: usize,
+    pub unchanged_errors: usize,
+    pub new_warnings: Vec<String>,
+    pub resolved_warnings: usize,
+    pub unchanged_warnings: usize,
+}
+
+/// (new lines, resolved count, unchanged count) comparing by trimmed content.
+fn diff_lines(prev: &[String], curr: &[String]) -> (Vec<String>, usize, usize) {
+    let prev_set: HashSet<&str> = prev.iter().map(|s| s.trim()).collect();
+    let curr_set: HashSet<&str> = curr.iter().map(|s| s.trim()).collect();
+    let new: Vec<String> = curr
+        .iter()
+        .filter(|s| !prev_set.contains(s.trim()))
+        .cloned()
+        .collect();
+    let resolved = prev_set.difference(&curr_set).count();
+    let unchanged = curr_set.intersection(&prev_set).count();
+    (new, resolved, unchanged)
+}
+
+impl CmdLedger {
+    pub fn new() -> Self {
+        Self { entries: HashMap::new() }
+    }
+
+    /// Ledger key: trimmed command + working directory.
+    pub fn key(command: &str, cwd: Option<&str>) -> String {
+        format!("run_command:{}|{}", command.trim(), cwd.unwrap_or(""))
+    }
+
+    /// Record the current result. Returns None on the first run of a command
+    /// (send full output) and the delta report on repeats.
+    pub fn check_and_update(&mut self, key: &str, result: &RunCommandResult) -> Option<CmdDeltaReport> {
+        if self.entries.len() >= MAX_CMD_ENTRIES && !self.entries.contains_key(key) {
+            self.entries.clear();
+        }
+        let record = CmdRecord {
+            success: result.success,
+            summary: result.summary.clone(),
+            errors: result.errors.clone(),
+            warnings: result.warnings.clone(),
+        };
+        let prev = self.entries.insert(key.to_string(), record)?;
+
+        let (new_errors, resolved_errors, unchanged_errors) = diff_lines(&prev.errors, &result.errors);
+        let (new_warnings, resolved_warnings, unchanged_warnings) = diff_lines(&prev.warnings, &result.warnings);
+        let success_changed = prev.success != result.success;
+        let summary = if success_changed || (result.success && prev.summary != result.summary) {
+            Some(result.summary.clone())
+        } else {
+            None
+        };
+        Some(CmdDeltaReport {
+            success_changed,
+            summary,
+            new_errors,
+            resolved_errors,
+            unchanged_errors,
+            new_warnings,
+            resolved_warnings,
+            unchanged_warnings,
+        })
+    }
+
+    pub fn clear(&mut self, pattern: Option<&str>) -> usize {
+        match pattern {
+            None => {
+                let n = self.entries.len();
+                self.entries.clear();
+                n
+            }
+            Some(p) => {
+                let before = self.entries.len();
+                self.entries.retain(|k, _| !k.contains(p));
+                before - self.entries.len()
+            }
+        }
+    }
+}
 
 fn extract_errors(lines: &[&str]) -> Vec<String> {
     let mut result: Vec<String> = Vec::new();
@@ -336,4 +445,96 @@ fn is_go_error(line: &str) -> bool {
         || lower.contains("type mismatch")
         || lower.contains("not enough arguments")
         || lower.contains("too many arguments")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn result(success: bool, summary: &str, errors: &[&str], warnings: &[&str]) -> RunCommandResult {
+        RunCommandResult {
+            command: "cargo build".into(),
+            exit_code: if success { 0 } else { 1 },
+            success,
+            duration_ms: 100,
+            summary: summary.into(),
+            errors: errors.iter().map(|s| s.to_string()).collect(),
+            warnings: warnings.iter().map(|s| s.to_string()).collect(),
+            token_count: 10,
+        }
+    }
+
+    #[test]
+    fn first_run_returns_none() {
+        let mut ledger = CmdLedger::new();
+        let key = CmdLedger::key("cargo build", None);
+        assert!(ledger.check_and_update(&key, &result(false, "failed", &["error[E0001]: a"], &[])).is_none());
+    }
+
+    #[test]
+    fn repeat_reports_new_resolved_unchanged() {
+        let mut ledger = CmdLedger::new();
+        let key = CmdLedger::key("cargo build", None);
+        ledger.check_and_update(&key, &result(false, "failed", &["error[E0001]: a", "error[E0002]: b"], &[]));
+        let d = ledger
+            .check_and_update(&key, &result(false, "failed", &["error[E0002]: b", "error[E0003]: c"], &[]))
+            .unwrap();
+        assert_eq!(d.new_errors, vec!["error[E0003]: c".to_string()]);
+        assert_eq!(d.resolved_errors, 1);
+        assert_eq!(d.unchanged_errors, 1);
+        assert!(!d.success_changed);
+        // repeated failure: errors carry the content, summary suppressed
+        assert!(d.summary.is_none());
+    }
+
+    #[test]
+    fn fail_to_pass_includes_summary() {
+        let mut ledger = CmdLedger::new();
+        let key = CmdLedger::key("cargo test", None);
+        ledger.check_and_update(&key, &result(false, "failed", &["error: x"], &[]));
+        let d = ledger.check_and_update(&key, &result(true, "test result: ok", &[], &[])).unwrap();
+        assert!(d.success_changed);
+        assert_eq!(d.summary.as_deref(), Some("test result: ok"));
+        assert_eq!(d.resolved_errors, 1);
+    }
+
+    #[test]
+    fn pass_to_pass_with_changed_summary_resends_it() {
+        let mut ledger = CmdLedger::new();
+        let key = CmdLedger::key("git push", None);
+        ledger.check_and_update(&key, &result(true, "pushed abc123", &[], &[]));
+        let d = ledger.check_and_update(&key, &result(true, "pushed def456", &[], &[])).unwrap();
+        assert_eq!(d.summary.as_deref(), Some("pushed def456"));
+    }
+
+    #[test]
+    fn identical_repeat_is_a_stub() {
+        let mut ledger = CmdLedger::new();
+        let key = CmdLedger::key("cargo build", None);
+        ledger.check_and_update(&key, &result(false, "failed", &["error: x"], &["warning: y"]));
+        let d = ledger.check_and_update(&key, &result(false, "failed", &["error: x"], &["warning: y"])).unwrap();
+        assert!(d.new_errors.is_empty() && d.new_warnings.is_empty());
+        assert!(d.summary.is_none());
+        assert_eq!(d.unchanged_errors, 1);
+        assert_eq!(d.unchanged_warnings, 1);
+    }
+
+    #[test]
+    fn distinct_cwd_gets_its_own_entry() {
+        let mut ledger = CmdLedger::new();
+        let k1 = CmdLedger::key("npm test", None);
+        let k2 = CmdLedger::key("npm test", Some("packages/app"));
+        assert_ne!(k1, k2);
+        ledger.check_and_update(&k1, &result(true, "ok", &[], &[]));
+        assert!(ledger.check_and_update(&k2, &result(true, "ok", &[], &[])).is_none());
+    }
+
+    #[test]
+    fn clear_by_pattern() {
+        let mut ledger = CmdLedger::new();
+        ledger.check_and_update(&CmdLedger::key("cargo build", None), &result(true, "ok", &[], &[]));
+        ledger.check_and_update(&CmdLedger::key("npm test", None), &result(true, "ok", &[], &[]));
+        assert_eq!(ledger.clear(Some("cargo")), 1);
+        assert_eq!(ledger.clear(None), 1);
+    }
 }

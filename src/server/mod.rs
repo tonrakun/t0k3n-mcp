@@ -22,7 +22,7 @@ use tools::render::OutputFormat;
 use tools::{
     batch::{BatchReadParams, batch_read},
     ci::{ReadCiPipelineParams, read_ci_pipeline},
-    cmd::{RunCommandParams, run_command},
+    cmd::{CmdLedger, RunCommandParams, run_command},
     code::{ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams, ReadInterfaceConformanceParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams, read_call_graph, read_code_body, read_code_skeleton, read_interface_conformance, read_symbol_usages, read_type_skeleton},
     complexity::{ReadComplexityMapParams, read_complexity_map},
     context_pack::{ReadContextPackParams, read_context_pack},
@@ -153,6 +153,7 @@ pub struct T0k3nServer {
     db: Arc<Mutex<Database>>,
     web_cache: Arc<Mutex<HashMap<String, String>>>,
     ledger: Arc<Mutex<ReadLedger>>,
+    cmd_ledger: Arc<Mutex<CmdLedger>>,
     tool_router: ToolRouter<Self>,
     pub dashboard: Option<Arc<DashboardState>>,
 }
@@ -241,6 +242,7 @@ impl T0k3nServer {
             db: Arc::new(Mutex::new(db)),
             web_cache: Arc::new(Mutex::new(HashMap::new())),
             ledger: Arc::new(Mutex::new(ReadLedger::new())),
+            cmd_ledger: Arc::new(Mutex::new(CmdLedger::new())),
             tool_router: Self::tool_router(),
             dashboard,
         };
@@ -1244,33 +1246,66 @@ impl T0k3nServer {
     // Debug tool
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Execute a shell command and return token-efficient output. On success: last ~30 lines (final summary). On failure: extracted error lines + warning lines + last ~20 lines for context. Use for build tools (cargo, npm, go, make, mvn), test runners (cargo test, pytest, jest), linters (clippy, eslint, flake8), and type checkers (tsc, mypy).")]
+    #[tool(description = "Execute a shell command and return token-efficient output. On success: last ~30 lines (final summary). On failure: extracted error lines + warning lines + last ~20 lines for context. Use for build tools (cargo, npm, go, make, mvn), test runners (cargo test, pytest, jest), linters (clippy, eslint, flake8), and type checkers (tsc, mypy). Repeat runs of the same command return only the delta: new/resolved/unchanged error and warning counts plus the new lines — unchanged lines equal what you already received. Call delta_reset and rerun for full output.")]
     async fn run_command(
         &self,
         Parameters(params): Parameters<RunCommandParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "run_command", {
+            let key = CmdLedger::key(&params.command, params.cwd.as_deref());
             let result = run_command(&self.root, params).map_err(err)?;
-            ok_json(serde_json::json!({
-                "command":     result.command,
-                "exit_code":   result.exit_code,
-                "success":     result.success,
-                "duration_ms": result.duration_ms,
-                "summary":     result.summary,
-                "errors":      result.errors,
-                "warnings":    result.warnings,
-                "token_count": result.token_count,
-            }))
+            let delta = self.cmd_ledger.lock().unwrap().check_and_update(&key, &result);
+            match delta {
+                None => ok_json(serde_json::json!({
+                    "command":     result.command,
+                    "exit_code":   result.exit_code,
+                    "success":     result.success,
+                    "duration_ms": result.duration_ms,
+                    "summary":     result.summary,
+                    "errors":      result.errors,
+                    "warnings":    result.warnings,
+                    "token_count": result.token_count,
+                })),
+                Some(d) => {
+                    let repr = format!(
+                        "{}\n{}\n{}",
+                        d.summary.as_deref().unwrap_or(""),
+                        d.new_errors.join("\n"),
+                        d.new_warnings.join("\n")
+                    );
+                    let mut v = serde_json::json!({
+                        "command":     result.command,
+                        "exit_code":   result.exit_code,
+                        "success":     result.success,
+                        "duration_ms": result.duration_ms,
+                        "delta":       true,
+                        "success_changed":   d.success_changed,
+                        "errors_new":        d.new_errors,
+                        "errors_resolved":   d.resolved_errors,
+                        "errors_unchanged":  d.unchanged_errors,
+                        "warnings_new":      d.new_warnings,
+                        "warnings_resolved": d.resolved_warnings,
+                        "warnings_unchanged": d.unchanged_warnings,
+                        "note": "Delta vs the previous run of this command this session — unchanged errors/warnings not re-sent. Call delta_reset and rerun for full output.",
+                        "token_count": tools::fs::estimate_tokens(&repr),
+                    });
+                    if let Some(summary) = d.summary {
+                        v["summary"] = serde_json::Value::String(summary);
+                    }
+                    ok_json(v)
+                }
+            }
         })
     }
 
-    #[tool(description = "Reset the delta-read ledger. After this, read tools return full content again instead of 'unchanged'/diff stubs. Call when you no longer have earlier tool output in context (e.g. after conversation compaction). Optional pattern narrows the reset to matching keys (e.g. a file path).")]
+    #[tool(description = "Reset the delta ledgers (delta reads AND run_command deltas). After this, read tools return full content and run_command returns full output again instead of 'unchanged'/diff/delta stubs. Call when you no longer have earlier tool output in context (e.g. after conversation compaction). Optional pattern narrows the reset to matching keys (e.g. a file path or command substring).")]
     async fn delta_reset(
         &self,
         Parameters(params): Parameters<DeltaResetParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "delta_reset", {
-            let cleared = self.ledger.lock().unwrap().clear(params.pattern.as_deref());
+            let cleared = self.ledger.lock().unwrap().clear(params.pattern.as_deref())
+                + self.cmd_ledger.lock().unwrap().clear(params.pattern.as_deref());
             ok_json(serde_json::json!({ "cleared_entries": cleared, "token_count": 10 }))
         })
     }
