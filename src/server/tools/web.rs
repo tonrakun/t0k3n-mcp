@@ -34,9 +34,13 @@ pub async fn fetch_webpage(
     } else {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(15))
-            .user_agent("t0k3n-mcp/0.1")
+            .user_agent(concat!("t0k3n-mcp/", env!("CARGO_PKG_VERSION")))
             .build()?;
-        let resp = client.get(&params.url).send().await?;
+        let resp = client
+            .get(&params.url)
+            .send()
+            .await?
+            .error_for_status()?;
         let html = resp.text().await?;
         let converter = htmd::HtmlToMarkdown::new();
         let md = converter.convert(&html).unwrap_or_else(|_| html.clone());
