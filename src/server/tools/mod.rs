@@ -33,6 +33,7 @@ pub mod render;
 pub mod search;
 pub mod security_surface;
 pub mod session;
+pub mod sketch;
 pub mod stats;
 pub mod task;
 pub mod test_results;

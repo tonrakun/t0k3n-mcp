@@ -136,6 +136,41 @@ tree-sitter 移行後も `read_code_skeleton` が返す `id` で本文取得で�
 
 ---
 
+#### 2.2.4 `read_code_sketch`（新規）
+
+`read_code_skeleton`（シグネチャのみ）と `read_code_body`（全文）の中間ズームレベル（ズーム 1.5）。`read_code_body` と同じ skeleton ID（`kind:start-end`）を受け取り、各シンボルの **制御フロー骨格** を返す。
+
+- 残す行: シグネチャ、分岐・ループ（`if`/`else`/`for`/`while`/`match`/`switch`/`case`/`try`/`catch`/`return`/… の語境界マッチ）、ブロック開閉・区切り（`{` 終端・`:` 終端・`=>`・`}`・`end` 等）、関数/メソッド呼び出しを含む行
+- 畳む行: 純データ行（単純代入・リテラル・構造体/配列初期化・コメント専用行）の連続を、最初の行のインデントを保った 1 本の `… N lines …` プレースホルダに置換（言語別コメントトークン: `//` / `#` / `--`）
+- body 比 60〜70% 削減を見込む。実装は tree-sitter ではなく行ベースのヒューリスティックで全言語横断・純関数化しユニットテスト
+
+**入力**
+
+```ts
+{
+  path: string;     // root 相対パス
+  ids: string[];    // read_code_skeleton が返す ID（例: 'function:10-25'）
+}
+```
+
+**出力**
+
+```ts
+{
+  items: Array<{
+    id: string;
+    sketch: string;          // 制御フロー骨格（畳んだ箇所は '… N lines …'）
+    original_lines: number;  // 元の本文行数
+    sketch_lines: number;    // スケッチ後の行数
+  }>;
+  token_count: number;
+}
+```
+
+**フロー**: `read_code_skeleton` → `read_code_sketch(ids)` で「何をしているか」を把握 → 本当に必要なシンボルだけ `read_code_body` で全文取得。
+
+---
+
 ### 2.3 Web 取得系
 
 #### 2.3.1 `fetch_webpage`（変更）
@@ -1096,6 +1131,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 | `read_markdown_section` | Rust 実装 | anchor 指定でセクション取得 |
 | `read_code_skeleton` | Rust 実装 | tree-sitter AST ベーススケルトン（language フィールド・複数行シグネチャ対応） |
 | `read_code_body` | Rust 実装 | スケルトン ID 指定で本文取得 |
+| `read_code_sketch` | Rust 実装 | skeleton と body の中間ズーム（制御フロー骨格＋呼び出し行を残し純データ行を畳む。body 比 60〜70% 削減） |
 | `read_file_outline` | Rust 実装 | ファイル種別自動判別の統合アウトライン取得 |
 | `read_code_deps` | Rust 実装 | import/imported_by 依存グラフ（Rust/Python/JS/TS/Go） |
 | `read_symbol_usages` | Rust 実装 | ワークスペース全体シンボル使用箇所検索 |
@@ -1423,7 +1459,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [x] `patch_symbol` 編集スクリプトモード（タスク19）— `edits: [{find, replace}]` でシンボル本文の部分編集。new_body と排他。find はシンボル内で一意であれば良く（ファイル全体で一意である必要なし）、曖昧時は該当行番号つきでエラー。順次適用・CRLF/末尾改行保持・dry_run/expected_name は既存機構を流用
 - [x] `run_command` デルタモード（タスク20）— 同一コマンド（command+cwd キー）の再実行時にエラー/警告の差分のみ返す（新規分の本文 + 解消/不変は件数のみ）。summary は pass/fail 反転時、または成功時に内容が変わった場合のみ再送。`delta_reset` でコマンド台帳もクリア対象に
 - [ ] クロスツール送信済みコンテンツ台帳（タスク21）— デルタ台帳のキーを tool+params からファイル+行範囲（コンテンツハッシュ）に拡張し、ツール横断の重複送信をスタブ化
-- [ ] `read_code_sketch`（タスク22）— skeleton と body の中間ズーム。制御フロー骨格のみ返す
+- [x] `read_code_sketch`（タスク22）— skeleton と body の中間ズーム。skeleton ID を受け取り、シグネチャ＋分岐/ループ＋ブロック区切り＋呼び出し行をそのまま残し、純データ行（代入・リテラル）の連続を `… N lines …` に畳む。body 比 60〜70% 削減。行ベースのヒューリスティック（言語別コメントトークン対応）で全言語横断・純関数化しユニットテスト
 - [ ] プロジェクトダイジェスト（タスク23）— git HEAD で無効化されるキャッシュ済みアーキテクチャ要約によるウォームスタート
 - [ ] `batch_read` テンプレート因数分解（タスク24）— 類似ファイル群を正規形1つ+差分で返す
 

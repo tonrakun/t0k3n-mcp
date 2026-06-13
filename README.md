@@ -155,6 +155,7 @@ This writes (or merges into) `.mcp.json`:
 | `read_markdown_section` | Fetch section by anchor |
 | `read_code_skeleton` | Functions/classes with signatures only — no body |
 | `read_code_body` | Full body for specific skeleton IDs |
+| `read_code_sketch` | Control-flow sketch by ID — between skeleton and body (keeps branches/loops/calls, collapses data lines; ~60-70% smaller than the body) |
 | `read_type_skeleton` | Type definitions (TS interface/type/enum, Go struct, Rust struct/enum/trait) |
 | `read_call_graph` | Caller/callee graph; `depth` param for cross-file tracing |
 | `read_token_map` | Files sorted by token count (glob filter) |

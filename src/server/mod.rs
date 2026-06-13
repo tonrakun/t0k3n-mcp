@@ -36,6 +36,7 @@ use tools::{
     delta::{Delta, DeltaResetParams, ReadLedger},
     deps::{ReadCodeDepsParams, read_code_deps},
     diagnostics::{ReadTypeDiagnosticsParams, read_type_diagnostics},
+    sketch::{ReadCodeSketchParams, read_code_sketch},
     document::{ConvertDocumentParams, convert_document},
     env::{ReadEnvSchemaParams, read_env_schema},
     fs::{ReadDirectoryTreeParams, ReadTokenMapParams, SearchFileParams, read_directory_tree, read_token_map, search_file},
@@ -72,6 +73,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_json_yaml_value",
     "read_code_skeleton",
     "read_code_body",
+    "read_code_sketch",
     "patch_symbol",
     "read_code_deps",
     "read_file_outline",
@@ -383,6 +385,18 @@ impl T0k3nServer {
         instrument!(self, "read_code_body", {
             let key = delta_key("read_code_body", &params);
             let result = read_code_body(&self.root, params).map_err(err)?;
+            self.ok_delta(key, serde_json::json!({ "items": result.items, "token_count": result.token_count }))
+        })
+    }
+
+    #[tool(description = "Zoom level between read_code_skeleton (signatures) and read_code_body (full source). Given skeleton IDs, returns each symbol's control-flow sketch: signature + branches/loops + block delimiters + call lines kept verbatim, runs of pure-data lines (assignments, literals) collapsed into '… N lines …'. Typically 60-70% smaller than the body — use it to understand what a function does before deciding whether you need the full body.")]
+    async fn read_code_sketch(
+        &self,
+        Parameters(params): Parameters<ReadCodeSketchParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_code_sketch", {
+            let key = delta_key("read_code_sketch", &params);
+            let result = read_code_sketch(&self.root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "items": result.items, "token_count": result.token_count }))
         })
     }

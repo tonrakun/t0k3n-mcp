@@ -218,6 +218,7 @@ t0k3n setup
 | `read_markdown_section` | anchor 指定でセクション本文取得 |
 | `read_code_skeleton` | 関数・クラス一覧をシグネチャのみで返す |
 | `read_code_body` | skeleton の ID 指定で関数本文取得 |
+| `read_code_sketch` | skeleton と body の中間ズーム。ID 指定で制御フロー骨格（分岐/ループ/呼び出しを残し純データ行を畳む。body 比 60〜70% 削減） |
 | `read_type_skeleton` | 型定義スケルトン（TS interface/type/enum・Go struct/interface・Rust struct/enum/trait） |
 | `read_call_graph` | 関数の呼び出し先・呼び出し元グラフ（depth 指定でクロスファイル対応） |
 | `read_token_map` | ワークスペース内ファイルのトークン数マップ（glob フィルタ・降順ソート） |
