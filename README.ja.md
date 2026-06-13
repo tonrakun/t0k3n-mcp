@@ -341,7 +341,7 @@ t0k3n setup
 
 | ツール | 説明 |
 |--------|------|
-| `read_type_diagnostics` | 言語サーバー常駐なしで LSP 相当の静的型診断を取得。各言語の check-only エンジン（`cargo check` / `tsc --noEmit` / `pyright`・`mypy` / `go vet`）を駆動し、重複排除済みの `{file, line, col, severity, code, message}` を返す。言語自動判別・チェッカー未導入時は `checker_available: false` + インストールヒントで非エラー応答 |
+| `read_type_diagnostics` | **オプトイン**（`--enable-diagnostics` または `T0K3N_ENABLE_DIAGNOSTICS=1`。ツールチェインを起動するためデフォルト無効）。言語サーバー常駐なしで LSP 相当の静的型診断を取得。各言語の check-only エンジン（`cargo check` / `tsc --noEmit` / `pyright`・`mypy` / `go vet`）を駆動し、重複排除済みの `{file, line, col, severity, code, message}` を返す。言語自動判別・チェッカー未導入時は `checker_available: false` + インストールヒントで非エラー応答 |
 | `project_digest` | セッション開始時のウォームスタート。git HEAD・言語統計・エントリポイントと上位シンボル・浅いツリーを ~2k トークンで 1 コール返却。`.t0k3n/digest.json` に HEAD キーでキャッシュし HEAD 変化時に自動再生成 |
 
 ---

@@ -1042,6 +1042,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 **設計方針**
 
+- **オプトイン（デフォルト無効）**。コンパイラ/型チェッカーの起動は重量級のため、`--enable-diagnostics`（または環境変数 `T0K3N_ENABLE_DIAGNOSTICS=1`）で起動したときのみツールを登録する。無効時はツール一覧にも現れず呼び出し不可（`ToolRouter` から経路を除去）。`debug_info` に `diagnostics_enabled` を出力
 - 言語サーバー常駐ではなく **ワンショットの check-only 実行**。状態を持たず、どのセッションからでも安全に投機的に呼べる
 - チェッカー未導入時は **エラーにせず** `checker_available: false` とインストールヒント（`note`）を返す。編集直後に「型エラーがあれば拾う、なければ静かに通る」用途で気軽に呼べる
 - パーサは純関数として分離し、各言語の実出力サンプルでユニットテスト
@@ -1526,6 +1527,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 `run_command` で型チェッカーを生実行すると冗長なコンパイラ出力がそのまま渡る。言語ネイティブの診断エンジンを check-only で駆動し、LSP 相当の構造化診断のみをトークン効率よく返す補助ツールを追加する。
 
 - [x] `read_type_diagnostics`（タスク25）— LSP 相当の静的型診断。`cargo check --message-format=json`（Rust）/ `tsc --noEmit`（TS）/ `pyright`・`mypy`（Python）/ `go vet`（Go）を check-only 駆動し `{file, line, col, severity, code, message}` を返す。言語自動判別・severity / max_items / path フィルタ・重複排除・重要度ソート。チェッカー未導入時は `checker_available: false` + インストールヒントで非エラー応答（投機的呼び出し安全）。パーサは純関数化し各言語の実出力でユニットテスト
+- [x] `read_type_diagnostics` をオプトイン化（重量級化の回避）— `--enable-diagnostics` / `T0K3N_ENABLE_DIAGNOSTICS=1` で起動時のみ `ToolRouter` に登録。デフォルトはツール一覧非表示・呼び出し不可。`debug_info` に `diagnostics_enabled` を追加
 
 ---
 

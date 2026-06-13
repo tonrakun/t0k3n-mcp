@@ -244,7 +244,7 @@ This writes (or merges into) `.mcp.json`:
 
 | Tool | Description |
 |------|-------------|
-| `read_type_diagnostics` | LSP-equivalent static type diagnostics without a language server. Drives the language's own check-only engine — `cargo check` (Rust), `tsc --noEmit` (TypeScript), `pyright`/`mypy` (Python), `go vet` (Go) — and returns a compact, deduplicated `{file, line, col, severity, code, message}` list. Auto-detects the language; returns `checker_available: false` with an install hint instead of erroring when the checker is missing |
+| `read_type_diagnostics` | **Opt-in** (`--enable-diagnostics` or `T0K3N_ENABLE_DIAGNOSTICS=1`; off by default since it spawns the toolchain). LSP-equivalent static type diagnostics without a language server. Drives the language's own check-only engine — `cargo check` (Rust), `tsc --noEmit` (TypeScript), `pyright`/`mypy` (Python), `go vet` (Go) — and returns a compact, deduplicated `{file, line, col, severity, code, message}` list. Auto-detects the language; returns `checker_available: false` with an install hint instead of erroring when the checker is missing |
 | `project_digest` | Warm-start architecture summary in one call: git HEAD, language stats, entry-point files with their top symbols, and a shallow directory tree (~2k tokens). Cached in `.t0k3n/digest.json` and auto-invalidated when HEAD changes — replaces the repeated tree → stats → skeleton exploration at session start |
 
 ## Language Support

@@ -86,6 +86,12 @@ async fn main() -> Result<()> {
         .unwrap_or(server::tools::render::OutputFormat::Compact);
     server::set_output_format(format);
 
+    // read_type_diagnostics is opt-in (heavyweight: spawns cargo check / tsc / etc.).
+    let diagnostics_enabled = args.iter().any(|a| a == "--enable-diagnostics")
+        || std::env::var("T0K3N_ENABLE_DIAGNOSTICS")
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false);
+
     let no_dashboard = args.iter().any(|a| a == "--no-dashboard");
     let open_browser = args.iter().any(|a| a == "--open-browser");
     let port = args
@@ -132,7 +138,7 @@ async fn main() -> Result<()> {
 
     // ── MCP server ─────────────────────────────────────────────
     let transport = stdio();
-    let server = server::T0k3nServer::new(root, dashboard);
+    let server = server::T0k3nServer::new(root, dashboard, diagnostics_enabled);
     let service = server.serve(transport).await.inspect_err(|e| {
         tracing::error!("Server error: {}", e);
     })?;

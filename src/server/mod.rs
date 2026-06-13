@@ -164,6 +164,7 @@ pub struct T0k3nServer {
     cmd_ledger: Arc<Mutex<CmdLedger>>,
     content_ledger: Arc<Mutex<ContentLedger>>,
     tool_router: ToolRouter<Self>,
+    diagnostics_enabled: bool,
     pub dashboard: Option<Arc<DashboardState>>,
 }
 
@@ -248,13 +249,27 @@ macro_rules! instrument {
 
 #[tool_router(router = tool_router)]
 impl T0k3nServer {
-    pub fn new(root: String, dashboard: Option<Arc<DashboardState>>) -> Self {
+    pub fn new(
+        root: String,
+        dashboard: Option<Arc<DashboardState>>,
+        diagnostics_enabled: bool,
+    ) -> Self {
         let root_path = PathBuf::from(&root);
         let db_path = root_path.join(".t0k3n").join("t0k3n.db");
         let db = Database::new(&db_path).unwrap_or_else(|e| {
             tracing::warn!("Failed to open DB at {:?}: {}. Using in-memory DB.", db_path, e);
             Database::new(std::path::Path::new(":memory:")).unwrap()
         });
+
+        // read_type_diagnostics is opt-in: spawning cargo check / tsc / pyright is
+        // heavyweight, so it is unregistered (not advertised, not callable) unless
+        // explicitly enabled via --enable-diagnostics / T0K3N_ENABLE_DIAGNOSTICS.
+        let mut tool_router = Self::tool_router();
+        if !diagnostics_enabled {
+            tool_router.map.remove("read_type_diagnostics");
+        }
+        let tool_count = tool_router.map.len();
+
         let server = Self {
             root: root_path,
             db: Arc::new(Mutex::new(db)),
@@ -262,14 +277,15 @@ impl T0k3nServer {
             ledger: Arc::new(Mutex::new(ReadLedger::new())),
             cmd_ledger: Arc::new(Mutex::new(CmdLedger::new())),
             content_ledger: Arc::new(Mutex::new(ContentLedger::new())),
-            tool_router: Self::tool_router(),
+            tool_router,
+            diagnostics_enabled,
             dashboard,
         };
         tracing::info!(
-            "t0k3n-mcp v{} initialized — {} tools registered: {}",
+            "t0k3n-mcp v{} initialized — {} tools registered (diagnostics: {})",
             env!("CARGO_PKG_VERSION"),
-            REGISTERED_TOOLS.len(),
-            REGISTERED_TOOLS.join(", ")
+            tool_count,
+            if diagnostics_enabled { "enabled" } else { "disabled (opt-in)" },
         );
         server
     }
@@ -1313,12 +1329,18 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Static type diagnostics (LSP-equivalent) without running a language server. Drives the language's own check-only engine — cargo check (Rust), tsc --noEmit (TypeScript), pyright/mypy (Python), go vet (Go) — and returns a compact, deduplicated list of {file, line, col, severity, code, message}. Auto-detects the language from the manifest/extension; pass `language` to force it, `path` to scope to a file/dir, `severity` (error|warning|hint) as a floor, and `max_items` to cap. If the checker is not installed it returns checker_available:false with an install hint instead of erroring — safe to call speculatively after edits to catch type errors before running the full build.")]
+    #[tool(description = "Static type diagnostics (LSP-equivalent) without running a language server. OPT-IN: this tool is only registered when the server is started with --enable-diagnostics (or T0K3N_ENABLE_DIAGNOSTICS=1), because it spawns the language toolchain. Drives the language's own check-only engine — cargo check (Rust), tsc --noEmit (TypeScript), pyright/mypy (Python), go vet (Go) — and returns a compact, deduplicated list of {file, line, col, severity, code, message}. Auto-detects the language from the manifest/extension; pass `language` to force it, `path` to scope to a file/dir, `severity` (error|warning|hint) as a floor, and `max_items` to cap. If the checker is not installed it returns checker_available:false with an install hint instead of erroring.")]
     async fn read_type_diagnostics(
         &self,
         Parameters(params): Parameters<ReadTypeDiagnosticsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_type_diagnostics", {
+            if !self.diagnostics_enabled {
+                return ok_json(serde_json::json!({
+                    "error": "read_type_diagnostics is disabled. Restart the server with --enable-diagnostics (or set T0K3N_ENABLE_DIAGNOSTICS=1) to use it.",
+                    "token_count": 30,
+                }));
+            }
             let result = read_type_diagnostics(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "language": result.language,
@@ -1439,13 +1461,17 @@ impl T0k3nServer {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
+            let mut tools: Vec<String> =
+                self.tool_router.map.keys().map(|k| k.to_string()).collect();
+            tools.sort();
             ok_json(serde_json::json!({
                 "ok": true,
                 "version": env!("CARGO_PKG_VERSION"),
                 "root": self.root.display().to_string(),
                 "db_status": db_status,
-                "tool_count": REGISTERED_TOOLS.len(),
-                "tools": REGISTERED_TOOLS,
+                "tool_count": tools.len(),
+                "tools": tools,
+                "diagnostics_enabled": self.diagnostics_enabled,
                 "timestamp_unix": timestamp_unix,
                 "dashboard": self.dashboard.is_some(),
             }))
@@ -1486,5 +1512,28 @@ impl ServerHandler for T0k3nServer {
             ),
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diagnostics_route_is_opt_in() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+
+        let off = T0k3nServer::new(root.clone(), None, false);
+        assert!(
+            !off.tool_router.map.contains_key("read_type_diagnostics"),
+            "diagnostics tool must NOT be registered by default"
+        );
+
+        let on = T0k3nServer::new(root, None, true);
+        assert!(
+            on.tool_router.map.contains_key("read_type_diagnostics"),
+            "diagnostics tool must be registered with --enable-diagnostics"
+        );
     }
 }

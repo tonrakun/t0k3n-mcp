@@ -38,6 +38,9 @@ OPTIONS:
     --dashboard-port <port>   Dashboard port (default: 14123)
     --list-tools              Print all registered tool names and exit
     --refresh-parsers         Clear the tree-sitter parser cache on startup
+    --enable-diagnostics      Register the opt-in read_type_diagnostics tool
+                              (heavyweight: spawns cargo check/tsc/pyright/go vet;
+                              also enablable via T0K3N_ENABLE_DIAGNOSTICS=1)
     --version, -V             Print version and exit"
     );
 }

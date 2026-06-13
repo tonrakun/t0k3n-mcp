@@ -118,7 +118,7 @@ fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("read_security_surface","injection/XSS/secrets/unsafe patterns"),
         ("diff_schemas",         "schema diff between git refs (OpenAPI/Prisma/TS)"),
         ("read_pr_context",      "full PR context: files+skeletons+tests+commits"),
-        ("read_type_diagnostics","LSP-equivalent type errors (cargo check/tsc/pyright/go vet)"),
+        ("read_type_diagnostics","LSP-equivalent type errors (cargo check/tsc/pyright/go vet) — opt-in: --enable-diagnostics"),
         ("project_digest",       "cached warm-start architecture summary (HEAD-invalidated)"),
     ]);
     cat!("cmd", [
