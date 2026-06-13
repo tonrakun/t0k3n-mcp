@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -49,6 +51,7 @@ pub enum UpdateKind {
 
 pub struct DashboardState {
     pub version: &'static str,
+    root: PathBuf,
     start_instant: Instant,
     pub start_ms: u64,
     pub total_calls: AtomicUsize,
@@ -62,7 +65,7 @@ pub struct DashboardState {
 }
 
 impl DashboardState {
-    pub fn new(version: &'static str) -> Arc<Self> {
+    pub fn new(version: &'static str, root: PathBuf) -> Arc<Self> {
         let (tx, _) = broadcast::channel(512);
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -70,6 +73,7 @@ impl DashboardState {
             .as_millis() as u64;
         Arc::new(Self {
             version,
+            root,
             start_instant: Instant::now(),
             start_ms: now_ms,
             total_calls: AtomicUsize::new(0),
@@ -171,11 +175,58 @@ impl DashboardState {
     }
 }
 
+/// A published git tag and the text written when it was created.
+/// Annotated tags carry their tag message; lightweight tags fall back to the
+/// commit message they point at.
+#[derive(Debug, Clone, Serialize)]
+pub struct ReleaseNote {
+    pub tag: String,
+    pub date: String,
+    pub body: String,
+}
+
+/// Read all git tags (newest first) together with their release/patch note text.
+/// Field separator is 0x1f, record separator is 0x1e — both safe against
+/// newlines inside multi-line tag messages.
+fn read_releases(root: &Path) -> Vec<ReleaseNote> {
+    let output = Command::new("git")
+        .current_dir(root)
+        .args([
+            "for-each-ref",
+            "refs/tags",
+            "--sort=-creatordate",
+            "--format=%(refname:short)%1f%(creatordate:short)%1f%(contents)%1e",
+        ])
+        .output();
+
+    let stdout = match output {
+        Ok(o) if o.status.success() => o.stdout,
+        _ => return Vec::new(),
+    };
+
+    String::from_utf8_lossy(&stdout)
+        .split('\u{1e}')
+        .map(str::trim)
+        .filter(|rec| !rec.is_empty())
+        .filter_map(|rec| {
+            let mut fields = rec.splitn(3, '\u{1f}');
+            let tag = fields.next().unwrap_or("").trim().to_string();
+            let date = fields.next().unwrap_or("").trim().to_string();
+            let body = fields.next().unwrap_or("").trim().to_string();
+            if tag.is_empty() {
+                return None;
+            }
+            Some(ReleaseNote { tag, date, body })
+        })
+        .collect()
+}
+
 pub async fn run(state: Arc<DashboardState>, port: u16) {
     let app = Router::new()
         .route("/", get(serve_html))
         .route("/ws", get(ws_handler))
         .route("/api/state", get(api_state))
+        .route("/api/releases", get(api_releases))
         .with_state(state);
 
     let addr = format!("127.0.0.1:{port}");
@@ -196,6 +247,14 @@ async fn serve_html() -> Html<&'static str> {
 
 async fn api_state(State(state): State<Arc<DashboardState>>) -> impl IntoResponse {
     axum::Json(state.snapshot().await)
+}
+
+async fn api_releases(State(state): State<Arc<DashboardState>>) -> impl IntoResponse {
+    let root = state.root.clone();
+    let releases = tokio::task::spawn_blocking(move || read_releases(&root))
+        .await
+        .unwrap_or_default();
+    axum::Json(releases)
 }
 
 async fn ws_handler(

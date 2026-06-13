@@ -219,6 +219,22 @@
 
     </div>
 
+    <!-- ════ RELEASE / PATCH NOTES ════ -->
+    <div class="rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden flex flex-col">
+      <div class="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-violet-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 3h5a1.99 1.99 0 011.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.99 1.99 0 013 12V7a4 4 0 014-4z"/>
+          </svg>
+          <h2 class="text-sm font-semibold text-zinc-200">リリース・パッチノート</h2>
+        </div>
+        <span id="release-count" class="text-[10px] font-mono text-zinc-500">—</span>
+      </div>
+      <div id="release-list" class="flex-1 overflow-y-auto p-3 space-y-2.5" style="max-height: 520px;">
+        <p class="text-zinc-600 text-xs text-center py-8">読み込み中…</p>
+      </div>
+    </div>
+
     <!-- Footer -->
     <p class="text-center text-[11px] text-zinc-700 pb-1 select-none">
       T0K3N-MCP &mdash; AI コーディングツール向けトークン節約型 MCP サーバー
@@ -229,6 +245,11 @@
 
 <script>
   const $ = id => document.getElementById(id);
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, m =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  }
 
   // ── Formatters ────────────────────────────────────────────────
   function fmtTime(ms) {
@@ -438,6 +459,47 @@
     }
   }
 
+  // ── Release / patch notes ─────────────────────────────────────
+  function renderReleases(list) {
+    const c = $('release-list');
+    if (!Array.isArray(list) || list.length === 0) {
+      c.innerHTML = '<p class="text-zinc-600 text-xs text-center py-8">リリースタグがありません</p>';
+      $('release-count').textContent = '0 件';
+      return;
+    }
+
+    $('release-count').textContent = list.length + ' 件';
+    c.innerHTML = list.map((r, i) => {
+      const latest = i === 0
+        ? '<span class="ml-1.5 inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-violet-950 text-violet-300 border border-violet-800/60 uppercase tracking-wider">最新</span>'
+        : '';
+      const body = r.body
+        ? `<pre class="mt-1.5 text-[12px] leading-relaxed text-zinc-400 whitespace-pre-wrap break-words font-sans">${esc(r.body)}</pre>`
+        : '<p class="mt-1 text-[11px] text-zinc-600 italic">（ノートなし）</p>';
+      return `
+        <div class="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center min-w-0">
+              <span class="text-[12px] font-mono font-semibold text-violet-300 truncate">${esc(r.tag)}</span>
+              ${latest}
+            </div>
+            <span class="text-[10px] font-mono text-zinc-500 flex-shrink-0">${esc(r.date)}</span>
+          </div>
+          ${body}
+        </div>`;
+    }).join('');
+  }
+
+  async function loadReleases() {
+    try {
+      const res = await fetch('/api/releases');
+      renderReleases(await res.json());
+    } catch {
+      $('release-list').innerHTML =
+        '<p class="text-zinc-600 text-xs text-center py-8">ノートを取得できませんでした</p>';
+    }
+  }
+
   // ── WebSocket ─────────────────────────────────────────────────
   let ws, retryTimer;
 
@@ -492,6 +554,7 @@
   }
 
   connect();
+  loadReleases();
 </script>
 </body>
 </html>
