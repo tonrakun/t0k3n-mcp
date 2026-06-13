@@ -1092,6 +1092,47 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 ---
 
+### 2.27 プロジェクトダイジェスト系（新規）
+
+#### 2.27.1 `project_digest`
+
+セッション開始時に毎回繰り返される「ディレクトリツリー → ワークスペース統計 → エントリポイントのスケルトン」探索フェーズを、キャッシュ済みの ~2k トークン要約 1 コールに置換するウォームスタートツール。
+
+- git HEAD ハッシュをキーに `.t0k3n/digest.json` へキャッシュ。HEAD が一致すれば再計算せず `cached: true` で即返却、HEAD 変化時は自動再生成
+- `refresh: true` でキャッシュを無視して再生成。`dirty`（未コミット変更あり）を併せて返し、ダイジェストが作業ツリーと乖離しうる旨を通知
+- エントリポイント判定: 慣習的ファイル名（`main` / `lib` / `index` / `app` / `server` / `mod` / `__init__` / `cli` / `router` / `config` 等）にスコアを付与し、浅い階層を優先。上位 8 ファイルについて言語・トークン数・上位シンボルシグネチャを収集
+- `read_workspace_stats` / `read_directory_tree`（depth 2）/ `read_code_skeleton` を再利用。ディレクトリツリーはバジェット超過時に切り詰め
+
+**入力**
+
+```ts
+{
+  refresh?: boolean;  // 現在の HEAD のキャッシュがあっても再生成（デフォルト false）
+  budget?: number;    // ダイジェストの概算トークンバジェット（デフォルト 2000）
+}
+```
+
+**出力**
+
+```ts
+{
+  cached: boolean;
+  dirty: boolean;
+  digest: {
+    git_head: string;          // 短縮ハッシュ（git 非管理時は "no-git"）
+    total_files: number;
+    total_lines: number;
+    total_tokens: number;
+    by_language: Array<{ language: string; files: number; lines: number; pct: number }>;
+    entry_points: Array<{ path: string; language: string; tokens: number; symbols: string[] }>;
+    directory_tree: string;    // 浅い（depth 2）ツリー
+  };
+  token_count: number;
+}
+```
+
+---
+
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -1316,6 +1357,12 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 |---|---|---|
 | `read_type_diagnostics` | Rust 実装 | LSP 相当の静的型診断（cargo check / tsc / pyright・mypy / go vet を check-only 駆動し構造化診断を返す） |
 
+### プロジェクトダイジェスト系（Phase 11）
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `project_digest` | Rust 実装 | git HEAD で無効化されるキャッシュ済みアーキテクチャ要約（言語統計＋エントリポイント＋ツリー）を ~2k トークンで返すウォームスタート |
+
 ---
 
 ## 5. 実装フェーズ
@@ -1460,7 +1507,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [x] `run_command` デルタモード（タスク20）— 同一コマンド（command+cwd キー）の再実行時にエラー/警告の差分のみ返す（新規分の本文 + 解消/不変は件数のみ）。summary は pass/fail 反転時、または成功時に内容が変わった場合のみ再送。`delta_reset` でコマンド台帳もクリア対象に
 - [ ] クロスツール送信済みコンテンツ台帳（タスク21）— デルタ台帳のキーを tool+params からファイル+行範囲（コンテンツハッシュ）に拡張し、ツール横断の重複送信をスタブ化
 - [x] `read_code_sketch`（タスク22）— skeleton と body の中間ズーム。skeleton ID を受け取り、シグネチャ＋分岐/ループ＋ブロック区切り＋呼び出し行をそのまま残し、純データ行（代入・リテラル）の連続を `… N lines …` に畳む。body 比 60〜70% 削減。行ベースのヒューリスティック（言語別コメントトークン対応）で全言語横断・純関数化しユニットテスト
-- [ ] プロジェクトダイジェスト（タスク23）— git HEAD で無効化されるキャッシュ済みアーキテクチャ要約によるウォームスタート
+- [x] プロジェクトダイジェスト（タスク23）— `project_digest`。git HEAD で無効化されるキャッシュ済みアーキテクチャ要約（git HEAD・言語別統計・エントリポイントファイルと上位シンボル・浅いディレクトリツリー）を ~2k トークンで 1 コール返却。`.t0k3n/digest.json` に HEAD キーでキャッシュし HEAD 変化時に自動再生成。`refresh:true` で強制再生成・`dirty` で未コミット作業ツリーを通知。read_workspace_stats / read_directory_tree / read_code_skeleton を再利用
 - [ ] `batch_read` テンプレート因数分解（タスク24）— 類似ファイル群を正規形1つ+差分で返す
 
 ### Phase 12 — LSP / 型診断 v2.7+

@@ -36,6 +36,7 @@ use tools::{
     delta::{Delta, DeltaResetParams, ReadLedger},
     deps::{ReadCodeDepsParams, read_code_deps},
     diagnostics::{ReadTypeDiagnosticsParams, read_type_diagnostics},
+    digest::{ProjectDigestParams, project_digest},
     sketch::{ReadCodeSketchParams, read_code_sketch},
     document::{ConvertDocumentParams, convert_document},
     env::{ReadEnvSchemaParams, read_env_schema},
@@ -150,6 +151,8 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_pr_context",
     // Phase 12 — LSP / type diagnostics
     "read_type_diagnostics",
+    // Phase 11 — gen3 token reduction
+    "project_digest",
 ];
 
 #[derive(Clone)]
@@ -1273,6 +1276,22 @@ impl T0k3nServer {
                 "note": result.note,
                 "diagnostics": result.diagnostics,
                 "summary": result.summary,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Warm-start project digest: a cached ~2k-token architecture summary (git HEAD, language stats, entry-point files with their top symbols, shallow directory tree) returned in one call. Replaces the repeated tree → stats → skeleton exploration at session start. The cache (.t0k3n/digest.json) auto-invalidates when git HEAD changes; pass refresh:true to rebuild. `dirty` flags an uncommitted working tree (digest may be stale).")]
+    async fn project_digest(
+        &self,
+        Parameters(params): Parameters<ProjectDigestParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "project_digest", {
+            let result = project_digest(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "cached": result.cached,
+                "dirty": result.dirty,
+                "digest": result.digest,
                 "token_count": result.token_count,
             }))
         })

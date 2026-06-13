@@ -119,6 +119,7 @@ fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("diff_schemas",         "schema diff between git refs (OpenAPI/Prisma/TS)"),
         ("read_pr_context",      "full PR context: files+skeletons+tests+commits"),
         ("read_type_diagnostics","LSP-equivalent type errors (cargo check/tsc/pyright/go vet)"),
+        ("project_digest",       "cached warm-start architecture summary (HEAD-invalidated)"),
     ]);
     cat!("cmd", [
         ("run_command", "run shell command with smart output filtering"),

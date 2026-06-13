@@ -10,6 +10,7 @@ pub mod delta;
 pub mod dead_code;
 pub mod deps;
 pub mod diagnostics;
+pub mod digest;
 pub mod diff_schemas;
 pub mod document;
 pub mod env;
