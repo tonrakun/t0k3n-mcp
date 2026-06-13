@@ -234,7 +234,7 @@ t0k3n setup
 | `read_env_schema` | .env.example / docker-compose.yml から環境変数定義を抽出 |
 | `read_workspace_stats` | コードベース全体の言語別統計（ファイル数・行数・トークン数） |
 | `read_log_tail` | ログファイル末尾のN行取得（ログレベル別カウント付き） |
-| `batch_read` | 複数の読み取り操作を 1 コールで並列実行（ラウンドトリップ削減） |
+| `batch_read` | 複数の読み取り操作を 1 コールで並列実行（ラウンドトリップ削減）。`factor:true` で類似結果（マイグレーション・fixture）をテンプレート＋差分に因数分解 |
 
 ### Git
 

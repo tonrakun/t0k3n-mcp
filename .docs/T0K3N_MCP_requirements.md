@@ -799,6 +799,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
     key_path?: string;        // json_value 用
     include_blocks?: boolean; // code_skeleton 用
   }[];
+  factor?: boolean;           // 類似結果をテンプレート + 差分に因数分解（デフォルト false）
 }
 ```
 
@@ -809,13 +810,23 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
   results: {
     id: string;
     ok: boolean;
-    data: any;                // 各ツールのレスポンスと同じ構造
+    data: any;                // 各ツールのレスポンスと同じ構造（因数分解時は {template_ref, diff}）
     error?: string;
+    template_ref?: string;    // 因数分解された場合、差分の基準となったテンプレートの ID
     token_count: number;
   }[];
+  factored: number;           // 因数分解された結果の件数
   total_token_count: number;
 }
 ```
+
+**テンプレート因数分解（`factor: true`）**
+
+マイグレーション・テスト fixture など互いに酷似した複数ファイルを読む際、各類似グループの先頭 1 件を正規形（テンプレート）として全文を残し、残りはテンプレートとの unified diff（`{template_ref, diff}`）に置換してトークンを削減する。
+
+- 類似度判定: `similar` クレートの行ベース ratio。閾値 0.5 以上のペアを同一グループに集約
+- 採用条件: diff が候補本文より小さい場合のみ（小ファイルでヘッダ overhead が勝つ場合は全文のまま）
+- 比較テキスト抽出: 配列要素の `content` / `section` / `value` を行連結、スカラー文字列はそのまま、その他は pretty JSON にフォールバック
 
 ---
 
@@ -1508,7 +1519,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [ ] クロスツール送信済みコンテンツ台帳（タスク21）— デルタ台帳のキーを tool+params からファイル+行範囲（コンテンツハッシュ）に拡張し、ツール横断の重複送信をスタブ化
 - [x] `read_code_sketch`（タスク22）— skeleton と body の中間ズーム。skeleton ID を受け取り、シグネチャ＋分岐/ループ＋ブロック区切り＋呼び出し行をそのまま残し、純データ行（代入・リテラル）の連続を `… N lines …` に畳む。body 比 60〜70% 削減。行ベースのヒューリスティック（言語別コメントトークン対応）で全言語横断・純関数化しユニットテスト
 - [x] プロジェクトダイジェスト（タスク23）— `project_digest`。git HEAD で無効化されるキャッシュ済みアーキテクチャ要約（git HEAD・言語別統計・エントリポイントファイルと上位シンボル・浅いディレクトリツリー）を ~2k トークンで 1 コール返却。`.t0k3n/digest.json` に HEAD キーでキャッシュし HEAD 変化時に自動再生成。`refresh:true` で強制再生成・`dirty` で未コミット作業ツリーを通知。read_workspace_stats / read_directory_tree / read_code_skeleton を再利用
-- [ ] `batch_read` テンプレート因数分解（タスク24）— 類似ファイル群を正規形1つ+差分で返す
+- [x] `batch_read` テンプレート因数分解（タスク24）— `factor: true` で類似結果（マイグレーション・fixture 等）を正規形 1 つ + 各ファイルの unified diff にまとめて返す。類似度は `similar` の行ベース ratio（閾値 0.5）で判定、diff が本文より小さい場合のみ採用。因数分解された結果は `{template_ref, diff}` ＋ `template_ref` フィールドを持ち、`factored` 件数を返す
 
 ### Phase 12 — LSP / 型診断 v2.7+
 

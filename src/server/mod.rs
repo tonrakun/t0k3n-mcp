@@ -1133,7 +1133,7 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Execute multiple read operations in one call (code_skeleton | code_body | markdown_section | json_value | file_outline). Reduces round-trips when you need several files at once.")]
+    #[tool(description = "Execute multiple read operations in one call (code_skeleton | code_body | markdown_section | json_value | file_outline). Reduces round-trips when you need several files at once. Pass factor:true to collapse near-identical results (migrations, fixtures) into one template + per-file unified diffs.")]
     async fn batch_read(
         &self,
         Parameters(params): Parameters<BatchReadParams>,
@@ -1141,7 +1141,9 @@ impl T0k3nServer {
         instrument!(self, "batch_read", {
             let result = batch_read(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
-                "results": result.results, "total_token_count": result.total_token_count,
+                "results": result.results,
+                "factored": result.factored,
+                "total_token_count": result.total_token_count,
             }))
         })
     }

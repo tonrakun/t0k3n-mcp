@@ -171,7 +171,7 @@ This writes (or merges into) `.mcp.json`:
 | `read_env_schema` | Environment variable definitions from .env.example / docker-compose.yml |
 | `read_workspace_stats` | Codebase-wide language breakdown (files/lines/tokens) |
 | `read_log_tail` | Log file tail with level filter |
-| `batch_read` | Multiple read ops in one call (reduces round-trips) |
+| `batch_read` | Multiple read ops in one call (reduces round-trips). `factor:true` collapses near-identical results (migrations/fixtures) into one template + per-file diffs |
 
 ### Git
 
