@@ -100,6 +100,95 @@ pub struct DeltaResetParams {
     pub pattern: Option<String>,
 }
 
+// ─── cross-tool content ledger (gen3) ─────────────────────────────────────────
+//
+// The ReadLedger above is keyed by tool+params, so it only catches a *repeat of
+// the same call*. This second ledger is keyed by file content (path + line range)
+// so that the same body sent by one tool (e.g. read_context_pack) and then
+// re-requested by another (read_code_body) is replaced with a tiny reference
+// stub. Invalidation: an entry is only reused when the file's mtime is unchanged
+// AND the content hash still matches, so a line-range shift after an edit never
+// produces a stale reference.
+
+/// Hard cap on tracked content entries (memory bound).
+const CONTENT_MAX_ENTRIES: usize = 1024;
+
+pub enum ContentDedup {
+    /// Not seen (or invalidated) — send the full content; it has been recorded.
+    Fresh,
+    /// Identical content was already sent this session under `reference`.
+    AlreadySent { reference: String, full_tokens: usize },
+}
+
+struct ContentEntry {
+    mtime: u64,
+    hash: u64,
+    tokens: usize,
+}
+
+#[derive(Default)]
+pub struct ContentLedger {
+    entries: HashMap<String, ContentEntry>,
+}
+
+impl ContentLedger {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn key(path: &str, id: &str) -> String {
+        format!("{path}#{id}")
+    }
+
+    /// Record (or match) a body chunk. Returns `AlreadySent` only when an entry
+    /// for the same path+range exists with the same mtime and content hash.
+    pub fn dedup(&mut self, path: &str, id: &str, content: &str, mtime: u64) -> ContentDedup {
+        let key = Self::key(path, id);
+        let hash = hash_str(content);
+        let tokens = estimate_tokens(content);
+
+        if let Some(e) = self.entries.get(&key)
+            && e.mtime == mtime
+            && e.hash == hash
+        {
+            let range = id.rsplit_once(':').map(|(_, r)| r).unwrap_or(id);
+            return ContentDedup::AlreadySent {
+                reference: format!("{path}:{range}"),
+                full_tokens: e.tokens,
+            };
+        }
+
+        if self.entries.len() >= CONTENT_MAX_ENTRIES && !self.entries.contains_key(&key) {
+            self.entries.clear();
+        }
+        self.entries.insert(key, ContentEntry { mtime, hash, tokens });
+        ContentDedup::Fresh
+    }
+
+    /// Clear entries whose key contains `pattern` (all entries when None).
+    pub fn clear(&mut self, pattern: Option<&str>) -> usize {
+        match pattern {
+            None => {
+                let n = self.entries.len();
+                self.entries.clear();
+                n
+            }
+            Some(p) => {
+                let before = self.entries.len();
+                self.entries.retain(|k, _| !k.contains(p));
+                before - self.entries.len()
+            }
+        }
+    }
+}
+
+fn hash_str(s: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +229,44 @@ mod tests {
         let mut l = ReadLedger::new();
         l.check_and_update("read_code_skeleton:{\"path\":\"a.rs\"}", "1");
         l.check_and_update("read_code_skeleton:{\"path\":\"b.rs\"}", "2");
+        assert_eq!(l.clear(Some("a.rs")), 1);
+        assert_eq!(l.clear(None), 1);
+    }
+
+    #[test]
+    fn content_ledger_stubs_cross_tool_repeat() {
+        let mut l = ContentLedger::new();
+        let body = "fn f() {\n    work();\n}";
+        // first send (e.g. from read_context_pack) records it
+        assert!(matches!(l.dedup("a.rs", "function:1-3", body, 100), ContentDedup::Fresh));
+        // re-request (e.g. from read_code_body) with same mtime → stub
+        match l.dedup("a.rs", "function:1-3", body, 100) {
+            ContentDedup::AlreadySent { reference, .. } => assert_eq!(reference, "a.rs:1-3"),
+            _ => panic!("expected AlreadySent"),
+        }
+    }
+
+    #[test]
+    fn content_ledger_invalidates_on_mtime_change() {
+        let mut l = ContentLedger::new();
+        let body = "fn f() {}";
+        assert!(matches!(l.dedup("a.rs", "function:1-1", body, 100), ContentDedup::Fresh));
+        // file edited (mtime changed) → no stale reference even if content matches
+        assert!(matches!(l.dedup("a.rs", "function:1-1", body, 200), ContentDedup::Fresh));
+    }
+
+    #[test]
+    fn content_ledger_invalidates_on_content_change() {
+        let mut l = ContentLedger::new();
+        assert!(matches!(l.dedup("a.rs", "function:1-1", "old", 100), ContentDedup::Fresh));
+        assert!(matches!(l.dedup("a.rs", "function:1-1", "new", 100), ContentDedup::Fresh));
+    }
+
+    #[test]
+    fn content_ledger_clear_by_pattern() {
+        let mut l = ContentLedger::new();
+        l.dedup("a.rs", "function:1-2", "x", 1);
+        l.dedup("b.rs", "function:1-2", "y", 1);
         assert_eq!(l.clear(Some("a.rs")), 1);
         assert_eq!(l.clear(None), 1);
     }

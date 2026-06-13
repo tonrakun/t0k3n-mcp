@@ -1516,7 +1516,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 - [x] `patch_symbol` 編集スクリプトモード（タスク19）— `edits: [{find, replace}]` でシンボル本文の部分編集。new_body と排他。find はシンボル内で一意であれば良く（ファイル全体で一意である必要なし）、曖昧時は該当行番号つきでエラー。順次適用・CRLF/末尾改行保持・dry_run/expected_name は既存機構を流用
 - [x] `run_command` デルタモード（タスク20）— 同一コマンド（command+cwd キー）の再実行時にエラー/警告の差分のみ返す（新規分の本文 + 解消/不変は件数のみ）。summary は pass/fail 反転時、または成功時に内容が変わった場合のみ再送。`delta_reset` でコマンド台帳もクリア対象に
-- [ ] クロスツール送信済みコンテンツ台帳（タスク21）— デルタ台帳のキーを tool+params からファイル+行範囲（コンテンツハッシュ）に拡張し、ツール横断の重複送信をスタブ化
+- [x] クロスツール送信済みコンテンツ台帳（タスク21）— `ContentLedger`。デルタ台帳（tool+params キー）に加え、ファイル+行範囲（`path#id`）をキーに送信済み本文を記録する第2台帳を導入。`read_context_pack` が送った本文を `read_code_body` で再要求した場合等、ツール横断の重複送信を `path:start-end` 参照スタブに置換。失効は mtime + コンテンツハッシュの一致でのみ再利用（編集による行範囲ずれを防止）。`delta_reset` のクリア対象に含める
 - [x] `read_code_sketch`（タスク22）— skeleton と body の中間ズーム。skeleton ID を受け取り、シグネチャ＋分岐/ループ＋ブロック区切り＋呼び出し行をそのまま残し、純データ行（代入・リテラル）の連続を `… N lines …` に畳む。body 比 60〜70% 削減。行ベースのヒューリスティック（言語別コメントトークン対応）で全言語横断・純関数化しユニットテスト
 - [x] プロジェクトダイジェスト（タスク23）— `project_digest`。git HEAD で無効化されるキャッシュ済みアーキテクチャ要約（git HEAD・言語別統計・エントリポイントファイルと上位シンボル・浅いディレクトリツリー）を ~2k トークンで 1 コール返却。`.t0k3n/digest.json` に HEAD キーでキャッシュし HEAD 変化時に自動再生成。`refresh:true` で強制再生成・`dirty` で未コミット作業ツリーを通知。read_workspace_stats / read_directory_tree / read_code_skeleton を再利用
 - [x] `batch_read` テンプレート因数分解（タスク24）— `factor: true` で類似結果（マイグレーション・fixture 等）を正規形 1 つ + 各ファイルの unified diff にまとめて返す。類似度は `similar` の行ベース ratio（閾値 0.5）で判定、diff が本文より小さい場合のみ採用。因数分解された結果は `{template_ref, diff}` ＋ `template_ref` フィールドを持ち、`factored` 件数を返す

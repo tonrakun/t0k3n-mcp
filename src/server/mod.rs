@@ -33,7 +33,7 @@ use tools::{
     security_surface::{ReadSecuritySurfaceParams, read_security_surface},
     css::{ReadCssBodyParams, ReadCssSkeletonParams, read_css_body, read_css_skeleton},
     db_schema::{ReadDbSchemaParams, ReadDbTableParams, read_db_schema, read_db_table},
-    delta::{Delta, DeltaResetParams, ReadLedger},
+    delta::{ContentDedup, ContentLedger, Delta, DeltaResetParams, ReadLedger},
     deps::{ReadCodeDepsParams, read_code_deps},
     diagnostics::{ReadTypeDiagnosticsParams, read_type_diagnostics},
     digest::{ProjectDigestParams, project_digest},
@@ -162,12 +162,22 @@ pub struct T0k3nServer {
     web_cache: Arc<Mutex<HashMap<String, String>>>,
     ledger: Arc<Mutex<ReadLedger>>,
     cmd_ledger: Arc<Mutex<CmdLedger>>,
+    content_ledger: Arc<Mutex<ContentLedger>>,
     tool_router: ToolRouter<Self>,
     pub dashboard: Option<Arc<DashboardState>>,
 }
 
 fn err(msg: impl std::fmt::Display) -> McpError {
     McpError::internal_error(msg.to_string(), None)
+}
+
+/// File mtime in whole seconds since the epoch, or None if it can't be resolved.
+/// Used by the cross-tool content ledger to invalidate references after edits.
+fn file_mtime(root: &std::path::Path, rel: &str) -> Option<u64> {
+    let abs = crate::security::safe_path(root, rel).ok()?;
+    let meta = std::fs::metadata(abs).ok()?;
+    let modified = meta.modified().ok()?;
+    Some(modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs())
 }
 
 static OUTPUT_FORMAT: std::sync::OnceLock<OutputFormat> = std::sync::OnceLock::new();
@@ -251,6 +261,7 @@ impl T0k3nServer {
             web_cache: Arc::new(Mutex::new(HashMap::new())),
             ledger: Arc::new(Mutex::new(ReadLedger::new())),
             cmd_ledger: Arc::new(Mutex::new(CmdLedger::new())),
+            content_ledger: Arc::new(Mutex::new(ContentLedger::new())),
             tool_router: Self::tool_router(),
             dashboard,
         };
@@ -290,6 +301,25 @@ impl T0k3nServer {
                     "token_count": token_count,
                 }))
             }
+        }
+    }
+
+    /// Cross-tool content dedup: if this exact body (path + line range) was already
+    /// sent this session — by any tool — and the file is unchanged, return a tiny
+    /// reference stub to put in place of the content. Returns None to send it full
+    /// (also recording it so a later re-request can be stubbed).
+    fn dedup_body(&self, path: &str, id: &str, content: &str) -> Option<String> {
+        let mtime = file_mtime(&self.root, path)?;
+        match self
+            .content_ledger
+            .lock()
+            .unwrap()
+            .dedup(path, id, content, mtime)
+        {
+            ContentDedup::Fresh => None,
+            ContentDedup::AlreadySent { reference, full_tokens } => Some(format!(
+                "(already sent {reference} earlier this session — identical content not re-sent, ~{full_tokens} tokens saved. Call delta_reset and retry for the full body.)"
+            )),
         }
     }
 
@@ -387,8 +417,20 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_body", {
             let key = delta_key("read_code_body", &params);
-            let result = read_code_body(&self.root, params).map_err(err)?;
-            self.ok_delta(key, serde_json::json!({ "items": result.items, "token_count": result.token_count }))
+            let path = params.path.clone();
+            let mut result = read_code_body(&self.root, params).map_err(err)?;
+            // Cross-tool dedup: stub bodies already sent this session (e.g. by read_context_pack).
+            for item in &mut result.items {
+                if item.content.starts_with("Error:") {
+                    continue;
+                }
+                if let Some(stub) = self.dedup_body(&path, &item.id, &item.content) {
+                    item.content = stub;
+                }
+            }
+            let token_count =
+                tools::fs::estimate_tokens(&serde_json::to_string(&result.items).unwrap_or_default());
+            self.ok_delta(key, serde_json::json!({ "items": result.items, "token_count": token_count }))
         })
     }
 
@@ -458,7 +500,14 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadContextPackParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_context_pack", {
-            let result = read_context_pack(&self.root, params).map_err(err)?;
+            let mut result = read_context_pack(&self.root, params).map_err(err)?;
+            // Record each body in the cross-tool ledger so a later read_code_body for
+            // the same symbol is stubbed; stub here too if it was already sent.
+            for body in &mut result.bodies {
+                if let Some(stub) = self.dedup_body(&body.path, &body.id, &body.content) {
+                    body.content = stub;
+                }
+            }
             ok_json(serde_json::json!({
                 "keywords": result.keywords,
                 "files": result.files,
@@ -1355,14 +1404,15 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Reset the delta ledgers (delta reads AND run_command deltas). After this, read tools return full content and run_command returns full output again instead of 'unchanged'/diff/delta stubs. Call when you no longer have earlier tool output in context (e.g. after conversation compaction). Optional pattern narrows the reset to matching keys (e.g. a file path or command substring).")]
+    #[tool(description = "Reset the delta ledgers (delta reads, run_command deltas, AND the cross-tool content ledger). After this, read tools return full content and run_command returns full output again instead of 'unchanged'/diff/delta/'already sent' stubs. Call when you no longer have earlier tool output in context (e.g. after conversation compaction). Optional pattern narrows the reset to matching keys (e.g. a file path or command substring).")]
     async fn delta_reset(
         &self,
         Parameters(params): Parameters<DeltaResetParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "delta_reset", {
             let cleared = self.ledger.lock().unwrap().clear(params.pattern.as_deref())
-                + self.cmd_ledger.lock().unwrap().clear(params.pattern.as_deref());
+                + self.cmd_ledger.lock().unwrap().clear(params.pattern.as_deref())
+                + self.content_ledger.lock().unwrap().clear(params.pattern.as_deref());
             ok_json(serde_json::json!({ "cleared_entries": cleared, "token_count": 10 }))
         })
     }
