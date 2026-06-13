@@ -336,6 +336,14 @@ t0k3n setup
 
 ---
 
+### 診断系（Phase 12）
+
+| ツール | 説明 |
+|--------|------|
+| `read_type_diagnostics` | 言語サーバー常駐なしで LSP 相当の静的型診断を取得。各言語の check-only エンジン（`cargo check` / `tsc --noEmit` / `pyright`・`mypy` / `go vet`）を駆動し、重複排除済みの `{file, line, col, severity, code, message}` を返す。言語自動判別・チェッカー未導入時は `checker_available: false` + インストールヒントで非エラー応答 |
+
+---
+
 ## 対応言語
 
 `read_code_skeleton` / `read_code_body` / `read_code_deps` / `read_complexity_map` 等が対応するコード解析言語：

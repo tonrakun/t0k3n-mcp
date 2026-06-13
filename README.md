@@ -239,6 +239,12 @@ This writes (or merges into) `.mcp.json`:
 | `diff_schemas` | Schema diff between git refs — OpenAPI endpoints, Prisma/SQL tables, TypeScript types |
 | `read_pr_context` | Full PR context in one call: changed file skeletons + related tests + commit list |
 
+### Diagnostics (Phase 12)
+
+| Tool | Description |
+|------|-------------|
+| `read_type_diagnostics` | LSP-equivalent static type diagnostics without a language server. Drives the language's own check-only engine — `cargo check` (Rust), `tsc --noEmit` (TypeScript), `pyright`/`mypy` (Python), `go vet` (Go) — and returns a compact, deduplicated `{file, line, col, severity, code, message}` list. Auto-detects the language; returns `checker_available: false` with an install hint instead of erroring when the checker is missing |
+
 ## Language Support
 
 `read_code_skeleton`, `read_code_body`, `read_complexity_map`, and other code analysis tools support:

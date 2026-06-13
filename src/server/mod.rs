@@ -35,6 +35,7 @@ use tools::{
     db_schema::{ReadDbSchemaParams, ReadDbTableParams, read_db_schema, read_db_table},
     delta::{Delta, DeltaResetParams, ReadLedger},
     deps::{ReadCodeDepsParams, read_code_deps},
+    diagnostics::{ReadTypeDiagnosticsParams, read_type_diagnostics},
     document::{ConvertDocumentParams, convert_document},
     env::{ReadEnvSchemaParams, read_env_schema},
     fs::{ReadDirectoryTreeParams, ReadTokenMapParams, SearchFileParams, read_directory_tree, read_token_map, search_file},
@@ -145,6 +146,8 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_security_surface",
     "diff_schemas",
     "read_pr_context",
+    // Phase 12 — LSP / type diagnostics
+    "read_type_diagnostics",
 ];
 
 #[derive(Clone)]
@@ -1237,6 +1240,25 @@ impl T0k3nServer {
                 "total_deleted": result.total_deleted,
                 "related_tests": result.related_tests,
                 "commits": result.commits,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Static type diagnostics (LSP-equivalent) without running a language server. Drives the language's own check-only engine — cargo check (Rust), tsc --noEmit (TypeScript), pyright/mypy (Python), go vet (Go) — and returns a compact, deduplicated list of {file, line, col, severity, code, message}. Auto-detects the language from the manifest/extension; pass `language` to force it, `path` to scope to a file/dir, `severity` (error|warning|hint) as a floor, and `max_items` to cap. If the checker is not installed it returns checker_available:false with an install hint instead of erroring — safe to call speculatively after edits to catch type errors before running the full build.")]
+    async fn read_type_diagnostics(
+        &self,
+        Parameters(params): Parameters<ReadTypeDiagnosticsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_type_diagnostics", {
+            let result = read_type_diagnostics(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "language": result.language,
+                "checker": result.checker,
+                "checker_available": result.checker_available,
+                "note": result.note,
+                "diagnostics": result.diagnostics,
+                "summary": result.summary,
                 "token_count": result.token_count,
             }))
         })

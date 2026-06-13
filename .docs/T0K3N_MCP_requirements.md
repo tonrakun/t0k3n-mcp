@@ -986,6 +986,77 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 ---
 
+### 2.26 LSP / 型診断系（新規）
+
+#### 2.26.1 `read_type_diagnostics`
+
+静的型診断（LSP 相当）を、言語サーバーを常駐させずに取得する補助ツール。長命の Language Server プロトコルを話す代わりに、各言語が持つ診断エンジン（`rust-analyzer` / `tsserver` / `pyright` / `gopls` が内部でラップしているのと同じコンパイラ・型チェッカー）を **check-only モード** で駆動し、結果を 1 本の重複排除済み・トークン圧縮済み診断リストにまとめて返す。
+
+`run_command` で型チェッカーを生実行すると、コンパイラの冗長な出力（進捗・候補表示・`^^^^` キャレット・"For more information…" トレーラ）がそのまま AI に渡る。本ツールは構造化フィールド `{file, line, col, severity, code, message}` のみを返し、同等の診断を桁違いに少ないトークンで提供する。
+
+**設計方針**
+
+- 言語サーバー常駐ではなく **ワンショットの check-only 実行**。状態を持たず、どのセッションからでも安全に投機的に呼べる
+- チェッカー未導入時は **エラーにせず** `checker_available: false` とインストールヒント（`note`）を返す。編集直後に「型エラーがあれば拾う、なければ静かに通る」用途で気軽に呼べる
+- パーサは純関数として分離し、各言語の実出力サンプルでユニットテスト
+
+**対応言語とチェッカー**
+
+| 言語 | 駆動コマンド | 出力形式 |
+|---|---|---|
+| Rust | `cargo check --message-format=json --quiet --all-targets` | 行区切り JSON（`reason == "compiler-message"` を抽出・primary span を採用） |
+| TypeScript / JavaScript | `npx --no-install tsc --noEmit --pretty false` | `path(line,col): error TSxxxx: message` |
+| Python | `pyright --outputjson`（未導入時 `mypy --show-column-numbers` にフォールバック） | pyright JSON（0-based → 1-based 補正） / mypy 行 |
+| Go | `go vet ./...` | `file:line:col: message` |
+
+**言語判別ロジック**
+
+1. `language` 指定があればそれを使用（rust / typescript / python / go）
+2. なければ `path` の拡張子（`.rs` / `.ts,.tsx,.js,…` / `.py,.pyi` / `.go`）
+3. それでも不明ならルートのマニフェスト（`Cargo.toml` / `tsconfig.json`・`package.json` / `pyproject.toml`・`setup.py` 等 / `go.mod`）
+
+**入力**
+
+```ts
+{
+  path?: string;          // 診断対象のファイル/ディレクトリ（root 相対）。省略時はワークスペース全体
+  language?: string;      // rust | typescript | python | go（省略時は自動判別）
+  severity?: string;      // 最小重要度フィルタ: error | warning | hint（デフォルト: warning）
+  max_items?: number;     // 返す診断件数の上限（デフォルト: 100）
+  timeout_secs?: number;  // タイムアウト秒数（デフォルト: 180、最大: 600）
+}
+```
+
+**出力**
+
+```ts
+{
+  language: string;
+  checker: string;            // 実際に使われたチェッカー名（"cargo check" 等）
+  checker_available: boolean; // false の場合 diagnostics は空・note にインストールヒント
+  note?: string;
+  diagnostics: Array<{
+    file: string;             // root 相対・スラッシュ区切りに正規化
+    line: number;             // 1-based
+    col: number;              // 1-based（取得不能時 0）
+    severity: "error" | "warning" | "hint";
+    code?: string;            // E0308 / TS2322 / reportGeneralTypeIssues 等
+    message: string;
+  }>;
+  summary: { errors: number; warnings: number; hints: number; shown: number; total: number };
+  token_count: number;
+}
+```
+
+**フィルタ・整形**
+
+- `severity` を下限とし、重要度の高い順（error → warning → hint）・file / line / col 順にソート
+- 同一 span の重複診断を排除
+- `path` 指定時は root 相対プレフィックスで診断を絞り込み（pyright / mypy には対象パスを直接渡す）
+- `max_items` 超過分は切り捨て、`summary.total` に全件数・`summary.shown` に表示件数を記録
+
+---
+
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -1203,6 +1274,12 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 |---|---|---|
 | `run_command` | Rust 実装 | コマンド実行・スマートフィルタリング（成功: 末尾サマリ / 失敗: エラー行+警告行） |
 
+### LSP / 型診断系（Phase 12）
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `read_type_diagnostics` | Rust 実装 | LSP 相当の静的型診断（cargo check / tsc / pyright・mypy / go vet を check-only 駆動し構造化診断を返す） |
+
 ---
 
 ## 5. 実装フェーズ
@@ -1349,6 +1426,12 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [ ] `read_code_sketch`（タスク22）— skeleton と body の中間ズーム。制御フロー骨格のみ返す
 - [ ] プロジェクトダイジェスト（タスク23）— git HEAD で無効化されるキャッシュ済みアーキテクチャ要約によるウォームスタート
 - [ ] `batch_read` テンプレート因数分解（タスク24）— 類似ファイル群を正規形1つ+差分で返す
+
+### Phase 12 — LSP / 型診断 v2.7+
+
+`run_command` で型チェッカーを生実行すると冗長なコンパイラ出力がそのまま渡る。言語ネイティブの診断エンジンを check-only で駆動し、LSP 相当の構造化診断のみをトークン効率よく返す補助ツールを追加する。
+
+- [x] `read_type_diagnostics`（タスク25）— LSP 相当の静的型診断。`cargo check --message-format=json`（Rust）/ `tsc --noEmit`（TS）/ `pyright`・`mypy`（Python）/ `go vet`（Go）を check-only 駆動し `{file, line, col, severity, code, message}` を返す。言語自動判別・severity / max_items / path フィルタ・重複排除・重要度ソート。チェッカー未導入時は `checker_available: false` + インストールヒントで非エラー応答（投機的呼び出し安全）。パーサは純関数化し各言語の実出力でユニットテスト
 
 ---
 
