@@ -184,7 +184,7 @@ static IMPORT_LINE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 /// Number of leading lines to keep before the last import-like line (0 if none).
-fn import_boundary(lines: &[&str]) -> usize {
+pub(crate) fn import_boundary(lines: &[&str]) -> usize {
     let mut last = 0usize;
     for (i, line) in lines.iter().enumerate() {
         if IMPORT_LINE.is_match(line) {

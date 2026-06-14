@@ -23,6 +23,7 @@ pub mod git;
 pub mod graphql;
 pub mod help;
 pub mod impact;
+pub mod imports;
 pub mod json_yaml;
 pub mod log;
 pub mod manifest;

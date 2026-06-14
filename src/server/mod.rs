@@ -73,6 +73,7 @@ use tools::{
         create_file, delete_symbol, insert_symbol,
     },
     config_write::{SetConfigValueParams, set_config_value},
+    imports::{ManageImportsParams, manage_imports},
 };
 
 pub const REGISTERED_TOOLS: &[&str] = &[
@@ -176,6 +177,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "apply_edits",
     // Phase 15 — more opt-in write tools
     "set_config_value",
+    "manage_imports",
 ];
 
 /// Mutating write tools gated behind --enable-writes / T0K3N_ENABLE_WRITES.
@@ -187,6 +189,7 @@ pub const WRITE_TOOLS: &[&str] = &[
     "insert_symbol",
     "apply_edits",
     "set_config_value",
+    "manage_imports",
 ];
 
 #[derive(Clone)]
@@ -688,6 +691,24 @@ impl T0k3nServer {
                 "old_value": result.old_value,
                 "new_value": result.new_value,
                 "created": result.created,
+                "diff": result.diff,
+                "written": result.written,
+                "token_count": tools::fs::estimate_tokens(&result.diff),
+            }))
+        })
+    }
+
+    #[tool(description = "Add or remove import statements (opt-in write tool; requires --enable-writes). Operates on whole import lines (language-agnostic): adds at the import block, removes by trimmed equality, and de-duplicates against existing imports. dry_run previews the diff.")]
+    async fn manage_imports(
+        &self,
+        Parameters(params): Parameters<ManageImportsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "manage_imports", {
+            let result = manage_imports(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "added": result.added,
+                "removed": result.removed,
+                "skipped": result.skipped,
                 "diff": result.diff,
                 "written": result.written,
                 "token_count": tools::fs::estimate_tokens(&result.diff),
@@ -1779,7 +1800,7 @@ impl ServerHandler for T0k3nServer {
                 .enable_resources()
                 .build(),
             instructions: Some(
-                "T0K3N-MCP is active (85 tools across 15 categories). Use t0k3n-mcp tools \
+                "T0K3N-MCP is active (86 tools across 15 categories). Use t0k3n-mcp tools \
                  instead of built-in Read/Grep/Glob for all file, web, code-analysis, and \
                  memory operations.\n\
                  \n\
@@ -1795,7 +1816,7 @@ impl ServerHandler for T0k3nServer {
                  read_context_pack gathers ranked files + symbols + bodies in one call.\n\
                  4. Combine multiple read operations into a single batch_read call — one round \
                  trip and one response envelope instead of many.\n\
-                 5. DISCOVER TOOLS WITH help — there are 85 and you will miss the best fit if you \
+                 5. DISCOVER TOOLS WITH help — there are 86 and you will miss the best fit if you \
                  guess. Call help() for category names, help(\"<category>\") for that category's \
                  tools, or help(\"all\") for the full catalog BEFORE falling back to a generic \
                  read, search, or run_command. Categories: file / write / git / schema / web / \
