@@ -144,7 +144,7 @@ This writes (or merges into) `.mcp.json`:
 | `--list-tools` | Print all registered tool names and exit |
 | `--refresh-parsers` | Clear the tree-sitter parser cache on startup |
 
-## Tools (67 tools)
+## Tools (80 tools)
 
 ### File Reading
 
@@ -154,8 +154,9 @@ This writes (or merges into) `.mcp.json`:
 | `read_markdown_toc` | Markdown heading list (TOC) |
 | `read_markdown_section` | Fetch section by anchor |
 | `read_code_skeleton` | Functions/classes with signatures only — no body |
-| `read_code_body` | Full body for specific skeleton IDs |
+| `read_code_body` | Full body for specific skeleton IDs. `zoom` selects detail (`body`/`sketch`/`skeleton`/`auto`); `auto` follows the latest `check_budget` strategy (critical→skeleton, aggressive→sketch) |
 | `read_code_sketch` | Control-flow sketch by ID — between skeleton and body (keeps branches/loops/calls, collapses data lines; ~60-70% smaller than the body) |
+| `rename_symbol` | Rename a symbol workspace-wide in one call — write counterpart of `read_symbol_usages`. Whole-identifier match; returns affected files + per-line before/after only (`dry_run` to preview) |
 | `read_type_skeleton` | Type definitions (TS interface/type/enum, Go struct, Rust struct/enum/trait) |
 | `read_call_graph` | Caller/callee graph; `depth` param for cross-file tracing |
 | `read_token_map` | Files sorted by token count (glob filter) |
@@ -182,6 +183,7 @@ This writes (or merges into) `.mcp.json`:
 | `read_git_blame_body` | Per-line blame for a function range |
 | `read_changed_files` | Changed files between branches with stat |
 | `read_git_stash` | Stash list and diff |
+| `read_code_ownership` | Fuses `git log` + blame: per file, churn (commit count), last-modified date, and top authors by lines contributed. Sorted by churn to surface hotspots |
 
 ### Schema / DSL
 
@@ -199,6 +201,7 @@ This writes (or merges into) `.mcp.json`:
 | `read_notebook_cell` | Full source and output of a specific cell |
 | `read_test_skeleton` | Test suite/case list (Jest/pytest/Cargo/Go/JUnit/RSpec) |
 | `read_test_results` | Parse test runner output into a summary |
+| `read_test_coverage` | Map a coverage report (lcov / coverage.py JSON / cobertura) onto symbols — per-function covered/total/pct to spot untested code. `uncovered_only` / `threshold` filters |
 | `read_package_manifest` | Unified dependency list from package.json/Cargo.toml/go.mod/etc. |
 | `read_ci_pipeline` | GitHub Actions / GitLab CI / CircleCI workflow structure |
 
@@ -246,6 +249,21 @@ This writes (or merges into) `.mcp.json`:
 |------|-------------|
 | `read_type_diagnostics` | **Opt-in** (`--enable-diagnostics` or `T0K3N_ENABLE_DIAGNOSTICS=1`; off by default since it spawns the toolchain). LSP-equivalent static type diagnostics without a language server. Drives the language's own check-only engine — `cargo check` (Rust), `tsc --noEmit` (TypeScript), `pyright`/`mypy` (Python), `go vet` (Go) — and returns a compact, deduplicated `{file, line, col, severity, code, message}` list. Auto-detects the language; returns `checker_available: false` with an install hint instead of erroring when the checker is missing |
 | `project_digest` | Warm-start architecture summary in one call: git HEAD, language stats, entry-point files with their top symbols, and a shallow directory tree (~2k tokens). Cached in `.t0k3n/digest.json` and auto-invalidated when HEAD changes — replaces the repeated tree → stats → skeleton exploration at session start |
+
+### Security & API (Phase 13)
+
+| Tool | Description |
+|------|-------------|
+| `read_dependency_audit` | Dependency-side counterpart to `read_security_surface`. Auto-detects the ecosystem (Cargo.toml→`cargo audit`, package.json→`npm audit`, pyproject/requirements→`pip-audit`, go.mod→`osv-scanner`) and normalizes results to `{package, severity, id, affected, patched, title}`, sorted by severity. Returns `scanner_available: false` with an install hint when the scanner is missing |
+| `read_api_surface` | Extract only the public API surface — Rust `pub` items, TS/JS `export`s, Python `__all__` / non-underscore top-level defs, Go capitalized identifiers. Signatures only. Pairs with `diff_schemas` to detect breaking changes (`include_crate_visible` also lists Rust `pub(crate)`) |
+
+## MCP Resources
+
+Key workspace files (manifests, READMEs, conventional entry points) are exposed as MCP resources under the `t0k3n://<path>` URI scheme, so resource-aware clients can list and read them via the standard `resources/list` and `resources/read` methods. URIs are resolved through the same path-traversal guard as the file tools.
+
+## Cross-session delta (gen4)
+
+The cross-tool content ledger is persisted to `.t0k3n/content_ledger.json` and survives across sessions. A body that is unchanged since a previous session (verified by mtime + content hash) returns a clearly-labeled cold-cache stub — it is **not** falsely reported as already in the current context. `delta_reset` clears the persisted ledger.
 
 ## Language Support
 

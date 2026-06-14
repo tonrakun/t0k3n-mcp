@@ -207,7 +207,7 @@ t0k3n setup
 
 ---
 
-## ツール一覧（67 ツール）
+## ツール一覧（80 ツール）
 
 ### ファイル読み取り
 
@@ -217,8 +217,9 @@ t0k3n setup
 | `read_markdown_toc` | Markdown 見出し一覧（TOC） |
 | `read_markdown_section` | anchor 指定でセクション本文取得 |
 | `read_code_skeleton` | 関数・クラス一覧をシグネチャのみで返す |
-| `read_code_body` | skeleton の ID 指定で関数本文取得 |
+| `read_code_body` | skeleton の ID 指定で関数本文取得。`zoom` で詳細度を選択（`body`/`sketch`/`skeleton`/`auto`）。`auto` は直近の `check_budget` 戦略に追従（critical→skeleton、aggressive→sketch） |
 | `read_code_sketch` | skeleton と body の中間ズーム。ID 指定で制御フロー骨格（分岐/ループ/呼び出しを残し純データ行を畳む。body 比 60〜70% 削減） |
+| `rename_symbol` | シンボルを全ワークスペースで 1 コールリネーム（`read_symbol_usages` の書き込み版）。識別子境界一致。影響ファイル＋各行 before/after のみ返却（`dry_run` でプレビュー） |
 | `read_type_skeleton` | 型定義スケルトン（TS interface/type/enum・Go struct/interface・Rust struct/enum/trait） |
 | `read_call_graph` | 関数の呼び出し先・呼び出し元グラフ（depth 指定でクロスファイル対応） |
 | `read_token_map` | ワークスペース内ファイルのトークン数マップ（glob フィルタ・降順ソート） |
@@ -245,6 +246,7 @@ t0k3n setup
 | `read_git_blame_body` | 関数単位の行 blame（著者・日付） |
 | `read_changed_files` | ブランチ間の変更ファイル一覧（ステータス・追加/削除行数） |
 | `read_git_stash` | スタッシュ一覧と diff 取得 |
+| `read_code_ownership` | `git log` + blame 融合。ファイルごとに churn（コミット数）・最終更新日・著者別行貢献シェアを集約。churn 降順でホットスポット化 |
 
 ### DB スキーマ
 
@@ -287,6 +289,7 @@ t0k3n setup
 |--------|------|
 | `read_test_skeleton` | テストファイルのスイート/テスト一覧（Jest/pytest/Cargo/Go/JUnit/RSpec） |
 | `read_test_results` | テスト結果テキストのパース・サマリ返却（フレームワーク自動検出） |
+| `read_test_coverage` | カバレッジレポート（lcov / coverage.py JSON / cobertura）をシンボル単位にマッピング。関数ごとの covered/total/pct で未テスト箇所を可視化。`uncovered_only` / `threshold` フィルタ |
 
 ### パッケージ・CI
 
@@ -343,6 +346,21 @@ t0k3n setup
 |--------|------|
 | `read_type_diagnostics` | **オプトイン**（`--enable-diagnostics` または `T0K3N_ENABLE_DIAGNOSTICS=1`。ツールチェインを起動するためデフォルト無効）。言語サーバー常駐なしで LSP 相当の静的型診断を取得。各言語の check-only エンジン（`cargo check` / `tsc --noEmit` / `pyright`・`mypy` / `go vet`）を駆動し、重複排除済みの `{file, line, col, severity, code, message}` を返す。言語自動判別・チェッカー未導入時は `checker_available: false` + インストールヒントで非エラー応答 |
 | `project_digest` | セッション開始時のウォームスタート。git HEAD・言語統計・エントリポイントと上位シンボル・浅いツリーを ~2k トークンで 1 コール返却。`.t0k3n/digest.json` に HEAD キーでキャッシュし HEAD 変化時に自動再生成 |
+
+### セキュリティ & API（Phase 13）
+
+| ツール | 説明 |
+|------|-------------|
+| `read_dependency_audit` | `read_security_surface`（コード側）の依存側対応。生態系を自動判別（Cargo.toml→`cargo audit`、package.json→`npm audit`、pyproject/requirements→`pip-audit`、go.mod→`osv-scanner`）し `{package, severity, id, affected, patched, title}` に正規化、severity 降順。スキャナ未導入時は `scanner_available: false` ＋ インストールヒントで非エラー |
+| `read_api_surface` | 公開 API 境界のみ抽出 — Rust `pub`／TS・JS `export`／Python `__all__`・非アンダースコア top-level／Go 大文字始まり。シグネチャのみ。`diff_schemas` と組み合わせ破壊的変更検知（`include_crate_visible` で Rust `pub(crate)` も列挙） |
+
+## MCP リソース
+
+主要ファイル（マニフェスト・README・エントリポイント）を `t0k3n://<path>` URI スキームの MCP リソースとして公開。リソース対応クライアントは標準の `resources/list` / `resources/read` で列挙・取得できる。URI 解決はファイルツールと同じパストラバーサル防御を通る。
+
+## セッション横断デルタ（gen4）
+
+クロスツールのコンテンツ台帳を `.t0k3n/content_ledger.json` に永続化し、セッションをまたいで保持する。前セッションから不変の本文（mtime ＋ コンテンツハッシュで検証）は明示ラベル付きのコールドキャッシュ・スタブを返す — 現コンテキストに在ると誤って報告しない。`delta_reset` で永続台帳もクリアされる。
 
 ---
 
