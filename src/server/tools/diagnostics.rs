@@ -252,7 +252,7 @@ fn normalize_file(root: &Path, raw: &str) -> String {
 /// Run a command line through the platform shell, capturing stdout/stderr with a
 /// timeout. Routing through the shell resolves npm `.cmd` shims and PATH the same
 /// way `run_command` does. Returns `(stdout, stderr)`.
-fn run_shell(cmdline: &str, cwd: &Path, timeout: Duration) -> (String, String) {
+pub fn run_shell(cmdline: &str, cwd: &Path, timeout: Duration) -> (String, String) {
     #[cfg(windows)]
     let mut cmd = {
         let mut c = Command::new("cmd");
@@ -290,7 +290,7 @@ fn run_shell(cmdline: &str, cwd: &Path, timeout: Duration) -> (String, String) {
 }
 
 /// Heuristic: does this stderr indicate the checker binary itself is missing?
-fn looks_unavailable(stderr: &str) -> bool {
+pub fn looks_unavailable(stderr: &str) -> bool {
     let s = stderr.to_lowercase();
     s.contains("command not found")
         || s.contains("is not recognized")

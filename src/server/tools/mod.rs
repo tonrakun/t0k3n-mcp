@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod batch;
 pub mod ci;
 pub mod cmd;

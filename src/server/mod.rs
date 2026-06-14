@@ -20,6 +20,7 @@ pub mod tools;
 use db::Database;
 use tools::render::OutputFormat;
 use tools::{
+    audit::{ReadDependencyAuditParams, read_dependency_audit},
     batch::{BatchReadParams, batch_read},
     ci::{ReadCiPipelineParams, read_ci_pipeline},
     cmd::{CmdLedger, RunCommandParams, run_command},
@@ -153,6 +154,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_dead_code",
     "read_refactor_impact",
     "read_security_surface",
+    "read_dependency_audit",
     "diff_schemas",
     "read_pr_context",
     // Phase 12 — LSP / type diagnostics
@@ -1342,6 +1344,23 @@ impl T0k3nServer {
                 "total": result.total,
                 "by_category": result.by_category,
                 "by_severity": result.by_severity,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Scan dependencies for known vulnerabilities — the dependency-side counterpart to read_security_surface. Auto-detects the ecosystem (Cargo.toml→cargo audit, package.json→npm audit, pyproject/requirements→pip-audit, go.mod→osv-scanner) and normalizes results to {package, severity, id, affected, patched, title}, sorted by severity. Filter with severity (minimum level) / max_items. If the scanner is not installed, returns scanner_available:false + an install hint (safe to call speculatively).")]
+    async fn read_dependency_audit(
+        &self,
+        Parameters(params): Parameters<ReadDependencyAuditParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_dependency_audit", {
+            let result = read_dependency_audit(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "scanner_available": result.scanner_available,
+                "ecosystem": result.ecosystem,
+                "vulnerabilities": result.vulnerabilities,
+                "hint": result.hint,
                 "token_count": result.token_count,
             }))
         })
