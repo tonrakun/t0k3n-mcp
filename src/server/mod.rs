@@ -1752,28 +1752,37 @@ impl ServerHandler for T0k3nServer {
                 .enable_resources()
                 .build(),
             instructions: Some(
-                "T0K3N-MCP is active. Use t0k3n-mcp tools instead of built-in Claude Code tools \
-                 for all file, web, and memory operations.\n\
+                "T0K3N-MCP is active (84 tools across 15 categories). Use t0k3n-mcp tools \
+                 instead of built-in Read/Grep/Glob for all file, web, code-analysis, and \
+                 memory operations.\n\
                  \n\
                  RULES:\n\
                  1. NEVER read whole files with built-in Read/Grep/Glob — on average 87% of a \
                  full-file read is content you never use. Read structure first, then extract \
                  only the parts you need.\n\
-                 2. For code: read_code_skeleton first, then read_code_body for just the \
-                 functions you need. The same outline-then-extract pattern exists for markdown, \
-                 JSON/YAML, CSS, web pages, and notebooks.\n\
-                 3. Call check_budget once at the start of a task — it returns the current \
-                 token budget and the recommended reading strategy.\n\
+                 2. For code: read_code_skeleton first, then read_code_body for just the symbols \
+                 you need (zoom: skeleton/sketch/body/auto). The same outline-then-extract \
+                 pattern exists for markdown, JSON/YAML, CSS, web pages, and notebooks.\n\
+                 3. Begin a task with project_digest (cached architecture warm-start) and \
+                 check_budget (token budget + reading strategy). For a specific change, \
+                 read_context_pack gathers ranked files + symbols + bodies in one call.\n\
                  4. Combine multiple read operations into a single batch_read call — one round \
                  trip and one response envelope instead of many.\n\
-                 5. To find the right tool, call help(category). help() with no args lists \
-                 category names; help(\"all\") returns the full catalog. Categories: \
-                 file / git / schema / web / notebook / test / log / text / memory / task / \
-                 session / analysis / cmd / debug.\n\
+                 5. DISCOVER TOOLS WITH help — there are 84 and you will miss the best fit if you \
+                 guess. Call help() for category names, help(\"<category>\") for that category's \
+                 tools, or help(\"all\") for the full catalog BEFORE falling back to a generic \
+                 read, search, or run_command. Categories: file / write / git / schema / web / \
+                 notebook / test / log / text / memory / task / session / analysis / cmd / debug.\n\
+                 6. EDITING: prefer surgical writes over rewriting files. patch_symbol (replace a \
+                 symbol) and rename_symbol are always available; create_file / insert_symbol / \
+                 delete_symbol / apply_edits require the server to be started with --enable-writes \
+                 (read-only by default). All support dry_run and return diffs/summaries only — \
+                 never resend a whole file you are editing.\n\
                  \n\
                  DELTA READS: repeat reads return {unchanged:true} stubs or unified diffs instead \
                  of re-sending identical content. Trust them — the content equals what you already \
-                 received earlier this session. If that content is no longer in your context \
+                 received earlier this session (or, when labeled a cold cache, an unchanged file \
+                 from a previous session). If that content is no longer in your context \
                  (e.g. after compaction), call delta_reset and retry the read."
                     .into(),
             ),
@@ -1837,6 +1846,24 @@ mod tests {
         assert!(
             on.tool_router.map.contains_key("read_type_diagnostics"),
             "diagnostics tool must be registered with --enable-diagnostics"
+        );
+    }
+
+    #[test]
+    fn help_catalog_covers_every_registered_tool() {
+        use std::collections::HashSet;
+        let cataloged: HashSet<&str> = tools::help::catalog()
+            .values()
+            .flat_map(|entries| entries.iter().map(|e| e.name))
+            .collect();
+        let missing: Vec<&str> = REGISTERED_TOOLS
+            .iter()
+            .copied()
+            .filter(|t| !cataloged.contains(t))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "help() catalog is missing registered tools: {missing:?}"
         );
     }
 

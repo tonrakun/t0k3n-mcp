@@ -5,18 +5,18 @@ use std::collections::BTreeMap;
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct HelpParams {
     #[schemars(
-        description = "Category filter: file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug. Omit to list category names only; pass \"all\" for the full catalog."
+        description = "Category filter: file/write/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug. Omit to list category names only; pass \"all\" for the full catalog."
     )]
     pub category: Option<String>,
 }
 
 #[derive(Serialize)]
-struct ToolEntry {
-    name: &'static str,
+pub(crate) struct ToolEntry {
+    pub(crate) name: &'static str,
     description: &'static str,
 }
 
-fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
+pub(crate) fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
     let mut m: BTreeMap<&'static str, Vec<ToolEntry>> = BTreeMap::new();
 
     macro_rules! cat {
@@ -31,9 +31,8 @@ fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("read_markdown_toc",         "headings TOC from a Markdown file"),
         ("read_markdown_section",     "extract sections by anchor"),
         ("read_code_skeleton",        "function/struct/class signatures only"),
-        ("read_code_body",            "full body of skeleton items by ID"),
+        ("read_code_body",            "full body of skeleton items by ID (zoom: body/sketch/skeleton/auto)"),
         ("read_code_sketch",          "control-flow sketch by ID (between skeleton and body)"),
-        ("patch_symbol",              "replace a symbol's source by skeleton ID (write)"),
         ("read_code_deps",            "imports + imported_by dependency graph"),
         ("read_type_skeleton",        "TS/Go/Rust type definitions with fields"),
         ("read_call_graph",           "callers/callees; depth>=1 for cross-file"),
@@ -48,12 +47,21 @@ fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("read_json_yaml_value",      "value at a key path"),
         ("batch_read",                "multiple read ops in one call"),
     ]);
+    cat!("write", [
+        ("patch_symbol",  "replace a symbol's source by skeleton ID"),
+        ("rename_symbol", "rename a symbol workspace-wide (write counterpart of read_symbol_usages)"),
+        ("create_file",   "create a new file (opt-in: --enable-writes)"),
+        ("delete_symbol", "delete a symbol by ID — pairs with read_dead_code (opt-in: --enable-writes)"),
+        ("insert_symbol", "insert code at a structural location (opt-in: --enable-writes)"),
+        ("apply_edits",   "atomic multi-file find/replace — pairs with batch_read (opt-in: --enable-writes)"),
+    ]);
     cat!("git", [
         ("read_git_diff",        "compressed diff vs HEAD or any ref"),
         ("read_git_log",         "structured commit log with filters"),
         ("read_git_blame_body",  "line-level blame for a function"),
         ("read_changed_files",   "files changed between branches"),
         ("read_git_stash",       "stash list and diff"),
+        ("read_code_ownership",  "churn + per-author line share + last-modified (git log+blame)"),
     ]);
     cat!("schema", [
         ("read_db_schema",        "Prisma/SQL table list"),
@@ -81,6 +89,7 @@ fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
     cat!("test", [
         ("read_test_skeleton", "test suite structure (Jest/pytest/Cargo/Go)"),
         ("read_test_results",  "parse test runner output to summary"),
+        ("read_test_coverage", "map coverage (lcov/coverage.py/cobertura) onto symbols"),
     ]);
     cat!("log", [
         ("read_log_tail",    "log file tail with level/pattern filter"),
@@ -116,6 +125,8 @@ fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("read_dead_code",       "unused symbols across workspace"),
         ("read_refactor_impact", "blast radius: callers + tests"),
         ("read_security_surface","injection/XSS/secrets/unsafe patterns"),
+        ("read_dependency_audit","dependency vulnerability scan (cargo/npm/pip/osv audit)"),
+        ("read_api_surface",     "public API surface (pub/export/__all__/Go caps)"),
         ("diff_schemas",         "schema diff between git refs (OpenAPI/Prisma/TS)"),
         ("read_pr_context",      "full PR context: files+skeletons+tests+commits"),
         ("read_type_diagnostics","LSP-equivalent type errors (cargo check/tsc/pyright/go vet) — opt-in: --enable-diagnostics"),
