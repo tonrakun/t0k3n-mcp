@@ -146,7 +146,7 @@ This writes (or merges into) `.mcp.json`:
 | `--enable-diagnostics` | Register the opt-in `read_type_diagnostics` tool (or `T0K3N_ENABLE_DIAGNOSTICS=1`) |
 | `--enable-writes` | Register the opt-in write tools — `create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` (or `T0K3N_ENABLE_WRITES=1`). Read-only by default |
 
-## Tools (84 tools)
+## Tools (85 tools)
 
 ### File Reading
 
@@ -277,6 +277,7 @@ T0K3N-MCP is read-first. Mutating tools are **off by default** and only register
 | `delete_symbol` | Delete a symbol by skeleton ID — write counterpart of `read_dead_code`. Removes the range plus one trailing blank line; `expected_name` guards stale line numbers |
 | `insert_symbol` | Insert code at a structural location: `after_symbol` / `before_symbol` (by skeleton ID), `after_imports`, or `end_of_file`. Completes symbol CRUD with `patch_symbol` (update) and `delete_symbol` (delete) |
 | `apply_edits` | Atomic multi-file find/replace — write counterpart of `batch_read`. Each find must match once per file; if any edit fails, nothing is written |
+| `set_config_value` | Set a JSON/YAML/TOML value by dot-path — write counterpart of `read_json_yaml_value`. Creates intermediate objects; preserves JSON key order |
 
 ## Language Support
 

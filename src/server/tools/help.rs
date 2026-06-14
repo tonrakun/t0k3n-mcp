@@ -54,6 +54,7 @@ pub(crate) fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("delete_symbol", "delete a symbol by ID — pairs with read_dead_code (opt-in: --enable-writes)"),
         ("insert_symbol", "insert code at a structural location (opt-in: --enable-writes)"),
         ("apply_edits",   "atomic multi-file find/replace — pairs with batch_read (opt-in: --enable-writes)"),
+        ("set_config_value", "set a JSON/YAML/TOML value by dot-path — pairs with read_json_yaml_value (opt-in: --enable-writes)"),
     ]);
     cat!("git", [
         ("read_git_diff",        "compressed diff vs HEAD or any ref"),

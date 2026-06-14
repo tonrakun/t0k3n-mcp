@@ -80,7 +80,7 @@ pub fn read_json_yaml_value(root: &Path, params: ReadJsonYamlValueParams) -> any
     Ok(ReadJsonYamlValueResult { value: result.clone(), token_count })
 }
 
-fn parse_file(path: &Path, content: &str) -> anyhow::Result<Value> {
+pub(crate) fn parse_file(path: &Path, content: &str) -> anyhow::Result<Value> {
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     match ext {
         "yaml" | "yml" => {
@@ -124,12 +124,12 @@ fn resolve_path<'a>(value: &'a Value, path: &str) -> anyhow::Result<&'a Value> {
     Ok(current)
 }
 
-enum PathSegment {
+pub(crate) enum PathSegment {
     Key(String),
     Index(usize),
 }
 
-fn tokenize_path(path: &str) -> Vec<PathSegment> {
+pub(crate) fn tokenize_path(path: &str) -> Vec<PathSegment> {
     let mut segments = Vec::new();
     let mut current = String::new();
 

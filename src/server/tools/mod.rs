@@ -5,6 +5,7 @@ pub mod ci;
 pub mod cmd;
 pub mod code;
 pub mod complexity;
+pub mod config_write;
 pub mod context_pack;
 pub mod coverage;
 pub mod css;

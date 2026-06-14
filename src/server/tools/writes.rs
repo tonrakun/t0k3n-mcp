@@ -19,7 +19,7 @@ use super::fs::estimate_tokens;
 use super::patch::parse_id;
 use crate::security::safe_path;
 
-fn unified_diff(old: &str, new: &str) -> String {
+pub(crate) fn unified_diff(old: &str, new: &str) -> String {
     similar::TextDiff::from_lines(old, new)
         .unified_diff()
         .context_radius(2)

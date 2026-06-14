@@ -1833,6 +1833,16 @@ tree-sitter ではなく構造的位置指定でコード挿入。`patch_symbol`
 - [x] `insert_symbol`（タスク38）— 構造的位置へコード挿入（after_symbol/before_symbol/after_imports/end_of_file）。前後空行を自動付与。`patch_symbol`(更新)＋`insert_symbol`(挿入)＋`delete_symbol`(削除)で CRUD 完結
 - [x] `apply_edits`（タスク39）— 複数ファイルへの find/replace をアトミック適用（`batch_read` の対）。find はファイル内一意必須・曖昧時は候補行番号エラー・1つでも失敗で何も書かない。出力は変更行サマリのみ
 
+### Phase 15 — 書き込み第2弾（設定/インポート/整形/移動/安全機構）v3.2+
+
+Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣習）の上に、設定編集・import 管理・整形などの書き込みツールを追加。すべて `--enable-writes` ゲート配下、house rules（dry_run・CRLF/末尾改行保持・diff/サマリのみ出力）準拠。
+
+- [x] `set_config_value`（タスク41）— JSON/YAML/TOML の dot-path に値書込（`read_json_yaml_value` の対）。中間オブジェクト自動生成・任意 JSON 型。`serde_json` の preserve_order で JSON キー順保持（YAML/TOML のコメントは best-effort で消える）。`json_yaml::{parse_file, tokenize_path}` と `writes::unified_diff` を流用。`old_value`/`new_value`/`diff` を返す
+- [ ] `manage_imports`（タスク42）— import 文の追加/削除/重複排除。`writes::import_boundary` 流用
+- [ ] `format_code`（タスク43）— rustfmt/prettier/black/gofmt 駆動。`diagnostics::{run_shell, looks_unavailable}` 流用、未導入は非エラー
+- [ ] `move_symbol`（タスク44, backlog）— シンボルを別ファイルへ移動＋import 追従
+- [ ] `edit_checkpoint`/`rollback`（タスク45, backlog）— 書込前スナップショットと巻き戻し（git stash ベース）
+
 ---
 
 ## 6. 決定事項

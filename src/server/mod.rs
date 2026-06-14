@@ -72,6 +72,7 @@ use tools::{
         ApplyEditsParams, CreateFileParams, DeleteSymbolParams, InsertSymbolParams, apply_edits,
         create_file, delete_symbol, insert_symbol,
     },
+    config_write::{SetConfigValueParams, set_config_value},
 };
 
 pub const REGISTERED_TOOLS: &[&str] = &[
@@ -173,12 +174,20 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "delete_symbol",
     "insert_symbol",
     "apply_edits",
+    // Phase 15 — more opt-in write tools
+    "set_config_value",
 ];
 
 /// Mutating write tools gated behind --enable-writes / T0K3N_ENABLE_WRITES.
 /// Removed from the router unless writes are explicitly enabled. (patch_symbol
 /// and rename_symbol predate the gate and stay always-on for compatibility.)
-pub const WRITE_TOOLS: &[&str] = &["create_file", "delete_symbol", "insert_symbol", "apply_edits"];
+pub const WRITE_TOOLS: &[&str] = &[
+    "create_file",
+    "delete_symbol",
+    "insert_symbol",
+    "apply_edits",
+    "set_config_value",
+];
 
 #[derive(Clone)]
 pub struct T0k3nServer {
@@ -664,6 +673,24 @@ impl T0k3nServer {
                 "changes": result.changes,
                 "written": result.written,
                 "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Set a value at a dot-notation key path in a JSON/YAML/TOML file (opt-in write tool; requires --enable-writes) — write counterpart of read_json_yaml_value. Creates intermediate objects as needed; value may be any JSON type. JSON key order is preserved; YAML/TOML comments are not. dry_run previews the diff. Returns old/new value + diff only.")]
+    async fn set_config_value(
+        &self,
+        Parameters(params): Parameters<SetConfigValueParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "set_config_value", {
+            let result = set_config_value(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "old_value": result.old_value,
+                "new_value": result.new_value,
+                "created": result.created,
+                "diff": result.diff,
+                "written": result.written,
+                "token_count": tools::fs::estimate_tokens(&result.diff),
             }))
         })
     }
@@ -1752,7 +1779,7 @@ impl ServerHandler for T0k3nServer {
                 .enable_resources()
                 .build(),
             instructions: Some(
-                "T0K3N-MCP is active (84 tools across 15 categories). Use t0k3n-mcp tools \
+                "T0K3N-MCP is active (85 tools across 15 categories). Use t0k3n-mcp tools \
                  instead of built-in Read/Grep/Glob for all file, web, code-analysis, and \
                  memory operations.\n\
                  \n\
@@ -1768,7 +1795,7 @@ impl ServerHandler for T0k3nServer {
                  read_context_pack gathers ranked files + symbols + bodies in one call.\n\
                  4. Combine multiple read operations into a single batch_read call — one round \
                  trip and one response envelope instead of many.\n\
-                 5. DISCOVER TOOLS WITH help — there are 84 and you will miss the best fit if you \
+                 5. DISCOVER TOOLS WITH help — there are 85 and you will miss the best fit if you \
                  guess. Call help() for category names, help(\"<category>\") for that category's \
                  tools, or help(\"all\") for the full catalog BEFORE falling back to a generic \
                  read, search, or run_command. Categories: file / write / git / schema / web / \

@@ -209,7 +209,7 @@ t0k3n setup
 
 ---
 
-## ツール一覧（84 ツール）
+## ツール一覧（85 ツール）
 
 ### ファイル読み取り
 
@@ -376,6 +376,7 @@ T0K3N-MCP は読み取り優先。ソースを変更するツールは**デフ�
 | `delete_symbol` | スケルトン ID でシンボル削除（`read_dead_code` の対）。範囲＋末尾空行1行を除去、`expected_name` で陳腐化ガード |
 | `insert_symbol` | 構造的位置へコード挿入：`after_symbol` / `before_symbol`（スケルトン ID）/ `after_imports` / `end_of_file`。`patch_symbol`(更新)・`delete_symbol`(削除)と合わせ CRUD 完結 |
 | `apply_edits` | 複数ファイルへの find/replace をアトミック適用（`batch_read` の対）。find はファイル内一意必須、1つでも失敗で何も書かない |
+| `set_config_value` | JSON/YAML/TOML の値を dot-path で設定（`read_json_yaml_value` の対）。中間オブジェクト自動生成、JSON キー順保持 |
 
 ---
 
