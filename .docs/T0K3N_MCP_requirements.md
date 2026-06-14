@@ -1839,7 +1839,7 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
 
 - [x] `set_config_value`（タスク41）— JSON/YAML/TOML の dot-path に値書込（`read_json_yaml_value` の対）。中間オブジェクト自動生成・任意 JSON 型。`serde_json` の preserve_order で JSON キー順保持（YAML/TOML のコメントは best-effort で消える）。`json_yaml::{parse_file, tokenize_path}` と `writes::unified_diff` を流用。`old_value`/`new_value`/`diff` を返す
 - [x] `manage_imports`（タスク42）— import 文の追加/削除/重複排除。whole-line ベースで言語非依存。`writes::import_boundary` で挿入位置決定、trimmed 一致で削除、既存＋add 内重複を skip。`added`/`removed`/`skipped`/`diff` を返す
-- [ ] `format_code`（タスク43）— rustfmt/prettier/black/gofmt 駆動。`diagnostics::{run_shell, looks_unavailable}` 流用、未導入は非エラー
+- [x] `format_code`（タスク43）— 拡張子で rustfmt/prettier/black/gofmt を駆動。`diagnostics::{run_shell, looks_unavailable}` 流用、未導入は `formatter_available:false` + ヒントで非エラー。dry_run は `.t0k3n/fmt-tmp/` のコピーを整形して diff プレビュー（実ファイル不変）。整形前後の diff・changed を返す
 - [ ] `move_symbol`（タスク44, backlog）— シンボルを別ファイルへ移動＋import 追従
 - [ ] `edit_checkpoint`/`rollback`（タスク45, backlog）— 書込前スナップショットと巻き戻し（git stash ベース）
 

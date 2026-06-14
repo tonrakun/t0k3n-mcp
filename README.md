@@ -146,7 +146,7 @@ This writes (or merges into) `.mcp.json`:
 | `--enable-diagnostics` | Register the opt-in `read_type_diagnostics` tool (or `T0K3N_ENABLE_DIAGNOSTICS=1`) |
 | `--enable-writes` | Register the opt-in write tools — `create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` (or `T0K3N_ENABLE_WRITES=1`). Read-only by default |
 
-## Tools (86 tools)
+## Tools (87 tools)
 
 ### File Reading
 
@@ -279,6 +279,7 @@ T0K3N-MCP is read-first. Mutating tools are **off by default** and only register
 | `apply_edits` | Atomic multi-file find/replace — write counterpart of `batch_read`. Each find must match once per file; if any edit fails, nothing is written |
 | `set_config_value` | Set a JSON/YAML/TOML value by dot-path — write counterpart of `read_json_yaml_value`. Creates intermediate objects; preserves JSON key order |
 | `manage_imports` | Add/remove import statements (language-agnostic, whole-line). Inserts at the import block, removes by trimmed match, de-duplicates |
+| `format_code` | Run the language formatter (rustfmt/prettier/black/gofmt) on a file. Returns the diff; non-error install hint if the formatter is missing |
 
 ## Language Support
 

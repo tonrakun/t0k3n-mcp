@@ -18,6 +18,7 @@ pub mod digest;
 pub mod diff_schemas;
 pub mod document;
 pub mod env;
+pub mod format;
 pub mod fs;
 pub mod git;
 pub mod graphql;

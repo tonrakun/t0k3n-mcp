@@ -209,7 +209,7 @@ t0k3n setup
 
 ---
 
-## ツール一覧（86 ツール）
+## ツール一覧（87 ツール）
 
 ### ファイル読み取り
 
@@ -378,6 +378,7 @@ T0K3N-MCP は読み取り優先。ソースを変更するツールは**デフ�
 | `apply_edits` | 複数ファイルへの find/replace をアトミック適用（`batch_read` の対）。find はファイル内一意必須、1つでも失敗で何も書かない |
 | `set_config_value` | JSON/YAML/TOML の値を dot-path で設定（`read_json_yaml_value` の対）。中間オブジェクト自動生成、JSON キー順保持 |
 | `manage_imports` | import 文の追加/削除（言語非依存・行単位）。import ブロックへ挿入、trimmed 一致で削除、重複排除 |
+| `format_code` | 言語フォーマッタ（rustfmt/prettier/black/gofmt）を駆動。diff を返す。未導入時はインストールヒントで非エラー |
 
 ---
 
