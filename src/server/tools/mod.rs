@@ -36,6 +36,7 @@ pub mod pr_context;
 pub mod proto;
 pub mod render;
 pub mod rename;
+pub mod resources;
 pub mod search;
 pub mod security_surface;
 pub mod session;

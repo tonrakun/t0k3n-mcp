@@ -8,6 +8,7 @@ use rmcp::{
     ServerHandler,
     handler::server::tool::{Parameters, ToolRouter},
     model::*,
+    service::{RequestContext, RoleServer},
     tool, tool_handler, tool_router,
 };
 use serde::Serialize;
@@ -1654,7 +1655,10 @@ impl T0k3nServer {
 impl ServerHandler for T0k3nServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            capabilities: ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                .build(),
             instructions: Some(
                 "T0K3N-MCP is active. Use t0k3n-mcp tools instead of built-in Claude Code tools \
                  for all file, web, and memory operations.\n\
@@ -1683,6 +1687,42 @@ impl ServerHandler for T0k3nServer {
             ),
             ..Default::default()
         }
+    }
+
+    /// Expose the workspace's key files (manifests, READMEs, entry points) as
+    /// `t0k3n://` resources for resource-aware clients.
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        let resources = tools::resources::list_workspace_resources(&self.root)
+            .into_iter()
+            .map(|e| {
+                let mut raw = RawResource::new(e.uri, e.name);
+                raw.mime_type = Some(e.mime);
+                raw.size = Some(e.size);
+                raw.no_annotation()
+            })
+            .collect();
+        Ok(ListResourcesResult::with_all_items(resources))
+    }
+
+    /// Read one `t0k3n://` resource. The content goes through the cross-session
+    /// content ledger's invalidation rules implicitly (it is always the current
+    /// file on disk).
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, McpError> {
+        let path = tools::resources::resolve_uri(&self.root, &request.uri)
+            .ok_or_else(|| err(format!("unknown or unsafe resource uri: {}", request.uri)))?;
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| err(format!("failed to read {}: {e}", request.uri)))?;
+        Ok(ReadResourceResult {
+            contents: vec![ResourceContents::text(text, request.uri)],
+        })
     }
 }
 

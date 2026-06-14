@@ -1764,7 +1764,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [x] `read_dependency_audit`（タスク31）— 生態系自動判別（Cargo.toml→cargo audit / package.json→npm audit / pyproject・requirements→pip-audit / go.mod→osv-scanner）し、`{package, severity, id, affected, patched, title}` に正規化。CVSS スコアは severity バケットへ変換。severity 降順ソート・`severity`（最小レベル）/`max_items` フィルタ。スキャナ未導入時は `scanner_available:false` + インストールヒントで非エラー応答。各フォーマットのパーサはユニットテスト済み
 - [x] `read_api_surface`（タスク32）— 言語別の公開シンボル抽出。Rust `pub`（`pub(crate)` は `include_crate_visible` で区別）/ TS・JS `export` / Python `__all__` ＋ 非アンダースコア top-level / Go 大文字始まり。シグネチャのみ（本文なし）。`path` 絞り込み。`diff_schemas` と組み合わせて破壊的変更検知に発展可能
 - [x] `check_budget` 連動の自動ズーム（タスク33）— `read_code_body` に `zoom`（body/sketch/skeleton/auto）を追加。`check_budget` 呼び出し時に strategy をサーバに保持し、`zoom:auto` で critical→skeleton / aggressive→sketch / それ以外→body を自動選択。採用レベルを `zoom_applied` で通知。マッピングは純関数 `zoom_level` に切り出しユニットテスト済み
-- [ ] MCP Resources 公開（タスク34）— `list_resources`/`read_resource` を実装し主要ファイルを `t0k3n://` URI で公開。デルタ基盤と連携
+- [x] MCP Resources 公開（タスク34）— `ServerHandler::list_resources`/`read_resource` を実装し、主要ファイル（マニフェスト・README・エントリポイント）を `t0k3n://<path>` URI で公開。`get_info` で `enable_resources()`。URI 解決は `safe_path` でトラバーサル防止、上限30件。`read_resource` は常に現在のディスク内容を返す
 
 ---
 
