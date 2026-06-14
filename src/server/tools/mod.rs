@@ -1,3 +1,4 @@
+pub mod api_surface;
 pub mod audit;
 pub mod batch;
 pub mod ci;

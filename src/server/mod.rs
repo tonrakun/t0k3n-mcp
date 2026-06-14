@@ -20,6 +20,7 @@ pub mod tools;
 use db::Database;
 use tools::render::OutputFormat;
 use tools::{
+    api_surface::{ReadApiSurfaceParams, read_api_surface},
     audit::{ReadDependencyAuditParams, read_dependency_audit},
     batch::{BatchReadParams, batch_read},
     ci::{ReadCiPipelineParams, read_ci_pipeline},
@@ -155,6 +156,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_refactor_impact",
     "read_security_surface",
     "read_dependency_audit",
+    "read_api_surface",
     "diff_schemas",
     "read_pr_context",
     // Phase 12 — LSP / type diagnostics
@@ -1361,6 +1363,20 @@ impl T0k3nServer {
                 "ecosystem": result.ecosystem,
                 "vulnerabilities": result.vulnerabilities,
                 "hint": result.hint,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Extract only a codebase's public API surface: Rust pub items, TS/JS exports, Python __all__ / non-underscore top-level defs, Go capitalized identifiers. Signatures only (no bodies). Use to understand a library's external boundary or to detect breaking changes (pair with diff_schemas). Scope with path; include_crate_visible:true also lists Rust pub(crate)/pub(super).")]
+    async fn read_api_surface(
+        &self,
+        Parameters(params): Parameters<ReadApiSurfaceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_api_surface", {
+            let result = read_api_surface(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "api": result.api,
                 "token_count": result.token_count,
             }))
         })
