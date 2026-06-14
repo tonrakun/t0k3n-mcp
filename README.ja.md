@@ -151,6 +151,8 @@ t0k3n setup
 | `--dashboard-port <port>` | ダッシュボードのポート番号（デフォルト: 14123） |
 | `--list-tools` | 登録済みツール一覧を表示して終了 |
 | `--refresh-parsers` | 起動時に tree-sitter パーサーキャッシュをクリア |
+| `--enable-diagnostics` | オプトインの `read_type_diagnostics` を登録（`T0K3N_ENABLE_DIAGNOSTICS=1` でも可） |
+| `--enable-writes` | オプトインの書き込みツール（`create_file` / `delete_symbol` / `insert_symbol` / `apply_edits`）を登録（`T0K3N_ENABLE_WRITES=1` でも可）。デフォルトは読み取り専用 |
 
 ---
 
@@ -207,7 +209,7 @@ t0k3n setup
 
 ---
 
-## ツール一覧（80 ツール）
+## ツール一覧（84 ツール）
 
 ### ファイル読み取り
 
@@ -361,6 +363,19 @@ t0k3n setup
 ## セッション横断デルタ（gen4）
 
 クロスツールのコンテンツ台帳を `.t0k3n/content_ledger.json` に永続化し、セッションをまたいで保持する。前セッションから不変の本文（mtime ＋ コンテンツハッシュで検証）は明示ラベル付きのコールドキャッシュ・スタブを返す — 現コンテキストに在ると誤って報告しない。`delta_reset` で永続台帳もクリアされる。
+
+---
+
+## 書き込みツール（Phase 14・オプトイン）
+
+T0K3N-MCP は読み取り優先。ソースを変更するツールは**デフォルト無効**で、`--enable-writes`（または `T0K3N_ENABLE_WRITES=1`）でのみ登録される。オプトインするまでは任意のリポジトリに安全に向けられる。共通ルール: `dry_run` プレビュー・行番号陳腐化ガード・CRLF/末尾改行保持・出力は diff/サマリのみ（全文を返さない）。（`patch_symbol`・`rename_symbol` はゲート以前からあり常時有効）
+
+| ツール | 説明 |
+|------|-------------|
+| `create_file` | ファイル新規作成。`overwrite:true` 以外は上書き拒否、親ディレクトリ自動作成。従来 `run_command` しか無かった欠落を解消 |
+| `delete_symbol` | スケルトン ID でシンボル削除（`read_dead_code` の対）。範囲＋末尾空行1行を除去、`expected_name` で陳腐化ガード |
+| `insert_symbol` | 構造的位置へコード挿入：`after_symbol` / `before_symbol`（スケルトン ID）/ `after_imports` / `end_of_file`。`patch_symbol`(更新)・`delete_symbol`(削除)と合わせ CRUD 完結 |
+| `apply_edits` | 複数ファイルへの find/replace をアトミック適用（`batch_read` の対）。find はファイル内一意必須、1つでも失敗で何も書かない |
 
 ---
 

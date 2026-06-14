@@ -41,6 +41,9 @@ OPTIONS:
     --enable-diagnostics      Register the opt-in read_type_diagnostics tool
                               (heavyweight: spawns cargo check/tsc/pyright/go vet;
                               also enablable via T0K3N_ENABLE_DIAGNOSTICS=1)
+    --enable-writes           Register opt-in write tools (create_file, delete_symbol,
+                              insert_symbol, apply_edits). Read-only by default;
+                              also enablable via T0K3N_ENABLE_WRITES=1
     --version, -V             Print version and exit"
     );
 }

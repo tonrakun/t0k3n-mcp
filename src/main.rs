@@ -92,6 +92,13 @@ async fn main() -> Result<()> {
             .map(|v| v != "0" && !v.is_empty())
             .unwrap_or(false);
 
+    // Mutating write tools (create_file / delete_symbol / insert_symbol / apply_edits)
+    // are opt-in: read-only by default, enabled only with --enable-writes.
+    let writes_enabled = args.iter().any(|a| a == "--enable-writes")
+        || std::env::var("T0K3N_ENABLE_WRITES")
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false);
+
     let no_dashboard = args.iter().any(|a| a == "--no-dashboard");
     let open_browser = args.iter().any(|a| a == "--open-browser");
     let port = args
@@ -141,7 +148,7 @@ async fn main() -> Result<()> {
 
     // ── MCP server ─────────────────────────────────────────────
     let transport = stdio();
-    let server = server::T0k3nServer::new(root, dashboard, diagnostics_enabled);
+    let server = server::T0k3nServer::new(root, dashboard, diagnostics_enabled, writes_enabled);
     let service = server.serve(transport).await.inspect_err(|e| {
         tracing::error!("Server error: {}", e);
     })?;

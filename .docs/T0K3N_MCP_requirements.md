@@ -1356,6 +1356,54 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 ---
 
+### 2.35 オプトイン書き込みツール群（Phase 14）
+
+ソース変更ツールはこれまで `patch_symbol`（更新）・`rename_symbol`（リネーム）のみで、**Create / Delete・ファイル新規作成・一括書き込みが欠落**していた。シンボル CRUD を完結させ、安全性のため**読み取り専用がデフォルト・書き込みはオプトイン**とする。
+
+#### 2.35.0 `--enable-writes` ゲート
+
+`read_type_diagnostics` の `--enable-diagnostics` 機構を踏襲。新規書き込みツール（`create_file` / `delete_symbol` / `insert_symbol` / `apply_edits`）は `--enable-writes` または `T0K3N_ENABLE_WRITES=1` のときのみ `ToolRouter` に登録。デフォルトは非登録・呼び出し不可。既存の `patch_symbol` / `rename_symbol` は後方互換のためゲート外（常時有効）。`debug_info` に `writes_enabled` を追加。
+
+全書き込みツール共通の house rules: `dry_run` プレビュー・行番号陳腐化ガード（`expected_name`）・CRLF/末尾改行保持・出力は diff/サマリのみ（全文を返さない）。
+
+#### 2.35.1 `create_file`
+
+ファイル新規作成（従来は `run_command` 頼みだった欠落を解消）。`overwrite` デフォルト false で上書き拒否、親ディレクトリ自動作成、`safe_path` でトラバーサル防止。
+
+```ts
+{ path: string; content: string; overwrite?: boolean; dry_run?: boolean }
+→ { path, bytes, created, overwritten, written }
+```
+
+#### 2.35.2 `delete_symbol`
+
+スケルトン ID 指定でシンボルを削除（`read_dead_code` の書き込み対）。範囲＋末尾空行1行をクリーン除去。`parse_id`・`expected_name` 陳腐化検知・CRLF 保持を `patch_symbol` から流用。
+
+```ts
+{ path: string; id: string; expected_name?: string; dry_run?: boolean }
+→ { removed_lines, diff, written }
+```
+
+#### 2.35.3 `insert_symbol`
+
+tree-sitter ではなく構造的位置指定でコード挿入。`patch_symbol`(更新)＋`insert_symbol`(挿入)＋`delete_symbol`(削除)で CRUD 完結。前後に空行を自動付与。
+
+```ts
+{ path: string; content: string; mode: "after_symbol"|"before_symbol"|"after_imports"|"end_of_file"; anchor_id?: string; dry_run?: boolean }
+→ { inserted_at_line, diff, written }
+```
+
+#### 2.35.4 `apply_edits`
+
+複数ファイルへの `{path, find, replace}` を1コールで**アトミック**適用（`batch_read` の書き込み対）。各 find はファイル内一意必須（曖昧時は候補行番号エラー）。1つでも失敗すれば何も書かない。出力は各編集の行＋before/after サマリのみ。
+
+```ts
+{ edits: Array<{ path: string; find: string; replace: string }>; dry_run?: boolean }
+→ { files_changed, edits_applied, changes: Array<{path, line, before, after}>, written }
+```
+
+---
+
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -1598,6 +1646,15 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 | `read_code_body`（拡張） | Rust 実装 | `zoom: auto` で予算に応じ skeleton↔sketch↔body 自動選択 |
 | MCP Resources | プロトコル | 主要ファイルを `t0k3n://` リソースとして公開・差分通知 |
 
+### オプトイン書き込み系（Phase 14）— `--enable-writes` 必須
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `create_file` | Rust 実装 | ファイル新規作成。上書き拒否デフォルト・親ディレクトリ自動作成 |
+| `delete_symbol` | Rust 実装 | スケルトン ID でシンボル削除（`read_dead_code` の対） |
+| `insert_symbol` | Rust 実装 | 構造的位置へコード挿入（after_symbol/before_symbol/after_imports/end_of_file） |
+| `apply_edits` | Rust 実装 | 複数ファイルへの find/replace をアトミック適用（`batch_read` の対） |
+
 ---
 
 ## 5. 実装フェーズ
@@ -1765,6 +1822,16 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [x] `read_api_surface`（タスク32）— 言語別の公開シンボル抽出。Rust `pub`（`pub(crate)` は `include_crate_visible` で区別）/ TS・JS `export` / Python `__all__` ＋ 非アンダースコア top-level / Go 大文字始まり。シグネチャのみ（本文なし）。`path` 絞り込み。`diff_schemas` と組み合わせて破壊的変更検知に発展可能
 - [x] `check_budget` 連動の自動ズーム（タスク33）— `read_code_body` に `zoom`（body/sketch/skeleton/auto）を追加。`check_budget` 呼び出し時に strategy をサーバに保持し、`zoom:auto` で critical→skeleton / aggressive→sketch / それ以外→body を自動選択。採用レベルを `zoom_applied` で通知。マッピングは純関数 `zoom_level` に切り出しユニットテスト済み
 - [x] MCP Resources 公開（タスク34）— `ServerHandler::list_resources`/`read_resource` を実装し、主要ファイル（マニフェスト・README・エントリポイント）を `t0k3n://<path>` URI で公開。`get_info` で `enable_resources()`。URI 解決は `safe_path` でトラバーサル防止、上限30件。`read_resource` は常に現在のディスク内容を返す
+
+### Phase 14 — オプトイン書き込みツール群 v3.2+
+
+シンボル CRUD を完結させる書き込みツールを追加。安全性のため**読み取り専用がデフォルト・書き込みはオプトイン**（`--enable-writes` / `T0K3N_ENABLE_WRITES=1`）。別 MCP サーバーに分けない理由: gen4 デルタ台帳のキャッシュ無効化（mtime+hash）はプロセス内でのみ整合し、書き込みが別プロセスだと「変更なし」誤判定で核心価値が崩れるため。tree-sitter・safe_path・dry_run 等の基盤も全面流用できる。
+
+- [x] `--enable-writes` ゲート（タスク35）— `read_type_diagnostics` の opt-in 機構を踏襲。`WRITE_TOOLS`（create_file/delete_symbol/insert_symbol/apply_edits）を未有効時に `ToolRouter` から除去。`T0k3nServer::new` に `writes_enabled` 追加、`debug_info` に表示。既存 `patch_symbol`/`rename_symbol` は後方互換でゲート外
+- [x] `create_file`（タスク36）— ファイル新規作成。`overwrite` デフォルト false で上書き拒否、親ディレクトリ自動作成、`safe_path` 防御、`dry_run`
+- [x] `delete_symbol`（タスク37）— スケルトン ID でシンボル削除（`read_dead_code` の対）。範囲＋末尾空行1行を除去。`expected_name` 陳腐化検知・CRLF 保持
+- [x] `insert_symbol`（タスク38）— 構造的位置へコード挿入（after_symbol/before_symbol/after_imports/end_of_file）。前後空行を自動付与。`patch_symbol`(更新)＋`insert_symbol`(挿入)＋`delete_symbol`(削除)で CRUD 完結
+- [x] `apply_edits`（タスク39）— 複数ファイルへの find/replace をアトミック適用（`batch_read` の対）。find はファイル内一意必須・曖昧時は候補行番号エラー・1つでも失敗で何も書かない。出力は変更行サマリのみ
 
 ---
 

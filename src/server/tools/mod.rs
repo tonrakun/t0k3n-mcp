@@ -47,3 +47,4 @@ pub mod test_results;
 pub mod test_skeleton;
 pub mod text;
 pub mod web;
+pub mod writes;

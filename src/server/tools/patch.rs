@@ -43,7 +43,7 @@ pub struct PatchSymbolResult {
     pub written: bool,
 }
 
-fn parse_id(id: &str) -> Option<(String, usize, usize)> {
+pub(crate) fn parse_id(id: &str) -> Option<(String, usize, usize)> {
     let (kind, range) = id.rsplit_once(':')?;
     let (start, end) = range.split_once('-')?;
     let start: usize = start.parse().ok()?;

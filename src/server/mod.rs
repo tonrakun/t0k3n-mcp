@@ -68,6 +68,10 @@ use tools::{
     test_skeleton::{ReadTestSkeletonParams, read_test_skeleton},
     text::{CheckBudgetParams, CompressTextParams, CountTokensParams, SummarizeConversationParams, check_budget, compress_text, count_tokens, summarize_conversation},
     web::{FetchWebpageParams, ReadWebpageSectionParams, fetch_webpage, read_webpage_section},
+    writes::{
+        ApplyEditsParams, CreateFileParams, DeleteSymbolParams, InsertSymbolParams, apply_edits,
+        create_file, delete_symbol, insert_symbol,
+    },
 };
 
 pub const REGISTERED_TOOLS: &[&str] = &[
@@ -164,7 +168,17 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_type_diagnostics",
     // Phase 11 — gen3 token reduction
     "project_digest",
+    // Phase 14 — opt-in write tools (registered only with --enable-writes)
+    "create_file",
+    "delete_symbol",
+    "insert_symbol",
+    "apply_edits",
 ];
+
+/// Mutating write tools gated behind --enable-writes / T0K3N_ENABLE_WRITES.
+/// Removed from the router unless writes are explicitly enabled. (patch_symbol
+/// and rename_symbol predate the gate and stay always-on for compatibility.)
+pub const WRITE_TOOLS: &[&str] = &["create_file", "delete_symbol", "insert_symbol", "apply_edits"];
 
 #[derive(Clone)]
 pub struct T0k3nServer {
@@ -179,6 +193,7 @@ pub struct T0k3nServer {
     budget_status: Arc<Mutex<Option<String>>>,
     tool_router: ToolRouter<Self>,
     diagnostics_enabled: bool,
+    writes_enabled: bool,
     pub dashboard: Option<Arc<DashboardState>>,
 }
 
@@ -283,6 +298,7 @@ impl T0k3nServer {
         root: String,
         dashboard: Option<Arc<DashboardState>>,
         diagnostics_enabled: bool,
+        writes_enabled: bool,
     ) -> Self {
         let root_path = PathBuf::from(&root);
         let db_path = root_path.join(".t0k3n").join("t0k3n.db");
@@ -297,6 +313,12 @@ impl T0k3nServer {
         let mut tool_router = Self::tool_router();
         if !diagnostics_enabled {
             tool_router.map.remove("read_type_diagnostics");
+        }
+        // Mutating write tools are opt-in: unregistered unless --enable-writes.
+        if !writes_enabled {
+            for t in WRITE_TOOLS {
+                tool_router.map.remove(*t);
+            }
         }
         let tool_count = tool_router.map.len();
 
@@ -313,13 +335,15 @@ impl T0k3nServer {
             budget_status: Arc::new(Mutex::new(None)),
             tool_router,
             diagnostics_enabled,
+            writes_enabled,
             dashboard,
         };
         tracing::info!(
-            "t0k3n-mcp v{} initialized — {} tools registered (diagnostics: {})",
+            "t0k3n-mcp v{} initialized — {} tools registered (diagnostics: {}, writes: {})",
             env!("CARGO_PKG_VERSION"),
             tool_count,
             if diagnostics_enabled { "enabled" } else { "disabled (opt-in)" },
+            if writes_enabled { "enabled" } else { "disabled (opt-in)" },
         );
         server
     }
@@ -572,6 +596,73 @@ impl T0k3nServer {
                 "files_changed": result.files_changed,
                 "occurrences": result.occurrences,
                 "changes": result.changes,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Create a new file (opt-in write tool; requires --enable-writes). Refuses to overwrite an existing file unless overwrite:true. Creates parent directories. dry_run reports what would happen without writing. Fills the gap where the only way to create a file was run_command.")]
+    async fn create_file(
+        &self,
+        Parameters(params): Parameters<CreateFileParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "create_file", {
+            let result = create_file(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "path": result.path,
+                "bytes": result.bytes,
+                "created": result.created,
+                "overwritten": result.overwritten,
+                "written": result.written,
+                "token_count": 20,
+            }))
+        })
+    }
+
+    #[tool(description = "Delete a symbol by skeleton ID (opt-in write tool; requires --enable-writes) — write counterpart of read_dead_code. Removes the symbol's line range plus one trailing blank line. Pass expected_name to guard against stale line numbers; dry_run previews the diff.")]
+    async fn delete_symbol(
+        &self,
+        Parameters(params): Parameters<DeleteSymbolParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "delete_symbol", {
+            let result = delete_symbol(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "removed_lines": result.removed_lines,
+                "diff": result.diff,
+                "written": result.written,
+                "token_count": tools::fs::estimate_tokens(&result.diff),
+            }))
+        })
+    }
+
+    #[tool(description = "Insert code at a structurally correct location (opt-in write tool; requires --enable-writes). mode: 'after_symbol'/'before_symbol' (need anchor_id from read_code_skeleton), 'after_imports' (after the import block), or 'end_of_file'. Adds blank-line separation automatically. dry_run previews the diff. Completes symbol CRUD with patch_symbol (update) and delete_symbol (delete).")]
+    async fn insert_symbol(
+        &self,
+        Parameters(params): Parameters<InsertSymbolParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "insert_symbol", {
+            let result = insert_symbol(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "inserted_at_line": result.inserted_at_line,
+                "diff": result.diff,
+                "written": result.written,
+                "token_count": tools::fs::estimate_tokens(&result.diff),
+            }))
+        })
+    }
+
+    #[tool(description = "Apply find/replace edits across one or more files atomically (opt-in write tool; requires --enable-writes) — write counterpart of batch_read. Each find must match exactly once per file (ambiguous matches report candidate line numbers). If any edit fails, nothing is written. Returns per-edit line + before/after summaries only. dry_run validates and previews without writing.")]
+    async fn apply_edits(
+        &self,
+        Parameters(params): Parameters<ApplyEditsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "apply_edits", {
+            let result = apply_edits(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "files_changed": result.files_changed,
+                "edits_applied": result.edits_applied,
+                "changes": result.changes,
+                "written": result.written,
                 "token_count": result.token_count,
             }))
         })
@@ -1643,6 +1734,7 @@ impl T0k3nServer {
                 "tool_count": tools.len(),
                 "tools": tools,
                 "diagnostics_enabled": self.diagnostics_enabled,
+                "writes_enabled": self.writes_enabled,
                 "content_ledger_git_head": ledger_git_head,
                 "timestamp_unix": timestamp_unix,
                 "dashboard": self.dashboard.is_some(),
@@ -1735,17 +1827,42 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
 
-        let off = T0k3nServer::new(root.clone(), None, false);
+        let off = T0k3nServer::new(root.clone(), None, false, false);
         assert!(
             !off.tool_router.map.contains_key("read_type_diagnostics"),
             "diagnostics tool must NOT be registered by default"
         );
 
-        let on = T0k3nServer::new(root, None, true);
+        let on = T0k3nServer::new(root, None, true, false);
         assert!(
             on.tool_router.map.contains_key("read_type_diagnostics"),
             "diagnostics tool must be registered with --enable-diagnostics"
         );
+    }
+
+    #[test]
+    fn write_tools_are_opt_in() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_string_lossy().to_string();
+
+        let off = T0k3nServer::new(root.clone(), None, false, false);
+        for t in WRITE_TOOLS {
+            assert!(
+                !off.tool_router.map.contains_key(*t),
+                "write tool {t} must NOT be registered by default"
+            );
+        }
+        // patch_symbol / rename_symbol predate the gate and stay always-on.
+        assert!(off.tool_router.map.contains_key("patch_symbol"));
+        assert!(off.tool_router.map.contains_key("rename_symbol"));
+
+        let on = T0k3nServer::new(root, None, false, true);
+        for t in WRITE_TOOLS {
+            assert!(
+                on.tool_router.map.contains_key(*t),
+                "write tool {t} must be registered with --enable-writes"
+            );
+        }
     }
 
     #[test]
@@ -1770,7 +1887,7 @@ mod tests {
     #[test]
     fn check_budget_updates_zoom_status() {
         let tmp = tempfile::tempdir().unwrap();
-        let server = T0k3nServer::new(tmp.path().to_string_lossy().to_string(), None, false);
+        let server = T0k3nServer::new(tmp.path().to_string_lossy().to_string(), None, false, false);
         // Before any check_budget call, auto falls back to body.
         assert_eq!(server.resolve_zoom(Some("auto")), "body");
         // Simulate a critical-budget check_budget result being recorded.

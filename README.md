@@ -143,8 +143,10 @@ This writes (or merges into) `.mcp.json`:
 | `--dashboard-port <port>` | Dashboard port (default: 14123) |
 | `--list-tools` | Print all registered tool names and exit |
 | `--refresh-parsers` | Clear the tree-sitter parser cache on startup |
+| `--enable-diagnostics` | Register the opt-in `read_type_diagnostics` tool (or `T0K3N_ENABLE_DIAGNOSTICS=1`) |
+| `--enable-writes` | Register the opt-in write tools — `create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` (or `T0K3N_ENABLE_WRITES=1`). Read-only by default |
 
-## Tools (80 tools)
+## Tools (84 tools)
 
 ### File Reading
 
@@ -264,6 +266,17 @@ Key workspace files (manifests, READMEs, conventional entry points) are exposed 
 ## Cross-session delta (gen4)
 
 The cross-tool content ledger is persisted to `.t0k3n/content_ledger.json` and survives across sessions. A body that is unchanged since a previous session (verified by mtime + content hash) returns a clearly-labeled cold-cache stub — it is **not** falsely reported as already in the current context. `delta_reset` clears the persisted ledger.
+
+## Write tools (Phase 14, opt-in)
+
+T0K3N-MCP is read-first. Mutating tools are **off by default** and only registered with `--enable-writes` (or `T0K3N_ENABLE_WRITES=1`), so the server is safe to point at any repo until you opt in. They share the house rules: `dry_run` preview, stale-line guards, CRLF/newline preservation, and diff/summary-only output (never the full file body). (`patch_symbol` and `rename_symbol` predate the gate and stay always-on.)
+
+| Tool | Description |
+|------|-------------|
+| `create_file` | Create a new file. Refuses to overwrite unless `overwrite:true`; makes parent dirs. Fills the gap where the only way to create a file was `run_command` |
+| `delete_symbol` | Delete a symbol by skeleton ID — write counterpart of `read_dead_code`. Removes the range plus one trailing blank line; `expected_name` guards stale line numbers |
+| `insert_symbol` | Insert code at a structural location: `after_symbol` / `before_symbol` (by skeleton ID), `after_imports`, or `end_of_file`. Completes symbol CRUD with `patch_symbol` (update) and `delete_symbol` (delete) |
+| `apply_edits` | Atomic multi-file find/replace — write counterpart of `batch_read`. Each find must match once per file; if any edit fails, nothing is written |
 
 ## Language Support
 
