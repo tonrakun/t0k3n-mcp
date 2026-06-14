@@ -146,7 +146,7 @@ This writes (or merges into) `.mcp.json`:
 | `--enable-diagnostics` | Register the opt-in `read_type_diagnostics` tool (or `T0K3N_ENABLE_DIAGNOSTICS=1`) |
 | `--enable-writes` | Register the opt-in write tools — `create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` (or `T0K3N_ENABLE_WRITES=1`). Read-only by default |
 
-## Tools (88 tools)
+## Tools (90 tools)
 
 ### File Reading
 
@@ -281,6 +281,7 @@ T0K3N-MCP is read-first. Mutating tools are **off by default** and only register
 | `manage_imports` | Add/remove import statements (language-agnostic, whole-line). Inserts at the import block, removes by trimmed match, de-duplicates |
 | `format_code` | Run the language formatter (rustfmt/prettier/black/gofmt) on a file. Returns the diff; non-error install hint if the formatter is missing |
 | `move_symbol` | Move a symbol to another file (created if missing). Import fixups are best-effort — referencing files are reported in warnings |
+| `edit_checkpoint` / `rollback` | Snapshot the working tree before a batch of edits and restore it on failure. Uses `git stash create` in a repo, else a gitignore-aware copy. A safety net for autonomous write loops |
 
 ## Language Support
 

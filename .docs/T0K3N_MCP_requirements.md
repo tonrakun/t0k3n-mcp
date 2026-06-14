@@ -1841,7 +1841,7 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
 - [x] `manage_imports`（タスク42）— import 文の追加/削除/重複排除。whole-line ベースで言語非依存。`writes::import_boundary` で挿入位置決定、trimmed 一致で削除、既存＋add 内重複を skip。`added`/`removed`/`skipped`/`diff` を返す
 - [x] `format_code`（タスク43）— 拡張子で rustfmt/prettier/black/gofmt を駆動。`diagnostics::{run_shell, looks_unavailable}` 流用、未導入は `formatter_available:false` + ヒントで非エラー。dry_run は `.t0k3n/fmt-tmp/` のコピーを整形して diff プレビュー（実ファイル不変）。整形前後の diff・changed を返す
 - [x] `move_symbol`（タスク44）— シンボルを src から dest へ移動（dest 無ければ作成）。抜き出し（delete_symbol 相当）＋末尾追記。import 追従は best-effort（書き換えはせず、`read_symbol_usages` で参照ファイルを検出し warnings に列挙）。`symbol_name` で陳腐化ガード＋参照警告。src/dest の両 diff を返す
-- [ ] `edit_checkpoint`/`rollback`（タスク45, backlog）— 書込前スナップショットと巻き戻し（git stash ベース）
+- [x] `edit_checkpoint`/`rollback`（タスク45）— 書込前スナップショットと巻き戻し。git 管理下は `git stash create`（作業ツリー不変）→ `git checkout <sha> -- .` で復元。非 git 時は gitignore 対応で `.t0k3n/checkpoints/<id>/` へコピー退避→復元。`checkpoint_id` は自己完結（git:/copy: プレフィックス）でサーバ状態不要。制約: チェックポイント後に新規作成されたファイルは rollback で削除されない
 
 ---
 

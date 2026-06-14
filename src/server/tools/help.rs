@@ -58,6 +58,8 @@ pub(crate) fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("manage_imports",   "add/remove import statements, dedup (opt-in: --enable-writes)"),
         ("format_code",      "run rustfmt/prettier/black/gofmt on a file (opt-in: --enable-writes)"),
         ("move_symbol",      "move a symbol to another file; warns on referencing files (opt-in: --enable-writes)"),
+        ("edit_checkpoint",  "snapshot the working tree before edits — git stash or copy (opt-in: --enable-writes)"),
+        ("rollback",         "restore the working tree to an edit_checkpoint (opt-in: --enable-writes)"),
     ]);
     cat!("git", [
         ("read_git_diff",        "compressed diff vs HEAD or any ref"),

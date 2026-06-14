@@ -209,7 +209,7 @@ t0k3n setup
 
 ---
 
-## ツール一覧（88 ツール）
+## ツール一覧（90 ツール）
 
 ### ファイル読み取り
 
@@ -380,6 +380,7 @@ T0K3N-MCP は読み取り優先。ソースを変更するツールは**デフ�
 | `manage_imports` | import 文の追加/削除（言語非依存・行単位）。import ブロックへ挿入、trimmed 一致で削除、重複排除 |
 | `format_code` | 言語フォーマッタ（rustfmt/prettier/black/gofmt）を駆動。diff を返す。未導入時はインストールヒントで非エラー |
 | `move_symbol` | シンボルを別ファイルへ移動（無ければ作成）。import 追従は best-effort（参照ファイルを warnings に列挙） |
+| `edit_checkpoint` / `rollback` | 書込前に作業ツリーをスナップショットし失敗時に復元。git 管理下は `git stash create`、非 git 時は gitignore 対応コピー。自律書き込みループの安全網 |
 
 ---
 

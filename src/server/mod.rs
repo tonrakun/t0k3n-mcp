@@ -76,6 +76,7 @@ use tools::{
     imports::{ManageImportsParams, manage_imports},
     format::{FormatCodeParams, format_code},
     move_symbol::{MoveSymbolParams, move_symbol},
+    checkpoint::{EditCheckpointParams, RollbackParams, edit_checkpoint, rollback},
 };
 
 pub const REGISTERED_TOOLS: &[&str] = &[
@@ -182,6 +183,8 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "manage_imports",
     "format_code",
     "move_symbol",
+    "edit_checkpoint",
+    "rollback",
 ];
 
 /// Mutating write tools gated behind --enable-writes / T0K3N_ENABLE_WRITES.
@@ -196,6 +199,8 @@ pub const WRITE_TOOLS: &[&str] = &[
     "manage_imports",
     "format_code",
     "move_symbol",
+    "edit_checkpoint",
+    "rollback",
 ];
 
 #[derive(Clone)]
@@ -758,6 +763,39 @@ impl T0k3nServer {
                 "warnings": result.warnings,
                 "written": result.written,
                 "token_count": tok,
+            }))
+        })
+    }
+
+    #[tool(description = "Snapshot the working tree before a batch of edits (opt-in write tool; requires --enable-writes) — safety net for autonomous write loops. In a git repo uses `git stash create` (does not touch the tree); otherwise copies gitignore-aware files into .t0k3n/checkpoints/. Returns a checkpoint_id to pass to rollback. Distinct from session_snapshot (which saves tool state, not files).")]
+    async fn edit_checkpoint(
+        &self,
+        Parameters(params): Parameters<EditCheckpointParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "edit_checkpoint", {
+            let result = edit_checkpoint(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "checkpoint_id": result.checkpoint_id,
+                "strategy": result.strategy,
+                "files": result.files,
+                "note": result.note,
+                "token_count": 20,
+            }))
+        })
+    }
+
+    #[tool(description = "Restore the working tree to a prior edit_checkpoint (opt-in write tool; requires --enable-writes). Pass the checkpoint_id from edit_checkpoint. git checkpoints restore tracked files via `git checkout`; copy checkpoints copy files back. Note: files created after the checkpoint are not removed.")]
+    async fn rollback(
+        &self,
+        Parameters(params): Parameters<RollbackParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "rollback", {
+            let result = rollback(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "strategy": result.strategy,
+                "restored": result.restored,
+                "note": result.note,
+                "token_count": 20,
             }))
         })
     }
@@ -1846,7 +1884,7 @@ impl ServerHandler for T0k3nServer {
                 .enable_resources()
                 .build(),
             instructions: Some(
-                "T0K3N-MCP is active (88 tools across 15 categories). Use t0k3n-mcp tools \
+                "T0K3N-MCP is active (90 tools across 15 categories). Use t0k3n-mcp tools \
                  instead of built-in Read/Grep/Glob for all file, web, code-analysis, and \
                  memory operations.\n\
                  \n\
@@ -1862,7 +1900,7 @@ impl ServerHandler for T0k3nServer {
                  read_context_pack gathers ranked files + symbols + bodies in one call.\n\
                  4. Combine multiple read operations into a single batch_read call — one round \
                  trip and one response envelope instead of many.\n\
-                 5. DISCOVER TOOLS WITH help — there are 88 and you will miss the best fit if you \
+                 5. DISCOVER TOOLS WITH help — there are 90 and you will miss the best fit if you \
                  guess. Call help() for category names, help(\"<category>\") for that category's \
                  tools, or help(\"all\") for the full catalog BEFORE falling back to a generic \
                  read, search, or run_command. Categories: file / write / git / schema / web / \
