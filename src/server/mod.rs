@@ -75,6 +75,7 @@ use tools::{
     config_write::{SetConfigValueParams, set_config_value},
     imports::{ManageImportsParams, manage_imports},
     format::{FormatCodeParams, format_code},
+    move_symbol::{MoveSymbolParams, move_symbol},
 };
 
 pub const REGISTERED_TOOLS: &[&str] = &[
@@ -180,6 +181,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "set_config_value",
     "manage_imports",
     "format_code",
+    "move_symbol",
 ];
 
 /// Mutating write tools gated behind --enable-writes / T0K3N_ENABLE_WRITES.
@@ -193,6 +195,7 @@ pub const WRITE_TOOLS: &[&str] = &[
     "set_config_value",
     "manage_imports",
     "format_code",
+    "move_symbol",
 ];
 
 #[derive(Clone)]
@@ -734,6 +737,27 @@ impl T0k3nServer {
                 "written": result.written,
                 "note": result.note,
                 "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Move a symbol from one file to another by skeleton ID (opt-in write tool; requires --enable-writes). Extracts it from src_path and appends to dest_path (created if missing). Import fixups are best-effort: imports are NOT rewritten, but referencing files are reported in warnings. Pass symbol_name for a stale-line guard + the reference-impact warning. dry_run previews both diffs.")]
+    async fn move_symbol(
+        &self,
+        Parameters(params): Parameters<MoveSymbolParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "move_symbol", {
+            let result = move_symbol(&self.root, params).map_err(err)?;
+            let tok = tools::fs::estimate_tokens(&result.src_diff)
+                + tools::fs::estimate_tokens(&result.dest_diff);
+            ok_json(serde_json::json!({
+                "moved_lines": result.moved_lines,
+                "dest_created": result.dest_created,
+                "src_diff": result.src_diff,
+                "dest_diff": result.dest_diff,
+                "warnings": result.warnings,
+                "written": result.written,
+                "token_count": tok,
             }))
         })
     }
@@ -1822,7 +1846,7 @@ impl ServerHandler for T0k3nServer {
                 .enable_resources()
                 .build(),
             instructions: Some(
-                "T0K3N-MCP is active (87 tools across 15 categories). Use t0k3n-mcp tools \
+                "T0K3N-MCP is active (88 tools across 15 categories). Use t0k3n-mcp tools \
                  instead of built-in Read/Grep/Glob for all file, web, code-analysis, and \
                  memory operations.\n\
                  \n\
@@ -1838,7 +1862,7 @@ impl ServerHandler for T0k3nServer {
                  read_context_pack gathers ranked files + symbols + bodies in one call.\n\
                  4. Combine multiple read operations into a single batch_read call — one round \
                  trip and one response envelope instead of many.\n\
-                 5. DISCOVER TOOLS WITH help — there are 87 and you will miss the best fit if you \
+                 5. DISCOVER TOOLS WITH help — there are 88 and you will miss the best fit if you \
                  guess. Call help() for category names, help(\"<category>\") for that category's \
                  tools, or help(\"all\") for the full catalog BEFORE falling back to a generic \
                  read, search, or run_command. Categories: file / write / git / schema / web / \

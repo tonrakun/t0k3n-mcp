@@ -57,6 +57,7 @@ pub(crate) fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("set_config_value", "set a JSON/YAML/TOML value by dot-path — pairs with read_json_yaml_value (opt-in: --enable-writes)"),
         ("manage_imports",   "add/remove import statements, dedup (opt-in: --enable-writes)"),
         ("format_code",      "run rustfmt/prettier/black/gofmt on a file (opt-in: --enable-writes)"),
+        ("move_symbol",      "move a symbol to another file; warns on referencing files (opt-in: --enable-writes)"),
     ]);
     cat!("git", [
         ("read_git_diff",        "compressed diff vs HEAD or any ref"),

@@ -30,6 +30,7 @@ pub mod log;
 pub mod manifest;
 pub mod markdown;
 pub mod memory;
+pub mod move_symbol;
 pub mod notebook;
 pub mod openapi;
 pub mod outline;
