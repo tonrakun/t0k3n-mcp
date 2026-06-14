@@ -28,6 +28,7 @@ pub mod memory;
 pub mod notebook;
 pub mod openapi;
 pub mod outline;
+pub mod ownership;
 pub mod patch;
 pub mod pr_context;
 pub mod proto;

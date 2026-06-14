@@ -1760,7 +1760,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [x] `rename_symbol`（タスク27）— シンボルを全ファイル横断で安全リネーム。`read_symbol_usages` の検出基盤（WalkBuilder + `\bSYMBOL\b`）で識別子境界一致のみ置換（部分一致は非対象）し、`dry_run`・CRLF/末尾改行保持を `patch_symbol` から流用。`new_name` は識別子バリデーション。出力は影響ファイル数 + 各行 before/after のみで全文は返さない。注意: 文字列/コメント内の同名も置換しうるため dry_run プレビュー前提
 - [x] デルタリード第 4 世代 — セッション横断の永続台帳（タスク28）。`content_ledger`（ファイル+行範囲+コンテンツハッシュ）を `.t0k3n/content_ledger.json` に原子的書き込みで永続化。**正しさ重視の設計**: 前セッション由来のヒットは `UnchangedColdCache` として「不変だが現コンテキストには無い／必要なら再読込」と正直に提示し、今セッション内ヒット（hot）のみ従来の `AlreadySent` を返す。mtime+hash でファイル単位失効、git HEAD は `debug_info` に表示。`delta_reset` は永続ファイルも消去
 - [x] `read_test_coverage`（タスク29）— lcov（lcov.info / cargo-llvm-cov）/ coverage.py JSON / cobertura XML を解析し、`read_code_skeleton` のシンボル範囲に行カバレッジをマッピング。シンボル単位 covered/total/pct ＋ overall_pct。`uncovered_only`（pct<100）/`threshold` フィルタ。レポートは gitignore されがちなため慣習パスを明示探索。未検出時は `report_available:false` + 生成コマンドヒントで非エラー応答
-- [ ] `read_code_ownership`（タスク30）— git log/blame 融合で churn・主要オーナー・最終更新を集約。`top_n`/`since` 対応
+- [x] `read_code_ownership`（タスク30）— `git log --numstat` 1パスで churn（コミット数）・最終更新日・著者別行貢献シェア（追加行ベース）を集約。churn 降順でホットスポット化。`path`/`top_n`/`since` 対応。バイナリ numstat（`-`）安全処理
 - [ ] `read_dependency_audit`（タスク31）— npm/cargo/pip/osv audit を check-only 駆動し脆弱性を severity 降順で正規化。未導入時はインストールヒントで非エラー応答
 - [ ] `read_api_surface`（タスク32）— tree-sitter 可視性判定で公開シンボル（pub/export/__all__/大文字始まり）のみ抽出
 - [ ] `check_budget` 連動の自動ズーム（タスク33）— `zoom: auto` で予算ステータスに応じ skeleton↔sketch↔body を自動選択し `zoom_applied` を通知

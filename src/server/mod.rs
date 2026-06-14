@@ -54,6 +54,7 @@ use tools::{
     memory::{MemoryDeleteParams, MemoryGetParams, MemoryListParams, MemorySaveParams, memory_delete, memory_get, memory_list, memory_save},
     notebook::{ReadNotebookCellParams, ReadNotebookCellsParams, read_notebook_cell, read_notebook_cells},
     outline::{ReadFileOutlineParams, read_file_outline},
+    ownership::{ReadCodeOwnershipParams, read_code_ownership},
     patch::{PatchSymbolParams, patch_symbol},
     rename::{RenameSymbolParams, rename_symbol},
     proto::{ReadProtoSchemaParams, ReadProtoTypeParams, read_proto_schema, read_proto_type},
@@ -93,6 +94,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_git_blame_body",
     "read_changed_files",
     "read_git_stash",
+    "read_code_ownership",
     // Schema / DSL
     "read_db_schema",
     "read_db_table",
@@ -1183,6 +1185,19 @@ impl T0k3nServer {
             let result = read_git_stash(&self.root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "stashes": result.stashes, "diff": result.diff, "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Fuse git log + blame into code ownership: per file, churn (commit count), the date it was last touched, and top authors by lines contributed (ownership share). Sorted by churn to surface hotspots. Use to learn who to ask about a file and where the volatile code is. Scope with path, limit with top_n, window with since (e.g. \"3 months ago\").")]
+    async fn read_code_ownership(
+        &self,
+        Parameters(params): Parameters<ReadCodeOwnershipParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_code_ownership", {
+            let result = read_code_ownership(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "hotspots": result.hotspots, "token_count": result.token_count,
             }))
         })
     }
