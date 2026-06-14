@@ -144,7 +144,7 @@ This writes (or merges into) `.mcp.json`:
 | `--list-tools` | Print all registered tool names and exit |
 | `--refresh-parsers` | Clear the tree-sitter parser cache on startup |
 | `--enable-diagnostics` | Register the opt-in `read_type_diagnostics` tool (or `T0K3N_ENABLE_DIAGNOSTICS=1`) |
-| `--enable-writes` | Register the opt-in write tools — `create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` (or `T0K3N_ENABLE_WRITES=1`). Read-only by default |
+| `--enable-writes` | Register the opt-in write tools — `create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` / `set_config_value` / `manage_imports` / `format_code` / `move_symbol` / `edit_checkpoint` / `rollback` (or `T0K3N_ENABLE_WRITES=1`). Read-only by default |
 
 ## Tools (90 tools)
 
@@ -267,7 +267,7 @@ Key workspace files (manifests, READMEs, conventional entry points) are exposed 
 
 The cross-tool content ledger is persisted to `.t0k3n/content_ledger.json` and survives across sessions. A body that is unchanged since a previous session (verified by mtime + content hash) returns a clearly-labeled cold-cache stub — it is **not** falsely reported as already in the current context. `delta_reset` clears the persisted ledger.
 
-## Write tools (Phase 14, opt-in)
+## Write tools (Phase 14–15, opt-in)
 
 T0K3N-MCP is read-first. Mutating tools are **off by default** and only registered with `--enable-writes` (or `T0K3N_ENABLE_WRITES=1`), so the server is safe to point at any repo until you opt in. They share the house rules: `dry_run` preview, stale-line guards, CRLF/newline preservation, and diff/summary-only output (never the full file body). (`patch_symbol` and `rename_symbol` predate the gate and stay always-on.)
 

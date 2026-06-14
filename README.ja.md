@@ -152,7 +152,7 @@ t0k3n setup
 | `--list-tools` | 登録済みツール一覧を表示して終了 |
 | `--refresh-parsers` | 起動時に tree-sitter パーサーキャッシュをクリア |
 | `--enable-diagnostics` | オプトインの `read_type_diagnostics` を登録（`T0K3N_ENABLE_DIAGNOSTICS=1` でも可） |
-| `--enable-writes` | オプトインの書き込みツール（`create_file` / `delete_symbol` / `insert_symbol` / `apply_edits`）を登録（`T0K3N_ENABLE_WRITES=1` でも可）。デフォルトは読み取り専用 |
+| `--enable-writes` | オプトインの書き込みツール（`create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` / `set_config_value` / `manage_imports` / `format_code` / `move_symbol` / `edit_checkpoint` / `rollback`）を登録（`T0K3N_ENABLE_WRITES=1` でも可）。デフォルトは読み取り専用 |
 
 ---
 
@@ -366,7 +366,7 @@ t0k3n setup
 
 ---
 
-## 書き込みツール（Phase 14・オプトイン）
+## 書き込みツール（Phase 14–15・オプトイン）
 
 T0K3N-MCP は読み取り優先。ソースを変更するツールは**デフォルト無効**で、`--enable-writes`（または `T0K3N_ENABLE_WRITES=1`）でのみ登録される。オプトインするまでは任意のリポジトリに安全に向けられる。共通ルール: `dry_run` プレビュー・行番号陳腐化ガード・CRLF/末尾改行保持・出力は diff/サマリのみ（全文を返さない）。（`patch_symbol`・`rename_symbol` はゲート以前からあり常時有効）
 
