@@ -4,6 +4,7 @@ pub mod cmd;
 pub mod code;
 pub mod complexity;
 pub mod context_pack;
+pub mod coverage;
 pub mod css;
 pub mod db_schema;
 pub mod delta;

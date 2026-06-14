@@ -26,6 +26,7 @@ use tools::{
     code::{ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams, ReadInterfaceConformanceParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams, read_call_graph, read_code_body, read_code_skeleton, read_interface_conformance, read_symbol_usages, read_type_skeleton},
     complexity::{ReadComplexityMapParams, read_complexity_map},
     context_pack::{ReadContextPackParams, read_context_pack},
+    coverage::{ReadTestCoverageParams, read_test_coverage},
     dead_code::{ReadDeadCodeParams, read_dead_code},
     diff_schemas::{DiffSchemasParams, diff_schemas},
     impact::{ReadRefactorImpactParams, read_refactor_impact},
@@ -114,6 +115,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     // Test
     "read_test_skeleton",
     "read_test_results",
+    "read_test_coverage",
     // Log / Debug
     "read_log_tail",
     "read_stack_trace",
@@ -1080,6 +1082,24 @@ impl T0k3nServer {
             ok_json(serde_json::json!({
                 "framework": result.framework, "summary": result.summary,
                 "suites": result.suites, "failures": result.failures,
+                "token_count": result.token_count,
+            }))
+        })
+    }
+
+    #[tool(description = "Map a coverage report onto code symbols to see which functions are untested (risky to change). Auto-detects lcov (lcov.info / cargo llvm-cov), coverage.py JSON, or cobertura XML. Per-symbol covered/total/pct plus overall_pct. Filter with uncovered_only (pct<100) or threshold. If no report exists, returns report_available:false + a generation hint (safe to call speculatively). Pairs with read_test_results / read_test_skeleton.")]
+    async fn read_test_coverage(
+        &self,
+        Parameters(params): Parameters<ReadTestCoverageParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "read_test_coverage", {
+            let result = read_test_coverage(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "report_available": result.report_available,
+                "format": result.format,
+                "overall_pct": result.overall_pct,
+                "files": result.files,
+                "hint": result.hint,
                 "token_count": result.token_count,
             }))
         })
