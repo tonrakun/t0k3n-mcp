@@ -535,6 +535,10 @@ pub struct ReadCodeBodyParams {
     pub path: String,
     #[schemars(description = "List of skeleton IDs from read_code_skeleton (e.g. 'function:10-25')")]
     pub ids: Vec<String>,
+    #[schemars(
+        description = "Detail level: 'body' (default, full source), 'sketch' (control-flow only), 'skeleton' (signatures only, ignores ids), or 'auto' (pick by the latest check_budget strategy: critical→skeleton, aggressive→sketch, else body)."
+    )]
+    pub zoom: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1298,6 +1302,7 @@ mod tests {
         let r = read_code_body(dir.path(), ReadCodeBodyParams {
             path: "a.rs".into(),
             ids: vec!["function:100-120".into()],
+            zoom: None,
         }).unwrap();
         assert_eq!(r.items.len(), 1);
         assert!(r.items[0].content.contains("out of range"));

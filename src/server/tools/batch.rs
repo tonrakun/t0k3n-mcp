@@ -187,6 +187,7 @@ fn execute_item(root: &Path, item: &BatchReadItem) -> anyhow::Result<(Value, usi
             let result = read_code_body(root, ReadCodeBodyParams {
                 path: item.path.clone(),
                 ids,
+                zoom: None,
             })?;
             let data = serde_json::to_value(&result.items)?;
             Ok((data, result.token_count))

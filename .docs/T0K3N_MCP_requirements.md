@@ -1763,7 +1763,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 - [x] `read_code_ownership`（タスク30）— `git log --numstat` 1パスで churn（コミット数）・最終更新日・著者別行貢献シェア（追加行ベース）を集約。churn 降順でホットスポット化。`path`/`top_n`/`since` 対応。バイナリ numstat（`-`）安全処理
 - [x] `read_dependency_audit`（タスク31）— 生態系自動判別（Cargo.toml→cargo audit / package.json→npm audit / pyproject・requirements→pip-audit / go.mod→osv-scanner）し、`{package, severity, id, affected, patched, title}` に正規化。CVSS スコアは severity バケットへ変換。severity 降順ソート・`severity`（最小レベル）/`max_items` フィルタ。スキャナ未導入時は `scanner_available:false` + インストールヒントで非エラー応答。各フォーマットのパーサはユニットテスト済み
 - [x] `read_api_surface`（タスク32）— 言語別の公開シンボル抽出。Rust `pub`（`pub(crate)` は `include_crate_visible` で区別）/ TS・JS `export` / Python `__all__` ＋ 非アンダースコア top-level / Go 大文字始まり。シグネチャのみ（本文なし）。`path` 絞り込み。`diff_schemas` と組み合わせて破壊的変更検知に発展可能
-- [ ] `check_budget` 連動の自動ズーム（タスク33）— `zoom: auto` で予算ステータスに応じ skeleton↔sketch↔body を自動選択し `zoom_applied` を通知
+- [x] `check_budget` 連動の自動ズーム（タスク33）— `read_code_body` に `zoom`（body/sketch/skeleton/auto）を追加。`check_budget` 呼び出し時に strategy をサーバに保持し、`zoom:auto` で critical→skeleton / aggressive→sketch / それ以外→body を自動選択。採用レベルを `zoom_applied` で通知。マッピングは純関数 `zoom_level` に切り出しユニットテスト済み
 - [ ] MCP Resources 公開（タスク34）— `list_resources`/`read_resource` を実装し主要ファイルを `t0k3n://` URI で公開。デルタ基盤と連携
 
 ---

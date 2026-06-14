@@ -173,6 +173,9 @@ pub struct T0k3nServer {
     ledger: Arc<Mutex<ReadLedger>>,
     cmd_ledger: Arc<Mutex<CmdLedger>>,
     content_ledger: Arc<Mutex<ContentLedger>>,
+    /// Latest check_budget strategy (normal/conservative/aggressive/critical),
+    /// used by read_code_body's zoom:auto to pick a detail level.
+    budget_status: Arc<Mutex<Option<String>>>,
     tool_router: ToolRouter<Self>,
     diagnostics_enabled: bool,
     pub dashboard: Option<Arc<DashboardState>>,
@@ -180,6 +183,22 @@ pub struct T0k3nServer {
 
 fn err(msg: impl std::fmt::Display) -> McpError {
     McpError::internal_error(msg.to_string(), None)
+}
+
+/// Map a requested zoom + current budget strategy to a concrete detail level.
+/// `auto` degrades with budget pressure: critical→skeleton, aggressive→sketch,
+/// otherwise body. Explicit levels pass through; anything else is body.
+fn zoom_level(requested: Option<&str>, status: Option<&str>) -> &'static str {
+    match requested.map(|s| s.to_ascii_lowercase()).as_deref() {
+        Some("skeleton") => "skeleton",
+        Some("sketch") => "sketch",
+        Some("auto") => match status {
+            Some("critical") => "skeleton",
+            Some("aggressive") => "sketch",
+            _ => "body",
+        },
+        _ => "body",
+    }
 }
 
 /// File mtime in whole seconds since the epoch, or None if it can't be resolved.
@@ -290,6 +309,7 @@ impl T0k3nServer {
             ledger: Arc::new(Mutex::new(ReadLedger::new())),
             cmd_ledger: Arc::new(Mutex::new(CmdLedger::new())),
             content_ledger: Arc::new(Mutex::new(content_ledger)),
+            budget_status: Arc::new(Mutex::new(None)),
             tool_router,
             diagnostics_enabled,
             dashboard,
@@ -442,27 +462,70 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get full body of specific code items by ID from read_code_skeleton.")]
+    /// Resolve the requested zoom into a concrete detail level. `auto` consults
+    /// the latest check_budget strategy; anything unrecognized falls back to body.
+    fn resolve_zoom(&self, requested: Option<&str>) -> &'static str {
+        let status = self.budget_status.lock().ok().and_then(|s| s.clone());
+        zoom_level(requested, status.as_deref())
+    }
+
+    #[tool(description = "Get full body of specific code items by ID from read_code_skeleton. Optional zoom controls detail: 'body' (default), 'sketch' (control-flow only), 'skeleton' (signatures only), or 'auto' (pick by the latest check_budget strategy). The chosen level is echoed back as zoom_applied.")]
     async fn read_code_body(
         &self,
         Parameters(params): Parameters<ReadCodeBodyParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_body", {
-            let key = delta_key("read_code_body", &params);
+            let level = self.resolve_zoom(params.zoom.as_deref());
             let path = params.path.clone();
-            let mut result = read_code_body(&self.root, params).map_err(err)?;
-            // Cross-tool dedup: stub bodies already sent this session (e.g. by read_context_pack).
-            for item in &mut result.items {
-                if item.content.starts_with("Error:") {
-                    continue;
+            let ids = params.ids.clone();
+
+            match level {
+                "skeleton" => {
+                    let key = delta_key("read_code_body:skeleton", &path);
+                    let result = read_code_skeleton(
+                        &self.root,
+                        ReadCodeSkeletonParams { path: path.clone(), include_blocks: None },
+                    )
+                    .map_err(err)?;
+                    self.ok_delta(key, serde_json::json!({
+                        "zoom_applied": "skeleton",
+                        "language": result.language,
+                        "skeleton": result.skeleton,
+                        "token_count": result.token_count,
+                    }))
                 }
-                if let Some(stub) = self.dedup_body(&path, &item.id, &item.content) {
-                    item.content = stub;
+                "sketch" => {
+                    let sk_params = ReadCodeSketchParams { path: path.clone(), ids };
+                    let key = delta_key("read_code_body:sketch", &sk_params);
+                    let result = read_code_sketch(&self.root, sk_params).map_err(err)?;
+                    self.ok_delta(key, serde_json::json!({
+                        "zoom_applied": "sketch",
+                        "items": result.items,
+                        "token_count": result.token_count,
+                    }))
+                }
+                _ => {
+                    let key = delta_key("read_code_body", &params);
+                    let mut result = read_code_body(&self.root, params).map_err(err)?;
+                    // Cross-tool dedup: stub bodies already sent this session (e.g. by read_context_pack).
+                    for item in &mut result.items {
+                        if item.content.starts_with("Error:") {
+                            continue;
+                        }
+                        if let Some(stub) = self.dedup_body(&path, &item.id, &item.content) {
+                            item.content = stub;
+                        }
+                    }
+                    let token_count = tools::fs::estimate_tokens(
+                        &serde_json::to_string(&result.items).unwrap_or_default(),
+                    );
+                    self.ok_delta(key, serde_json::json!({
+                        "zoom_applied": "body",
+                        "items": result.items,
+                        "token_count": token_count,
+                    }))
                 }
             }
-            let token_count =
-                tools::fs::estimate_tokens(&serde_json::to_string(&result.items).unwrap_or_default());
-            self.ok_delta(key, serde_json::json!({ "items": result.items, "token_count": token_count }))
         })
     }
 
@@ -722,7 +785,14 @@ impl T0k3nServer {
         &self,
         Parameters(params): Parameters<CheckBudgetParams>,
     ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "check_budget", { ok_json(check_budget(params)) })
+        instrument!(self, "check_budget", {
+            let result = check_budget(params);
+            // Remember the strategy so read_code_body's zoom:auto can use it.
+            if let Ok(mut s) = self.budget_status.lock() {
+                *s = Some(result.strategy.clone());
+            }
+            ok_json(result)
+        })
     }
 
     #[tool(description = "Summarize conversation text to fit within a token budget.")]
@@ -1636,5 +1706,35 @@ mod tests {
             on.tool_router.map.contains_key("read_type_diagnostics"),
             "diagnostics tool must be registered with --enable-diagnostics"
         );
+    }
+
+    #[test]
+    fn zoom_level_auto_degrades_with_budget() {
+        // Explicit levels pass through regardless of budget.
+        assert_eq!(zoom_level(Some("skeleton"), Some("normal")), "skeleton");
+        assert_eq!(zoom_level(Some("sketch"), None), "sketch");
+        assert_eq!(zoom_level(Some("body"), Some("critical")), "body");
+        // No zoom requested → body.
+        assert_eq!(zoom_level(None, Some("critical")), "body");
+        // auto follows the budget strategy.
+        assert_eq!(zoom_level(Some("auto"), Some("critical")), "skeleton");
+        assert_eq!(zoom_level(Some("auto"), Some("aggressive")), "sketch");
+        assert_eq!(zoom_level(Some("auto"), Some("conservative")), "body");
+        assert_eq!(zoom_level(Some("auto"), Some("normal")), "body");
+        // auto with no recorded budget → safe default (body).
+        assert_eq!(zoom_level(Some("auto"), None), "body");
+        // case-insensitive.
+        assert_eq!(zoom_level(Some("AUTO"), Some("critical")), "skeleton");
+    }
+
+    #[test]
+    fn check_budget_updates_zoom_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = T0k3nServer::new(tmp.path().to_string_lossy().to_string(), None, false);
+        // Before any check_budget call, auto falls back to body.
+        assert_eq!(server.resolve_zoom(Some("auto")), "body");
+        // Simulate a critical-budget check_budget result being recorded.
+        *server.budget_status.lock().unwrap() = Some("critical".to_string());
+        assert_eq!(server.resolve_zoom(Some("auto")), "skeleton");
     }
 }

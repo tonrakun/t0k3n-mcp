@@ -80,6 +80,7 @@ pub fn semantic_search(root: &Path, params: SemanticSearchParams) -> Result<Sema
     let body_result = read_code_body(root, ReadCodeBodyParams {
         path: params.path,
         ids,
+        zoom: None,
     })
     .map_err(|e| format!("本文取得失敗: {e}"))?;
 
