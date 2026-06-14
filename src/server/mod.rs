@@ -54,6 +54,7 @@ use tools::{
     notebook::{ReadNotebookCellParams, ReadNotebookCellsParams, read_notebook_cell, read_notebook_cells},
     outline::{ReadFileOutlineParams, read_file_outline},
     patch::{PatchSymbolParams, patch_symbol},
+    rename::{RenameSymbolParams, rename_symbol},
     proto::{ReadProtoSchemaParams, ReadProtoTypeParams, read_proto_schema, read_proto_type},
     search::{SemanticSearchParams, semantic_search},
     session::{SessionListParams, SessionRestoreParams, SessionSnapshotParams, session_list, session_restore, session_snapshot},
@@ -76,6 +77,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_code_body",
     "read_code_sketch",
     "patch_symbol",
+    "rename_symbol",
     "read_code_deps",
     "read_file_outline",
     "semantic_search",
@@ -476,6 +478,23 @@ impl T0k3nServer {
                 "lines_after": result.lines_after,
                 "diff": result.diff,
                 "token_count": tools::fs::estimate_tokens(&result.diff),
+            }))
+        })
+    }
+
+    #[tool(description = "Rename a symbol across the whole workspace in one call — write counterpart of read_symbol_usages. Whole-identifier match only (substrings like old_name_extended are left untouched). Returns affected file count + per-line before/after edits, never full file bodies. Always run once with dry_run:true to preview scope before applying. Scope to a file/dir with path. Note: textual whole-word match (same basis as read_symbol_usages) — it does not skip identical names in comments or strings, so review the dry_run output.")]
+    async fn rename_symbol(
+        &self,
+        Parameters(params): Parameters<RenameSymbolParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "rename_symbol", {
+            let result = rename_symbol(&self.root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "applied": result.applied,
+                "files_changed": result.files_changed,
+                "occurrences": result.occurrences,
+                "changes": result.changes,
+                "token_count": result.token_count,
             }))
         })
     }

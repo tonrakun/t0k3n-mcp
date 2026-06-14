@@ -587,7 +587,7 @@ pub fn read_code_body(root: &Path, params: ReadCodeBodyParams) -> anyhow::Result
 
 // ─── read_symbol_usages ───────────────────────────────────────────────────────
 
-const CODE_EXTENSIONS: &[&str] = &[
+pub const CODE_EXTENSIONS: &[&str] = &[
     "rs", "py", "js", "jsx", "ts", "tsx", "go",
     "cpp", "cc", "cxx", "hpp", "hh", "h", "java", "rb", "c",
     "cs", "php",
