@@ -1145,6 +1145,217 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 ---
 
+### 2.28 リネーム系（新規）
+
+#### 2.28.1 `rename_symbol`
+
+シンボル（関数・型・変数等）を全ファイル横断で安全にリネームする書き込み系ツール。エージェントが各使用箇所を手編集する代わりに 1 コールで完結させ、出力トークン（入力の約 5 倍単価）を最小化する。
+
+- `read_symbol_usages` の検出基盤を流用して定義・参照箇所を収集し、識別子境界に一致するものだけ置換（部分一致・コメント/文字列内の誤置換を回避）
+- `expected_name` による陳腐化検知（定義シンボルが想定と異なる場合はエラーで候補を返す）・`dry_run`・CRLF / 末尾改行保持は `patch_symbol` の機構を流用
+- 出力は影響ファイル数 + 各ファイルの変更行サマリ（行番号 + 置換前後の短い断片）のみ。全文は返さない
+- `path` 指定でスコープを単一ファイル/ディレクトリに限定可能
+
+**入力**
+
+```ts
+{
+  symbol: string;        // 現在のシンボル名
+  new_name: string;      // 新しいシンボル名
+  path?: string;         // 限定スコープ（省略時はワークスペース全体）
+  dry_run?: boolean;     // true で変更せず影響範囲のみ返す（デフォルト false）
+}
+```
+
+**出力**
+
+```ts
+{
+  applied: boolean;
+  files_changed: number;
+  occurrences: number;
+  changes: Array<{ path: string; edits: Array<{ line: number; before: string; after: string }> }>;
+  token_count: number;
+}
+```
+
+---
+
+### 2.29 テストカバレッジ系（新規）
+
+#### 2.29.1 `read_test_coverage`
+
+カバレッジレポートを解析し、シンボル単位で「テスト有無・カバー率」を返す。エージェントが「どこを触ると危険か（未カバー領域）」を即座に判断できる。
+
+- 対応フォーマット: `lcov.info` / cobertura XML / coverage.py JSON / `cargo-llvm-cov`（lcov 出力）。ワークスペースを自動スキャンして検出
+- 行カバレッジを `read_code_skeleton` のシンボル範囲にマッピングし、シンボルごとの `covered_lines / total_lines / pct` を算出
+- `path` 絞り込み・`uncovered_only`（未カバーのみ）・`threshold`（指定率未満のみ）フィルタ
+- レポート未検出時は `report_available: false` + 生成コマンドのヒントで非エラー応答（投機的呼び出し安全）
+
+**入力**
+
+```ts
+{
+  path?: string;            // 対象ファイル/ディレクトリ
+  uncovered_only?: boolean; // 未カバーシンボルのみ
+  threshold?: number;       // この率（%）未満のシンボルのみ
+}
+```
+
+**出力**
+
+```ts
+{
+  report_available: boolean;
+  format?: "lcov" | "cobertura" | "coveragepy" | "llvm-cov";
+  overall_pct?: number;
+  files?: Array<{
+    path: string;
+    pct: number;
+    symbols: Array<{ name: string; line: number; covered: number; total: number; pct: number }>;
+  }>;
+  hint?: string;            // report_available=false 時の生成コマンド例
+  token_count: number;
+}
+```
+
+---
+
+### 2.30 コードオーナーシップ系（新規）
+
+#### 2.30.1 `read_code_ownership`
+
+`git log` / `git blame` を融合し、churn（変更頻度ホットスポット）・主要オーナー・最終更新を集約して返す。「なぜこうなったか」「誰に聞くべきか」を 1 コールで把握する分析ツール。
+
+- ファイルごとに: コミット数（churn）・直近更新日・著者別行数シェア上位・主要オーナー
+- `path` 絞り込み・`top_n`（ホットスポット上位件数）・`since`（期間限定）
+- `read_git_log` / `read_git_blame_body` の上位レイヤとして実装
+
+**入力**
+
+```ts
+{
+  path?: string;
+  top_n?: number;   // ホットスポット上位（デフォルト 20）
+  since?: string;   // 例 "3 months ago"
+}
+```
+
+**出力**
+
+```ts
+{
+  hotspots: Array<{
+    path: string;
+    commits: number;       // churn
+    last_modified: string;
+    primary_owner: string;
+    owners: Array<{ author: string; pct: number }>;
+  }>;
+  token_count: number;
+}
+```
+
+---
+
+### 2.31 依存監査系（新規）
+
+#### 2.31.1 `read_dependency_audit`
+
+依存パッケージの既知脆弱性を check-only でスキャンし、構造化サマリを返す。`read_security_surface`（コード側）に対する依存側のセキュリティ補完。
+
+- 駆動: `npm audit --json` / `cargo audit --json` / `pip-audit -f json` / `osv-scanner --json`。マニフェスト/ロックファイルから生態系を自動判別
+- 出力はパッケージ・severity・CVE/Advisory ID・影響バージョン・修正バージョンに正規化し、severity 降順でソート
+- ツール未導入時は `scanner_available: false` + インストールヒントで非エラー応答（`read_type_diagnostics` と同方式）
+
+**入力**
+
+```ts
+{
+  severity?: "low" | "moderate" | "high" | "critical";  // この重大度以上のみ
+  max_items?: number;
+}
+```
+
+**出力**
+
+```ts
+{
+  scanner_available: boolean;
+  ecosystem?: "npm" | "cargo" | "pip" | "osv";
+  vulnerabilities?: Array<{
+    package: string;
+    severity: string;
+    id: string;             // CVE / RUSTSEC / GHSA
+    affected: string;
+    patched?: string;
+    title: string;
+  }>;
+  hint?: string;
+  token_count: number;
+}
+```
+
+---
+
+### 2.32 公開API系（新規）
+
+#### 2.32.1 `read_api_surface`
+
+外向きに公開されたシンボル（`pub` / `export` / `__all__` 等）のみを抽出し、ライブラリの外部境界を返す。利用側理解・破壊的変更検知に用いる。`diff_schemas` と組み合わせれば public API 差分（semver 違反警告）へ発展可能。
+
+- tree-sitter の可視性判定で公開項目のみフィルタ。シグネチャのみ（本文なし）
+- 対応: Rust（`pub`/`pub(crate)` 区別）/ TS・JS（`export`）/ Python（`__all__` ＋ 非アンダースコア top-level）/ Go（大文字始まり）
+- `path` 絞り込み・`include_crate_visible`（`pub(crate)` 等を含めるか）
+
+**入力**
+
+```ts
+{
+  path?: string;
+  include_crate_visible?: boolean;  // pub(crate) 等の準公開も含める
+}
+```
+
+**出力**
+
+```ts
+{
+  api: Array<{
+    path: string;
+    language: string;
+    items: Array<{ kind: string; name: string; signature: string; visibility: string }>;
+  }>;
+  token_count: number;
+}
+```
+
+---
+
+### 2.33 自動ズーム（既存ツール拡張）
+
+#### 2.33.1 `read_code_body` / `read_code_skeleton` の `zoom: auto`
+
+`check_budget` のステータス（normal / conservative / aggressive / critical）に応じて、コード読み取りツールが skeleton ↔ sketch ↔ body のズームレベルを自動選択する。エージェントが明示指定しなくても予算に応じて最適化される。
+
+- `zoom: "auto"` 指定時、現在のバジェットステータスを参照して返却粒度を決定（critical→skeleton、aggressive→sketch、normal→body）
+- 返却時に `zoom_applied` で実際に採用したレベルを通知
+- バジェット情報はセッション内に保持（`check_budget` 呼び出しで更新）
+
+---
+
+### 2.34 MCP リソース公開（プロトコル拡張）
+
+#### 2.34.1 MCP Resources
+
+主要ファイルを MCP `resources` として公開し、対応クライアントが `resources/list`・`resources/read`・変更通知を通じて能動取得できるようにする。
+
+- `ServerHandler` の `list_resources` / `read_resource` を実装。エントリポイント・マニフェスト・README 等を URI（`t0k3n://<path>`）で公開
+- デルタ基盤（`content_ledger` / mtime）と連携し、未変更リソースは差分通知のみ
+- 公開対象は `project_digest` のエントリポイント判定ロジックを流用
+
+---
+
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -1375,6 +1586,18 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 |---|---|---|
 | `project_digest` | Rust 実装 | git HEAD で無効化されるキャッシュ済みアーキテクチャ要約（言語統計＋エントリポイント＋ツリー）を ~2k トークンで返すウォームスタート |
 
+### 拡張・書き込み系（Phase 13）
+
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `rename_symbol` | Rust 実装 | シンボルを全ファイル横断で安全リネーム。影響行サマリのみ返す書き込み系 |
+| `read_test_coverage` | Rust 実装 | lcov/cobertura/coverage.py/llvm-cov をシンボル単位でマッピング。未カバー領域を可視化 |
+| `read_code_ownership` | Rust 実装 | git log/blame 融合。churn・主要オーナー・最終更新を集約 |
+| `read_dependency_audit` | Rust 実装 | npm/cargo/pip/osv audit を check-only 駆動し脆弱性を正規化 |
+| `read_api_surface` | Rust 実装 | pub/export/__all__ の公開シンボルのみ抽出（外部境界） |
+| `read_code_body`（拡張） | Rust 実装 | `zoom: auto` で予算に応じ skeleton↔sketch↔body 自動選択 |
+| MCP Resources | プロトコル | 主要ファイルを `t0k3n://` リソースとして公開・差分通知 |
+
 ---
 
 ## 5. 実装フェーズ
@@ -1529,6 +1752,19 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 
 - [x] `read_type_diagnostics`（タスク25）— LSP 相当の静的型診断。`cargo check --message-format=json`（Rust）/ `tsc --noEmit`（TS）/ `pyright`・`mypy`（Python）/ `go vet`（Go）を check-only 駆動し `{file, line, col, severity, code, message}` を返す。言語自動判別・severity / max_items / path フィルタ・重複排除・重要度ソート。チェッカー未導入時は `checker_available: false` + インストールヒントで非エラー応答（投機的呼び出し安全）。パーサは純関数化し各言語の実出力でユニットテスト
 - [x] `read_type_diagnostics` をオプトイン化（重量級化の回避）— `--enable-diagnostics` / `T0K3N_ENABLE_DIAGNOSTICS=1` で起動時のみ `ToolRouter` に登録。デフォルトはツール一覧非表示・呼び出し不可。`debug_info` に `diagnostics_enabled` を追加
+
+### Phase 13 — 拡張・書き込み・gen4 v3.1+
+
+書き込み系の拡充（`rename_symbol`）、テスト/セキュリティ/オーナーシップ分析の補完、トークン削減第 4 世代（自動ズーム）、および MCP リソース公開を行う。
+
+- [ ] `rename_symbol`（タスク27）— シンボルを全ファイル横断で安全リネーム。`read_symbol_usages` の検出基盤で識別子境界一致のみ置換し、`expected_name` 陳腐化検知・`dry_run`・CRLF/末尾改行保持を `patch_symbol` から流用。出力は影響ファイル数 + 変更行サマリのみ
+- [ ] デルタリード第 4 世代 — セッション横断の永続台帳（タスク28）。`content_ledger`（ファイル+行範囲+コンテンツハッシュ）を `.t0k3n/` に永続化し、翌セッションのウォームスタートでも送信済み参照スタブで再送を省く。git HEAD / mtime+hash で失効
+- [ ] `read_test_coverage`（タスク29）— lcov/cobertura/coverage.py/cargo-llvm-cov を解析しシンボル単位でカバー率をマッピング。`uncovered_only`/`threshold` フィルタ。レポート未検出時は非エラー note
+- [ ] `read_code_ownership`（タスク30）— git log/blame 融合で churn・主要オーナー・最終更新を集約。`top_n`/`since` 対応
+- [ ] `read_dependency_audit`（タスク31）— npm/cargo/pip/osv audit を check-only 駆動し脆弱性を severity 降順で正規化。未導入時はインストールヒントで非エラー応答
+- [ ] `read_api_surface`（タスク32）— tree-sitter 可視性判定で公開シンボル（pub/export/__all__/大文字始まり）のみ抽出
+- [ ] `check_budget` 連動の自動ズーム（タスク33）— `zoom: auto` で予算ステータスに応じ skeleton↔sketch↔body を自動選択し `zoom_applied` を通知
+- [ ] MCP Resources 公開（タスク34）— `list_resources`/`read_resource` を実装し主要ファイルを `t0k3n://` URI で公開。デルタ基盤と連携
 
 ---
 
