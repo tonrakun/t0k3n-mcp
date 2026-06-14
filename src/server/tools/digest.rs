@@ -226,7 +226,7 @@ fn trim_to_budget(text: &str, token_budget: usize) -> String {
 
 // ─── git helpers ─────────────────────────────────────────────────────────────
 
-fn git_head(root: &Path) -> Option<String> {
+pub fn git_head(root: &Path) -> Option<String> {
     let out = Command::new("git")
         .current_dir(root)
         .args(["rev-parse", "--short", "HEAD"])

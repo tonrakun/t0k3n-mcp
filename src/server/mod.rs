@@ -272,13 +272,16 @@ impl T0k3nServer {
         }
         let tool_count = tool_router.map.len();
 
+        // gen4 warm start: load the cross-session content ledger from disk.
+        let content_ledger = ContentLedger::load(&root_path, tools::digest::git_head(&root_path));
+
         let server = Self {
             root: root_path,
             db: Arc::new(Mutex::new(db)),
             web_cache: Arc::new(Mutex::new(HashMap::new())),
             ledger: Arc::new(Mutex::new(ReadLedger::new())),
             cmd_ledger: Arc::new(Mutex::new(CmdLedger::new())),
-            content_ledger: Arc::new(Mutex::new(ContentLedger::new())),
+            content_ledger: Arc::new(Mutex::new(content_ledger)),
             tool_router,
             diagnostics_enabled,
             dashboard,
@@ -337,6 +340,9 @@ impl T0k3nServer {
             ContentDedup::Fresh => None,
             ContentDedup::AlreadySent { reference, full_tokens } => Some(format!(
                 "(already sent {reference} earlier this session — identical content not re-sent, ~{full_tokens} tokens saved. Call delta_reset and retry for the full body.)"
+            )),
+            ContentDedup::UnchangedColdCache { reference, full_tokens } => Some(format!(
+                "(unchanged since a previous session: {reference} — content is NOT in your current context (~{full_tokens} tokens). The file has not changed since you last read it. If you need the body now, call delta_reset and retry.)"
             )),
         }
     }
@@ -1483,6 +1489,11 @@ impl T0k3nServer {
             let mut tools: Vec<String> =
                 self.tool_router.map.keys().map(|k| k.to_string()).collect();
             tools.sort();
+            let ledger_git_head = self
+                .content_ledger
+                .lock()
+                .ok()
+                .and_then(|l| l.git_head().map(|s| s.to_string()));
             ok_json(serde_json::json!({
                 "ok": true,
                 "version": env!("CARGO_PKG_VERSION"),
@@ -1491,6 +1502,7 @@ impl T0k3nServer {
                 "tool_count": tools.len(),
                 "tools": tools,
                 "diagnostics_enabled": self.diagnostics_enabled,
+                "content_ledger_git_head": ledger_git_head,
                 "timestamp_unix": timestamp_unix,
                 "dashboard": self.dashboard.is_some(),
             }))

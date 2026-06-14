@@ -1758,7 +1758,7 @@ GitHub Actions / GitLab CI / CircleCI の YAML をパースし、ワークフロ
 書き込み系の拡充（`rename_symbol`）、テスト/セキュリティ/オーナーシップ分析の補完、トークン削減第 4 世代（自動ズーム）、および MCP リソース公開を行う。
 
 - [x] `rename_symbol`（タスク27）— シンボルを全ファイル横断で安全リネーム。`read_symbol_usages` の検出基盤（WalkBuilder + `\bSYMBOL\b`）で識別子境界一致のみ置換（部分一致は非対象）し、`dry_run`・CRLF/末尾改行保持を `patch_symbol` から流用。`new_name` は識別子バリデーション。出力は影響ファイル数 + 各行 before/after のみで全文は返さない。注意: 文字列/コメント内の同名も置換しうるため dry_run プレビュー前提
-- [ ] デルタリード第 4 世代 — セッション横断の永続台帳（タスク28）。`content_ledger`（ファイル+行範囲+コンテンツハッシュ）を `.t0k3n/` に永続化し、翌セッションのウォームスタートでも送信済み参照スタブで再送を省く。git HEAD / mtime+hash で失効
+- [x] デルタリード第 4 世代 — セッション横断の永続台帳（タスク28）。`content_ledger`（ファイル+行範囲+コンテンツハッシュ）を `.t0k3n/content_ledger.json` に原子的書き込みで永続化。**正しさ重視の設計**: 前セッション由来のヒットは `UnchangedColdCache` として「不変だが現コンテキストには無い／必要なら再読込」と正直に提示し、今セッション内ヒット（hot）のみ従来の `AlreadySent` を返す。mtime+hash でファイル単位失効、git HEAD は `debug_info` に表示。`delta_reset` は永続ファイルも消去
 - [ ] `read_test_coverage`（タスク29）— lcov/cobertura/coverage.py/cargo-llvm-cov を解析しシンボル単位でカバー率をマッピング。`uncovered_only`/`threshold` フィルタ。レポート未検出時は非エラー note
 - [ ] `read_code_ownership`（タスク30）— git log/blame 融合で churn・主要オーナー・最終更新を集約。`top_n`/`since` 対応
 - [ ] `read_dependency_audit`（タスク31）— npm/cargo/pip/osv audit を check-only 駆動し脆弱性を severity 降順で正規化。未導入時はインストールヒントで非エラー応答

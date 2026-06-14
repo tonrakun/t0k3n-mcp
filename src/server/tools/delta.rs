@@ -11,8 +11,9 @@
 //! context compaction loses the originally-read content.
 
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 use super::fs::estimate_tokens;
 
@@ -113,35 +114,99 @@ pub struct DeltaResetParams {
 /// Hard cap on tracked content entries (memory bound).
 const CONTENT_MAX_ENTRIES: usize = 1024;
 
+#[derive(Debug)]
 pub enum ContentDedup {
     /// Not seen (or invalidated) — send the full content; it has been recorded.
     Fresh,
     /// Identical content was already sent this session under `reference`.
     AlreadySent { reference: String, full_tokens: usize },
+    /// Identical content was recorded in a *previous* session (gen4 warm start).
+    /// The content is NOT in the current context — the stub must say so and let
+    /// the agent re-read if it needs the body.
+    UnchangedColdCache { reference: String, full_tokens: usize },
 }
 
+#[derive(Clone, Serialize, Deserialize)]
 struct ContentEntry {
     mtime: u64,
     hash: u64,
     tokens: usize,
+    /// True when this content was sent *this* session (so it is in the LLM's
+    /// context). Entries loaded from disk start cold (false). Runtime-only.
+    #[serde(skip)]
+    hot: bool,
+}
+
+/// On-disk shape of the persisted ledger (gen4 cross-session warm start).
+#[derive(Default, Serialize, Deserialize)]
+struct PersistedLedger {
+    git_head: Option<String>,
+    entries: HashMap<String, ContentEntry>,
 }
 
 #[derive(Default)]
 pub struct ContentLedger {
     entries: HashMap<String, ContentEntry>,
+    /// Where the ledger is mirrored on disk. None = in-memory only (tests).
+    persist_path: Option<PathBuf>,
+    /// git HEAD recorded at load time, surfaced via debug_info.
+    git_head: Option<String>,
 }
 
 impl ContentLedger {
-    pub fn new() -> Self {
-        Self::default()
+    /// gen4 warm start: load any persisted ledger from `.t0k3n/content_ledger.json`
+    /// under `root`. Loaded entries are cold (not in the current context). The
+    /// per-entry mtime+hash check still guards correctness, so a stale git_head
+    /// is informational only.
+    pub fn load(root: &Path, git_head: Option<String>) -> Self {
+        let persist_path = root.join(".t0k3n").join("content_ledger.json");
+        let mut entries = HashMap::new();
+        if let Ok(bytes) = std::fs::read(&persist_path)
+            && let Ok(persisted) = serde_json::from_slice::<PersistedLedger>(&bytes)
+        {
+            entries = persisted.entries; // hot defaults to false via #[serde(skip)]
+        }
+        Self {
+            entries,
+            persist_path: Some(persist_path),
+            git_head,
+        }
+    }
+
+    /// Atomically mirror the current entries to disk (write tmp + rename).
+    /// No-op for in-memory ledgers.
+    fn save(&self) {
+        let Some(path) = &self.persist_path else {
+            return;
+        };
+        let persisted = PersistedLedger {
+            git_head: self.git_head.clone(),
+            entries: self.entries.clone(),
+        };
+        let Ok(json) = serde_json::to_vec(&persisted) else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let tmp = path.with_extension("json.tmp");
+        if std::fs::write(&tmp, &json).is_ok() {
+            let _ = std::fs::rename(&tmp, path);
+        }
+    }
+
+    /// git HEAD recorded at load time (for debug_info).
+    pub fn git_head(&self) -> Option<&str> {
+        self.git_head.as_deref()
     }
 
     fn key(path: &str, id: &str) -> String {
         format!("{path}#{id}")
     }
 
-    /// Record (or match) a body chunk. Returns `AlreadySent` only when an entry
-    /// for the same path+range exists with the same mtime and content hash.
+    /// Record (or match) a body chunk. On a match (same path+range, mtime and
+    /// content hash): `AlreadySent` if it was sent this session (in context),
+    /// `UnchangedColdCache` if it only survives from a previous session (gen4).
     pub fn dedup(&mut self, path: &str, id: &str, content: &str, mtime: u64) -> ContentDedup {
         let key = Self::key(path, id);
         let hash = hash_str(content);
@@ -152,22 +217,30 @@ impl ContentLedger {
             && e.hash == hash
         {
             let range = id.rsplit_once(':').map(|(_, r)| r).unwrap_or(id);
-            return ContentDedup::AlreadySent {
-                reference: format!("{path}:{range}"),
-                full_tokens: e.tokens,
+            let reference = format!("{path}:{range}");
+            return if e.hot {
+                ContentDedup::AlreadySent { reference, full_tokens: e.tokens }
+            } else {
+                // Cold cross-session hit: content is NOT in context. Do not promote
+                // and do not send — the stub tells the agent to re-read if needed.
+                ContentDedup::UnchangedColdCache { reference, full_tokens: e.tokens }
             };
         }
 
         if self.entries.len() >= CONTENT_MAX_ENTRIES && !self.entries.contains_key(&key) {
             self.entries.clear();
         }
-        self.entries.insert(key, ContentEntry { mtime, hash, tokens });
+        // We are sending the full content now, so the entry is hot (in context).
+        self.entries.insert(key, ContentEntry { mtime, hash, tokens, hot: true });
+        self.save();
         ContentDedup::Fresh
     }
 
     /// Clear entries whose key contains `pattern` (all entries when None).
+    /// Also clears the cold cross-session cache, so a subsequent re-read resends
+    /// the full body.
     pub fn clear(&mut self, pattern: Option<&str>) -> usize {
-        match pattern {
+        let cleared = match pattern {
             None => {
                 let n = self.entries.len();
                 self.entries.clear();
@@ -178,7 +251,11 @@ impl ContentLedger {
                 self.entries.retain(|k, _| !k.contains(p));
                 before - self.entries.len()
             }
+        };
+        if cleared > 0 {
+            self.save();
         }
+        cleared
     }
 }
 
@@ -235,7 +312,7 @@ mod tests {
 
     #[test]
     fn content_ledger_stubs_cross_tool_repeat() {
-        let mut l = ContentLedger::new();
+        let mut l = ContentLedger::default();
         let body = "fn f() {\n    work();\n}";
         // first send (e.g. from read_context_pack) records it
         assert!(matches!(l.dedup("a.rs", "function:1-3", body, 100), ContentDedup::Fresh));
@@ -248,7 +325,7 @@ mod tests {
 
     #[test]
     fn content_ledger_invalidates_on_mtime_change() {
-        let mut l = ContentLedger::new();
+        let mut l = ContentLedger::default();
         let body = "fn f() {}";
         assert!(matches!(l.dedup("a.rs", "function:1-1", body, 100), ContentDedup::Fresh));
         // file edited (mtime changed) → no stale reference even if content matches
@@ -257,17 +334,75 @@ mod tests {
 
     #[test]
     fn content_ledger_invalidates_on_content_change() {
-        let mut l = ContentLedger::new();
+        let mut l = ContentLedger::default();
         assert!(matches!(l.dedup("a.rs", "function:1-1", "old", 100), ContentDedup::Fresh));
         assert!(matches!(l.dedup("a.rs", "function:1-1", "new", 100), ContentDedup::Fresh));
     }
 
     #[test]
     fn content_ledger_clear_by_pattern() {
-        let mut l = ContentLedger::new();
+        let mut l = ContentLedger::default();
         l.dedup("a.rs", "function:1-2", "x", 1);
         l.dedup("b.rs", "function:1-2", "y", 1);
         assert_eq!(l.clear(Some("a.rs")), 1);
         assert_eq!(l.clear(None), 1);
+    }
+
+    #[test]
+    fn gen4_persists_and_reloads_as_cold_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let body = "fn f() {\n    work();\n}";
+
+        // Session 1: record a body, which persists to disk.
+        {
+            let mut l = ContentLedger::load(dir.path(), Some("abc123".into()));
+            assert!(matches!(
+                l.dedup("a.rs", "function:1-3", body, 100),
+                ContentDedup::Fresh
+            ));
+            // same-session repeat is hot
+            assert!(matches!(
+                l.dedup("a.rs", "function:1-3", body, 100),
+                ContentDedup::AlreadySent { .. }
+            ));
+        }
+
+        // Session 2: reload from disk — unchanged content is a cold cache hit,
+        // NOT "already sent this session".
+        {
+            let mut l = ContentLedger::load(dir.path(), Some("abc123".into()));
+            match l.dedup("a.rs", "function:1-3", body, 100) {
+                ContentDedup::UnchangedColdCache { reference, .. } => {
+                    assert_eq!(reference, "a.rs:1-3")
+                }
+                other => panic!("expected UnchangedColdCache, got {other:?}"),
+            }
+            // a changed file (new mtime) is fresh again
+            assert!(matches!(
+                l.dedup("a.rs", "function:1-3", body, 999),
+                ContentDedup::Fresh
+            ));
+        }
+    }
+
+    #[test]
+    fn gen4_clear_wipes_persisted_cold_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let mut l = ContentLedger::load(dir.path(), None);
+            l.dedup("a.rs", "function:1-1", "x", 1);
+        }
+        {
+            let mut l = ContentLedger::load(dir.path(), None);
+            assert_eq!(l.clear(None), 1);
+        }
+        // After clear, a new session sees nothing persisted.
+        {
+            let mut l = ContentLedger::load(dir.path(), None);
+            assert!(matches!(
+                l.dedup("a.rs", "function:1-1", "x", 1),
+                ContentDedup::Fresh
+            ));
+        }
     }
 }
