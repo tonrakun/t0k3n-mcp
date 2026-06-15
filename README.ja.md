@@ -243,7 +243,7 @@ t0k3n setup
 
 | ツール | 説明 |
 |--------|------|
-| `read_git_diff` | 圧縮済み git diff |
+| `read_git_diff` | 圧縮済み git diff（`zoom`: skeleton/sketch/body/auto — 構造差分の段階ズーム） |
 | `read_git_log` | 構造化コミットログ（著者・日付・変更ファイル） |
 | `read_git_blame_body` | 関数単位の行 blame（著者・日付） |
 | `read_changed_files` | ブランチ間の変更ファイル一覧（ステータス・追加/削除行数） |

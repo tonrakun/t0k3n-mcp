@@ -1404,6 +1404,28 @@ tree-sitter ではなく構造的位置指定でコード挿入。`patch_symbol`
 
 ---
 
+### 2.36 構造差分（既存ツール拡張・Phase 16）
+
+#### 2.36.1 `read_git_diff` の `zoom`
+
+`read_code_body` で確立した段階ズーム（skeleton ↔ sketch ↔ body ↔ auto）を **diff（変化）** に適用する。状態の読み取りは構造化済みだが、変化は行ベースのままだった非対称を埋める。
+
+- `zoom: "body"`（既定）— 従来どおり完全な unified diff（`--unified=2`）
+- `zoom: "sketch"` — ファイルヘッダ＋ハンクヘッダ（`@@ ... @@ <関数コンテキスト>`）のみ。`+`/`-` 本文行を全削除（`--unified=0`）
+- `zoom: "skeleton"` — ファイル × 囲みシンボル単位に集約し、`{symbol, hunks, added, deleted}` の件数だけ返す。diff 本文ゼロ。囲みシンボル名は git ハンクヘッダの関数コンテキスト（xfuncname）を流用、コンテキスト無しは `(top-level)`
+- `zoom: "auto"` — 既存 `zoom_level()`/`budget_status` を参照（critical→skeleton、aggressive→sketch、それ以外→body）
+- 返却時に `zoom_applied` で採用レベルを通知。`stat_only` 指定時は従来どおり（zoom 無視・`zoom_applied: "body"`）
+- ファイルステータス（added / deleted / renamed / modified）を判定して付与
+
+```ts
+{ base?: string; path?: string; stat_only?: boolean; zoom?: "body"|"sketch"|"skeleton"|"auto" }
+→ { diff, files?: Array<{path, status, added, deleted, symbols: Array<{symbol, hunks, added, deleted}>}>, zoom_applied, token_count }
+```
+
+用途: 大型 PR を `skeleton` で俯瞰（どのファイルのどのシンボルが何行変わったか）→ 怪しい箇所だけ `body` で精読、という「構造を先に、必要な所だけ」の段階読みを変化に対しても実現する。
+
+---
+
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -1842,6 +1864,14 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
 - [x] `format_code`（タスク43）— 拡張子で rustfmt/prettier/black/gofmt を駆動。`diagnostics::{run_shell, looks_unavailable}` 流用、未導入は `formatter_available:false` + ヒントで非エラー。dry_run は `.t0k3n/fmt-tmp/` のコピーを整形して diff プレビュー（実ファイル不変）。整形前後の diff・changed を返す
 - [x] `move_symbol`（タスク44）— シンボルを src から dest へ移動（dest 無ければ作成）。抜き出し（delete_symbol 相当）＋末尾追記。import 追従は best-effort（書き換えはせず、`read_symbol_usages` で参照ファイルを検出し warnings に列挙）。`symbol_name` で陳腐化ガード＋参照警告。src/dest の両 diff を返す
 - [x] `edit_checkpoint`/`rollback`（タスク45）— 書込前スナップショットと巻き戻し。git 管理下は `git stash create`（作業ツリー不変）→ `git checkout <sha> -- .` で復元。非 git 時は gitignore 対応で `.t0k3n/checkpoints/<id>/` へコピー退避→復元。`checkpoint_id` は自己完結（git:/copy: プレフィックス）でサーバ状態不要。制約: チェックポイント後に新規作成されたファイルは rollback で削除されない
+
+---
+
+### Phase 16 — 構造差分（変化の段階ズーム）v3.3+
+
+状態の読み取りは tree-sitter で構造化済みだが、変化（diff）は行ベースのままという非対称を解消する。`read_code_body` の段階ズームを diff に適用。
+
+- [x] `read_git_diff` の `zoom`（タスク46）— `skeleton`（ファイル×囲みシンボルの+/-件数集約、本文0）/`sketch`（ファイル・ハンクヘッダのみ）/`body`（既定・完全diff）/`auto`（既存 `zoom_level()`/`budget_status` 流用）。囲みシンボルは git ハンクヘッダの関数コンテキストを流用、無しは `(top-level)`。`stat_only` は従来優先。`files`/`zoom_applied` を追加返却。ハンドラで `auto` を `resolve_zoom` 解決し具体レベルを stateless fn へ。大型 diff を俯瞰→精読する段階読みを変化に対して実現
 
 ---
 

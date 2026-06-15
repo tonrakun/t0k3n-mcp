@@ -15,17 +15,59 @@ pub struct ReadGitDiffParams {
     pub path: Option<String>,
     #[schemars(description = "Return only --stat summary instead of full diff (default: false)")]
     pub stat_only: Option<bool>,
+    #[schemars(
+        description = "Detail level for the change, mirroring read_code_body: 'body' (default, full unified diff), 'sketch' (file + hunk headers only, no +/- body lines), 'skeleton' (per-file × enclosing-symbol +/- line counts, no diff text), or 'auto' (pick by the latest check_budget strategy). The chosen level is echoed back as zoom_applied. Ignored when stat_only is set."
+    )]
+    pub zoom: Option<String>,
+}
+
+/// Aggregated change for one enclosing symbol (from git's hunk-header context).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitDiffSymbolChange {
+    /// Enclosing symbol/section reported by git after `@@ ... @@`, or
+    /// "(top-level)" for hunks with no function context (imports, file head).
+    pub symbol: String,
+    pub hunks: usize,
+    pub added: usize,
+    pub deleted: usize,
+}
+
+/// Per-file structural change summary used by zoom: skeleton.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GitDiffFileChange {
+    pub path: String,
+    /// added | deleted | renamed | modified
+    pub status: String,
+    pub added: usize,
+    pub deleted: usize,
+    pub symbols: Vec<GitDiffSymbolChange>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ReadGitDiffResult {
+    /// Full unified diff (body), header-only diff (sketch), or empty (skeleton).
     pub diff: String,
+    /// Per-file × symbol change summary; populated only for zoom: skeleton.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files: Option<Vec<GitDiffFileChange>>,
+    /// Concrete detail level applied: body | sketch | skeleton.
+    pub zoom_applied: String,
     pub token_count: usize,
 }
 
 pub fn read_git_diff(root: &Path, params: ReadGitDiffParams) -> Result<ReadGitDiffResult, String> {
     let base = params.base.as_deref().unwrap_or("HEAD");
     let stat_only = params.stat_only.unwrap_or(false);
+    // stat_only short-circuits the structural path; report body to be unambiguous.
+    let level = if stat_only {
+        "body"
+    } else {
+        match params.zoom.as_deref().map(str::trim) {
+            Some("skeleton") => "skeleton",
+            Some("sketch") => "sketch",
+            _ => "body",
+        }
+    };
 
     let mut cmd = Command::new("git");
     cmd.current_dir(root);
@@ -33,9 +75,12 @@ pub fn read_git_diff(root: &Path, params: ReadGitDiffParams) -> Result<ReadGitDi
 
     if stat_only {
         cmd.arg("--stat");
-    } else {
+    } else if level == "body" {
         // Reduce context lines to keep output compact
         cmd.arg("--unified=2");
+    } else {
+        // Structural levels only need hunk headers; drop all context lines.
+        cmd.arg("--unified=0");
     }
 
     cmd.arg(base);
@@ -53,10 +98,151 @@ pub fn read_git_diff(root: &Path, params: ReadGitDiffParams) -> Result<ReadGitDi
         return Err(format!("git diff 失敗: {stderr}"));
     }
 
-    let diff = String::from_utf8_lossy(&output.stdout).into_owned();
-    let token_count = estimate_tokens(&diff);
+    let raw = String::from_utf8_lossy(&output.stdout).into_owned();
 
-    Ok(ReadGitDiffResult { diff, token_count })
+    let (diff, files) = match level {
+        "skeleton" => {
+            let files = parse_structural_diff(&raw);
+            (String::new(), Some(files))
+        }
+        "sketch" => (sketch_diff(&raw), None),
+        _ => (raw, None),
+    };
+
+    let token_count = estimate_tokens(&diff)
+        + files
+            .as_ref()
+            .map(|f| estimate_tokens(&format!("{f:?}")))
+            .unwrap_or(0);
+
+    Ok(ReadGitDiffResult {
+        diff,
+        files,
+        zoom_applied: level.to_string(),
+        token_count,
+    })
+}
+
+/// Symbol/section name git reports after the second `@@` of a hunk header,
+/// normalised. Empty context becomes the "(top-level)" bucket.
+fn hunk_context(header: &str) -> String {
+    // Format: @@ -a,b +c,d @@ <optional context>
+    let ctx = header
+        .splitn(3, "@@")
+        .nth(2)
+        .map(str::trim)
+        .unwrap_or("")
+        .to_string();
+    if ctx.is_empty() {
+        "(top-level)".to_string()
+    } else {
+        ctx
+    }
+}
+
+/// Parse a `git diff --unified=0` text into per-file, per-enclosing-symbol
+/// added/deleted line counts. No hunk bodies are retained.
+fn parse_structural_diff(raw: &str) -> Vec<GitDiffFileChange> {
+    let mut files: Vec<GitDiffFileChange> = Vec::new();
+    let mut cur_path: Option<String> = None;
+    let mut status = "modified";
+    let mut symbols: Vec<GitDiffSymbolChange> = Vec::new();
+    let mut cur_ctx: Option<String> = None;
+
+    // Flush the in-progress file into the result vector.
+    fn flush(
+        files: &mut Vec<GitDiffFileChange>,
+        path: &mut Option<String>,
+        status: &mut &str,
+        symbols: &mut Vec<GitDiffSymbolChange>,
+    ) {
+        if let Some(p) = path.take() {
+            let added = symbols.iter().map(|s| s.added).sum();
+            let deleted = symbols.iter().map(|s| s.deleted).sum();
+            files.push(GitDiffFileChange {
+                path: p,
+                status: status.to_string(),
+                added,
+                deleted,
+                symbols: std::mem::take(symbols),
+            });
+        }
+        *status = "modified";
+    }
+
+    for line in raw.lines() {
+        if let Some(rest) = line.strip_prefix("diff --git ") {
+            flush(&mut files, &mut cur_path, &mut status, &mut symbols);
+            cur_ctx = None;
+            // "a/<path> b/<path>" — take the b-side path.
+            cur_path = rest
+                .split(" b/")
+                .nth(1)
+                .map(|s| s.to_string())
+                .or_else(|| rest.split_whitespace().last().map(|s| s.trim_start_matches("b/").to_string()));
+        } else if line.starts_with("new file mode") {
+            status = "added";
+        } else if line.starts_with("deleted file mode") {
+            status = "deleted";
+        } else if line.starts_with("rename from") || line.starts_with("rename to") {
+            status = "renamed";
+        } else if line.starts_with("@@") {
+            let ctx = hunk_context(line);
+            // Start (or reuse) a symbol bucket for this context.
+            if symbols.last().map(|s| &s.symbol) != Some(&ctx) {
+                if let Some(existing) = symbols.iter_mut().find(|s| s.symbol == ctx) {
+                    existing.hunks += 1;
+                    cur_ctx = Some(ctx);
+                } else {
+                    symbols.push(GitDiffSymbolChange {
+                        symbol: ctx.clone(),
+                        hunks: 1,
+                        added: 0,
+                        deleted: 0,
+                    });
+                    cur_ctx = Some(ctx);
+                }
+            } else if let Some(last) = symbols.last_mut() {
+                last.hunks += 1;
+            }
+        } else if let Some(ctx) = &cur_ctx {
+            // +/- body lines (skip the +++/--- file markers).
+            let is_add = line.starts_with('+') && !line.starts_with("+++");
+            let is_del = line.starts_with('-') && !line.starts_with("---");
+            if (is_add || is_del)
+                && let Some(sym) = symbols.iter_mut().find(|s| &s.symbol == ctx)
+            {
+                if is_add {
+                    sym.added += 1;
+                } else {
+                    sym.deleted += 1;
+                }
+            }
+        }
+    }
+    flush(&mut files, &mut cur_path, &mut status, &mut symbols);
+    files
+}
+
+/// Keep only structural lines of a unified diff: file headers and hunk
+/// headers (with git's function context), dropping every +/- body line.
+fn sketch_diff(raw: &str) -> String {
+    let mut out = String::new();
+    for line in raw.lines() {
+        if line.starts_with("diff --git ")
+            || line.starts_with("new file mode")
+            || line.starts_with("deleted file mode")
+            || line.starts_with("rename from")
+            || line.starts_with("rename to")
+            || line.starts_with("--- ")
+            || line.starts_with("+++ ")
+            || line.starts_with("@@")
+        {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
 }
 
 // ─── read_git_log ────────────────────────────────────────────────────────────
@@ -453,4 +639,72 @@ pub fn read_git_stash(root: &Path, params: ReadGitStashParams) -> Result<ReadGit
     let token_count = estimate_tokens(&json_for_count.to_string());
 
     Ok(ReadGitStashResult { stashes, diff, token_count })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: &str = "\
+diff --git a/src/foo.rs b/src/foo.rs
+index 1111111..2222222 100644
+--- a/src/foo.rs
++++ b/src/foo.rs
+@@ -10,2 +10,3 @@ fn alpha() {
+-    old();
++    new1();
++    new2();
+@@ -40,1 +41,1 @@ fn beta() {
+-    gone();
++    added();
+diff --git a/src/new.rs b/src/new.rs
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/src/new.rs
+@@ -0,0 +1,2 @@
++fn fresh() {}
++fn fresh2() {}
+";
+
+    #[test]
+    fn hunk_context_extracts_symbol_and_defaults_top_level() {
+        assert_eq!(hunk_context("@@ -10,2 +10,3 @@ fn alpha() {"), "fn alpha() {");
+        assert_eq!(hunk_context("@@ -0,0 +1,2 @@"), "(top-level)");
+    }
+
+    #[test]
+    fn structural_diff_aggregates_per_symbol_counts() {
+        let files = parse_structural_diff(SAMPLE);
+        assert_eq!(files.len(), 2);
+
+        let foo = &files[0];
+        assert_eq!(foo.path, "src/foo.rs");
+        assert_eq!(foo.status, "modified");
+        assert_eq!(foo.added, 3);
+        assert_eq!(foo.deleted, 2);
+        assert_eq!(foo.symbols.len(), 2);
+        let alpha = foo.symbols.iter().find(|s| s.symbol == "fn alpha() {").unwrap();
+        assert_eq!((alpha.added, alpha.deleted, alpha.hunks), (2, 1, 1));
+        let beta = foo.symbols.iter().find(|s| s.symbol == "fn beta() {").unwrap();
+        assert_eq!((beta.added, beta.deleted, beta.hunks), (1, 1, 1));
+
+        let new = &files[1];
+        assert_eq!(new.path, "src/new.rs");
+        assert_eq!(new.status, "added");
+        assert_eq!(new.added, 2);
+        assert_eq!(new.deleted, 0);
+    }
+
+    #[test]
+    fn sketch_keeps_headers_drops_body_lines() {
+        let s = sketch_diff(SAMPLE);
+        assert!(s.contains("diff --git a/src/foo.rs b/src/foo.rs"));
+        assert!(s.contains("@@ -10,2 +10,3 @@ fn alpha() {"));
+        assert!(s.contains("new file mode 100644"));
+        // No +/- body lines survive.
+        assert!(!s.contains("new1()"));
+        assert!(!s.contains("gone()"));
+        assert!(!s.contains("fn fresh()"));
+    }
 }

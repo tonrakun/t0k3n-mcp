@@ -867,14 +867,22 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get compressed git diff. Defaults to all uncommitted changes vs HEAD. Use stat_only for a quick file-level summary.")]
+    #[tool(description = "Get compressed git diff. Defaults to all uncommitted changes vs HEAD. Use stat_only for a quick file-level summary. zoom mirrors read_code_body: 'body' (full diff), 'sketch' (file + hunk headers only), 'skeleton' (per-file × enclosing-symbol +/- line counts, no diff text), or 'auto' (follows the latest check_budget strategy). Apply the structure-first read to change itself: skeleton to map a large diff, then body on the suspicious files.")]
     async fn read_git_diff(
         &self,
-        Parameters(params): Parameters<ReadGitDiffParams>,
+        Parameters(mut params): Parameters<ReadGitDiffParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_diff", {
+            // Resolve `auto` (and any synonym) against the latest budget strategy
+            // before handing a concrete level to the stateless tool fn.
+            params.zoom = Some(self.resolve_zoom(params.zoom.as_deref()).to_string());
             let result = read_git_diff(&self.root, params).map_err(err)?;
-            ok_json(serde_json::json!({ "diff": result.diff, "token_count": result.token_count }))
+            ok_json(serde_json::json!({
+                "diff": result.diff,
+                "files": result.files,
+                "zoom_applied": result.zoom_applied,
+                "token_count": result.token_count,
+            }))
         })
     }
 

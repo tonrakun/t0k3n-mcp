@@ -180,7 +180,7 @@ This writes (or merges into) `.mcp.json`:
 
 | Tool | Description |
 |------|-------------|
-| `read_git_diff` | Compressed git diff |
+| `read_git_diff` | Compressed git diff (`zoom`: skeleton/sketch/body/auto — structural change summary) |
 | `read_git_log` | Structured commit log (author, date, changed files) |
 | `read_git_blame_body` | Per-line blame for a function range |
 | `read_changed_files` | Changed files between branches with stat |

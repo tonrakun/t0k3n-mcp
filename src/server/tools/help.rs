@@ -62,7 +62,7 @@ pub(crate) fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("rollback",         "restore the working tree to an edit_checkpoint (opt-in: --enable-writes)"),
     ]);
     cat!("git", [
-        ("read_git_diff",        "compressed diff vs HEAD or any ref"),
+        ("read_git_diff",        "compressed diff vs HEAD or any ref (zoom: skeleton/sketch/body/auto)"),
         ("read_git_log",         "structured commit log with filters"),
         ("read_git_blame_body",  "line-level blame for a function"),
         ("read_changed_files",   "files changed between branches"),
