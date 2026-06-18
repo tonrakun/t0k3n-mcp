@@ -137,7 +137,7 @@ This writes (or merges into) `.mcp.json`:
 
 | Flag | Description |
 |------|-------------|
-| `--root <path>` | Workspace root directory (required) |
+| `--root <path>` | Workspace root directory (or `T0K3N_ROOT`). Optional — see below |
 | `--no-dashboard` | Disable the web dashboard |
 | `--open-browser` | Open the dashboard in a browser on startup |
 | `--dashboard-port <port>` | Dashboard port (default: 14123) |
@@ -145,6 +145,17 @@ This writes (or merges into) `.mcp.json`:
 | `--refresh-parsers` | Clear the tree-sitter parser cache on startup |
 | `--enable-diagnostics` | Register the opt-in `read_type_diagnostics` tool (or `T0K3N_ENABLE_DIAGNOSTICS=1`) |
 | `--enable-writes` | Register the opt-in write tools — `create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` / `set_config_value` / `manage_imports` / `format_code` / `move_symbol` / `edit_checkpoint` / `rollback` (or `T0K3N_ENABLE_WRITES=1`). Read-only by default |
+
+### Running without a configured root
+
+`--root` / `T0K3N_ROOT` is optional. If neither is set, the server falls back to its own
+process working directory (often not the project you want) — but every tool call may pass
+an extra `root` argument (an absolute path) to point the server at the right workspace for
+that call. This argument is not listed in each tool's formal JSON schema (it is intercepted
+before the tool's own parameters are parsed), but it is always honored when the server has
+no configured root; `get_info`'s `instructions` and `debug_info`'s `root_configured` field
+both surface this state to the connecting client. Once `--root` / `T0K3N_ROOT` is set, the
+configured root always wins and any `root` argument on a call is ignored.
 
 ## Tools (90 tools)
 

@@ -145,7 +145,7 @@ t0k3n setup
 
 | フラグ | 説明 |
 |--------|------|
-| `--root <path>` | ワークスペースルート（必須） |
+| `--root <path>` | ワークスペースルート（`T0K3N_ROOT` でも可）。任意項目 — 詳細は下記 |
 | `--no-dashboard` | Web ダッシュボードを無効化 |
 | `--open-browser` | 起動時にダッシュボードをブラウザで開く |
 | `--dashboard-port <port>` | ダッシュボードのポート番号（デフォルト: 14123） |
@@ -153,6 +153,17 @@ t0k3n setup
 | `--refresh-parsers` | 起動時に tree-sitter パーサーキャッシュをクリア |
 | `--enable-diagnostics` | オプトインの `read_type_diagnostics` を登録（`T0K3N_ENABLE_DIAGNOSTICS=1` でも可） |
 | `--enable-writes` | オプトインの書き込みツール（`create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` / `set_config_value` / `manage_imports` / `format_code` / `move_symbol` / `edit_checkpoint` / `rollback`）を登録（`T0K3N_ENABLE_WRITES=1` でも可）。デフォルトは読み取り専用 |
+
+### root 未設定で動かす場合
+
+`--root` / `T0K3N_ROOT` は任意項目です。どちらも未設定の場合、サーバーはプロセスの
+カレントディレクトリにフォールバックします（意図したプロジェクトと異なることが多い）が、
+各ツール呼び出しで `root` 引数（絶対パス）を追加指定すれば、その呼び出しに限り
+ワークスペースを指定できます。この引数は各ツールの正式な JSON スキーマには載りません
+（ツール自身のパラメータが解析される前に取り出されるため）が、root が未設定の間は
+常に有効です。`get_info` の `instructions` と `debug_info` の `root_configured` で
+この状態をクライアントに通知します。`--root` / `T0K3N_ROOT` を設定した場合は常に
+そちらが優先され、呼び出し時の `root` 引数は無視されます。
 
 ---
 

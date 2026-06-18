@@ -1426,6 +1426,35 @@ tree-sitter ではなく構造的位置指定でコード挿入。`patch_symbol`
 
 ---
 
+### 2.37 root 未設定時のツール呼び出しごとオーバーライド（既存・Phase 17）
+
+`--root` / `T0K3N_ROOT` を一切設定せずにサーバーを起動した場合、従来はプロセスの
+カレントディレクトリにフォールバックし、意図したワークスペースと一致しないことが
+あった。`EffectiveRoot`（`rmcp::handler::server::tool::FromToolCallContextPart` 実装）
+を全 `#[tool]` ハンドラ（root を使うもの）の引数に追加し、`root_configured == false`
+の間だけ呼び出し引数の `root`（絶対パス文字列）を採用、`true` の間は常に起動時の
+root を優先する。
+
+- root を消費する抽出は `Parameters<T>` より前に実行する必要がある（`Parameters<T>` が
+  `arguments` を `take()` してしまうため）。`EffectiveRoot` を `Parameters<T>` の前に
+  置くことで `arguments` から `root` キーを事前に取り除き、各ツール固有の
+  `Parameters` 構造体には影響を与えない
+- 純粋なロジック（`resolve_effective_root`）を抽出し、`ToolCallContext` 構築不要で
+  ユニットテスト可能にした
+- `root` 引数は各ツールの JSON Schema には現れない（`Parameters<T>` 由来のスキーマ
+  生成の対象外のため）。代わりに `get_info` の `instructions`（root 未設定時のみ
+  追記）と `debug_info` の `root_configured` フィールドでクライアントに通知する
+- リソース系（`list_resources`/`read_resource`）は MCP Resources プロトコルの対象で
+  ツール呼び出しではないため対象外。`memory_*`/`task_*`/`session_*` は起動時に固定
+  された DB 接続を使うため root 非依存で対象外
+
+```ts
+// 例: read_directory_tree の呼び出し引数（root 未設定時のみ有効）
+{ root?: string, ...通常のパラメータ }
+```
+
+---
+
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -1872,6 +1901,20 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
 状態の読み取りは tree-sitter で構造化済みだが、変化（diff）は行ベースのままという非対称を解消する。`read_code_body` の段階ズームを diff に適用。
 
 - [x] `read_git_diff` の `zoom`（タスク46）— `skeleton`（ファイル×囲みシンボルの+/-件数集約、本文0）/`sketch`（ファイル・ハンクヘッダのみ）/`body`（既定・完全diff）/`auto`（既存 `zoom_level()`/`budget_status` 流用）。囲みシンボルは git ハンクヘッダの関数コンテキストを流用、無しは `(top-level)`。`stat_only` は従来優先。`files`/`zoom_applied` を追加返却。ハンドラで `auto` を `resolve_zoom` 解決し具体レベルを stateless fn へ。大型 diff を俯瞰→精読する段階読みを変化に対して実現
+
+---
+
+### Phase 17 — root 未設定時のツール呼び出しごとオーバーライド v3.3+
+
+`.mcp.json` 側で `--root`（または `T0K3N_ROOT`）を設定し忘れた／設定できない環境でも
+サーバーを使えるようにする。
+
+- [x] `EffectiveRoot` extractor（`root_configured` が false の間のみ呼び出し引数の
+  `root` を採用、true の間は起動時 root を常に優先）。`#[tool]` ハンドラのうち
+  root を使う 69 個に適用。`dedup_body` も root 引数を受け取るよう変更。
+  `resolve_effective_root` を切り出しユニットテスト3件を追加。
+  `get_info` instructions（root 未設定時のみ追記）と `debug_info.root_configured`
+  でクライアントに状態を通知。`main.rs` に `T0K3N_ROOT` 環境変数フォールバックを追加
 
 ---
 
