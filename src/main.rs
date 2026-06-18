@@ -51,10 +51,14 @@ async fn main() -> Result<()> {
         .init();
 
     // Parse CLI flags
-    let root = args
-        .windows(2)
-        .find(|w| w[0] == "--root")
-        .map(|w| w[1].clone())
+    let root_arg = args.windows(2).find(|w| w[0] == "--root").map(|w| w[1].clone());
+    // root_configured tracks whether --root / T0K3N_ROOT was explicitly given. When false,
+    // the server falls back to "." (the process cwd, often not the intended project) and
+    // lets each tool call override the root via a `root` argument instead.
+    let root_configured =
+        root_arg.is_some() || std::env::var("T0K3N_ROOT").map(|v| !v.is_empty()).unwrap_or(false);
+    let root = root_arg
+        .or_else(|| std::env::var("T0K3N_ROOT").ok())
         .unwrap_or_else(|| ".".to_string());
 
     let list_tools = args.iter().any(|a| a == "--list-tools");
@@ -107,7 +111,17 @@ async fn main() -> Result<()> {
         .and_then(|w| w[1].parse::<u16>().ok())
         .unwrap_or(DASHBOARD_PORT);
 
-    tracing::info!("Starting t0k3n with root: {}", root);
+    tracing::info!(
+        "Starting t0k3n with root: {} (configured: {})",
+        root,
+        root_configured
+    );
+    if !root_configured {
+        tracing::warn!(
+            "No --root / T0K3N_ROOT given — defaulting to the process working directory. \
+             Tool calls may pass a `root` argument to override this per call."
+        );
+    }
 
     // ── Dashboard ──────────────────────────────────────────────
     let dashboard = if no_dashboard {
@@ -148,7 +162,8 @@ async fn main() -> Result<()> {
 
     // ── MCP server ─────────────────────────────────────────────
     let transport = stdio();
-    let server = server::T0k3nServer::new(root, dashboard, diagnostics_enabled, writes_enabled);
+    let server =
+        server::T0k3nServer::new(root, dashboard, diagnostics_enabled, writes_enabled, root_configured);
     let service = server.serve(transport).await.inspect_err(|e| {
         tracing::error!("Server error: {}", e);
     })?;

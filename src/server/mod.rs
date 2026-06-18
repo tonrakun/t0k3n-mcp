@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use rmcp::{
     ErrorData as McpError,
     ServerHandler,
-    handler::server::tool::{Parameters, ToolRouter},
+    handler::server::tool::{FromToolCallContextPart, Parameters, ToolCallContext, ToolRouter},
     model::*,
     service::{RequestContext, RoleServer},
     tool, tool_handler, tool_router,
@@ -206,6 +206,10 @@ pub const WRITE_TOOLS: &[&str] = &[
 #[derive(Clone)]
 pub struct T0k3nServer {
     pub root: PathBuf,
+    /// True when --root (or T0K3N_ROOT) was explicitly given at startup. When false,
+    /// `root` is just the process's working directory, and EffectiveRoot lets each
+    /// tool call override it via a `root` argument instead.
+    root_configured: bool,
     db: Arc<Mutex<Database>>,
     web_cache: Arc<Mutex<HashMap<String, String>>>,
     ledger: Arc<Mutex<ReadLedger>>,
@@ -222,6 +226,45 @@ pub struct T0k3nServer {
 
 fn err(msg: impl std::fmt::Display) -> McpError {
     McpError::internal_error(msg.to_string(), None)
+}
+
+/// Per-call extractor resolving the workspace root for a tool call. When the server
+/// was started with an explicit root (--root / T0K3N_ROOT), the configured root always
+/// wins. Otherwise, a `root` argument (absolute path) on the call overrides the
+/// process's working-directory default — letting the server be used without any
+/// MCP-side root configuration by passing it on every call instead.
+struct EffectiveRoot(PathBuf);
+
+/// Pure resolution logic behind [`EffectiveRoot`], split out so it is unit-testable
+/// without constructing a full `ToolCallContext`. Pops `root` out of `arguments` (so it
+/// never reaches the tool's own `Parameters<T>` deserialization) when the server has no
+/// configured root, falling back to `configured_root` if absent or invalid.
+fn resolve_effective_root(
+    root_configured: bool,
+    configured_root: &Path,
+    arguments: &mut Option<JsonObject>,
+) -> PathBuf {
+    if root_configured {
+        return configured_root.to_path_buf();
+    }
+    arguments
+        .as_mut()
+        .and_then(|map| map.remove("root"))
+        .and_then(|v| v.as_str().map(PathBuf::from))
+        .unwrap_or_else(|| configured_root.to_path_buf())
+}
+
+impl FromToolCallContextPart<T0k3nServer> for EffectiveRoot {
+    fn from_tool_call_context_part(
+        context: &mut ToolCallContext<T0k3nServer>,
+    ) -> Result<Self, McpError> {
+        let root = resolve_effective_root(
+            context.service.root_configured,
+            &context.service.root,
+            &mut context.arguments,
+        );
+        Ok(EffectiveRoot(root))
+    }
 }
 
 /// Map a requested zoom + current budget strategy to a concrete detail level.
@@ -322,6 +365,7 @@ impl T0k3nServer {
         dashboard: Option<Arc<DashboardState>>,
         diagnostics_enabled: bool,
         writes_enabled: bool,
+        root_configured: bool,
     ) -> Self {
         let root_path = PathBuf::from(&root);
         let db_path = root_path.join(".t0k3n").join("t0k3n.db");
@@ -350,6 +394,7 @@ impl T0k3nServer {
 
         let server = Self {
             root: root_path,
+            root_configured,
             db: Arc::new(Mutex::new(db)),
             web_cache: Arc::new(Mutex::new(HashMap::new())),
             ledger: Arc::new(Mutex::new(ReadLedger::new())),
@@ -405,8 +450,8 @@ impl T0k3nServer {
     /// sent this session — by any tool — and the file is unchanged, return a tiny
     /// reference stub to put in place of the content. Returns None to send it full
     /// (also recording it so a later re-request can be stubbed).
-    fn dedup_body(&self, path: &str, id: &str, content: &str) -> Option<String> {
-        let mtime = file_mtime(&self.root, path)?;
+    fn dedup_body(&self, root: &Path, path: &str, id: &str, content: &str) -> Option<String> {
+        let mtime = file_mtime(root, path)?;
         match self
             .content_ledger
             .lock()
@@ -430,11 +475,12 @@ impl T0k3nServer {
     #[tool(description = "Get .gitignore-aware directory tree. Use to explore workspace structure before reading files.")]
     async fn read_directory_tree(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadDirectoryTreeParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_directory_tree", {
             let key = delta_key("read_directory_tree", &params);
-            let result = read_directory_tree(&self.root, params).map_err(err)?;
+            let result = read_directory_tree(&root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "tree": result.tree, "token_count": result.token_count }))
         })
     }
@@ -442,11 +488,12 @@ impl T0k3nServer {
     #[tool(description = "Get all headings (TOC) from a Markdown file. Call before read_markdown_section to get anchors.")]
     async fn read_markdown_toc(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadMarkdownTocParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_markdown_toc", {
             let key = delta_key("read_markdown_toc", &params);
-            let result = read_markdown_toc(&self.root, params).map_err(err)?;
+            let result = read_markdown_toc(&root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "toc": result.toc, "token_count": result.token_count }))
         })
     }
@@ -454,11 +501,12 @@ impl T0k3nServer {
     #[tool(description = "Get specific sections from a Markdown file by anchor. Call read_markdown_toc first to get anchors.")]
     async fn read_markdown_section(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadMarkdownSectionParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_markdown_section", {
             let key = delta_key("read_markdown_section", &params);
-            let result = read_markdown_section(&self.root, params).map_err(err)?;
+            let result = read_markdown_section(&root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "sections": result.sections, "token_count": result.token_count }))
         })
     }
@@ -466,10 +514,11 @@ impl T0k3nServer {
     #[tool(description = "Search a file for a keyword or regex pattern with surrounding context lines.")]
     async fn search_file(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<SearchFileParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "search_file", {
-            let result = search_file(&self.root, params).map_err(err)?;
+            let result = search_file(&root, params).map_err(err)?;
             ok_json(serde_json::json!({ "matches": result.matches, "token_count": result.token_count }))
         })
     }
@@ -477,11 +526,12 @@ impl T0k3nServer {
     #[tool(description = "Get key structure of a JSON or YAML file. Call before read_json_yaml_value to identify key paths.")]
     async fn read_json_yaml_keys(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadJsonYamlKeysParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_json_yaml_keys", {
             let key = delta_key("read_json_yaml_keys", &params);
-            let result = read_json_yaml_keys(&self.root, params).map_err(err)?;
+            let result = read_json_yaml_keys(&root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "keys": result.keys, "token_count": result.token_count }))
         })
     }
@@ -489,11 +539,12 @@ impl T0k3nServer {
     #[tool(description = "Get a specific value from a JSON or YAML file by dot-notation key path (e.g. 'dependencies.tokio').")]
     async fn read_json_yaml_value(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadJsonYamlValueParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_json_yaml_value", {
             let key = delta_key("read_json_yaml_value", &params);
-            let result = read_json_yaml_value(&self.root, params).map_err(err)?;
+            let result = read_json_yaml_value(&root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "value": result.value, "token_count": result.token_count }))
         })
     }
@@ -501,11 +552,12 @@ impl T0k3nServer {
     #[tool(description = "Get code skeleton (functions, structs, classes) with signatures only. Call before read_code_body.")]
     async fn read_code_skeleton(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadCodeSkeletonParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_skeleton", {
             let key = delta_key("read_code_skeleton", &params);
-            let result = read_code_skeleton(&self.root, params).map_err(err)?;
+            let result = read_code_skeleton(&root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "language": result.language, "skeleton": result.skeleton, "token_count": result.token_count }))
         })
     }
@@ -520,6 +572,7 @@ impl T0k3nServer {
     #[tool(description = "Get full body of specific code items by ID from read_code_skeleton. Optional zoom controls detail: 'body' (default), 'sketch' (control-flow only), 'skeleton' (signatures only), or 'auto' (pick by the latest check_budget strategy). The chosen level is echoed back as zoom_applied.")]
     async fn read_code_body(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadCodeBodyParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_body", {
@@ -531,7 +584,7 @@ impl T0k3nServer {
                 "skeleton" => {
                     let key = delta_key("read_code_body:skeleton", &path);
                     let result = read_code_skeleton(
-                        &self.root,
+                        &root,
                         ReadCodeSkeletonParams { path: path.clone(), include_blocks: None },
                     )
                     .map_err(err)?;
@@ -545,7 +598,7 @@ impl T0k3nServer {
                 "sketch" => {
                     let sk_params = ReadCodeSketchParams { path: path.clone(), ids };
                     let key = delta_key("read_code_body:sketch", &sk_params);
-                    let result = read_code_sketch(&self.root, sk_params).map_err(err)?;
+                    let result = read_code_sketch(&root, sk_params).map_err(err)?;
                     self.ok_delta(key, serde_json::json!({
                         "zoom_applied": "sketch",
                         "items": result.items,
@@ -554,13 +607,13 @@ impl T0k3nServer {
                 }
                 _ => {
                     let key = delta_key("read_code_body", &params);
-                    let mut result = read_code_body(&self.root, params).map_err(err)?;
+                    let mut result = read_code_body(&root, params).map_err(err)?;
                     // Cross-tool dedup: stub bodies already sent this session (e.g. by read_context_pack).
                     for item in &mut result.items {
                         if item.content.starts_with("Error:") {
                             continue;
                         }
-                        if let Some(stub) = self.dedup_body(&path, &item.id, &item.content) {
+                        if let Some(stub) = self.dedup_body(&root, &path, &item.id, &item.content) {
                             item.content = stub;
                         }
                     }
@@ -580,11 +633,12 @@ impl T0k3nServer {
     #[tool(description = "Zoom level between read_code_skeleton (signatures) and read_code_body (full source). Given skeleton IDs, returns each symbol's control-flow sketch: signature + branches/loops + block delimiters + call lines kept verbatim, runs of pure-data lines (assignments, literals) collapsed into '… N lines …'. Typically 60-70% smaller than the body — use it to understand what a function does before deciding whether you need the full body.")]
     async fn read_code_sketch(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadCodeSketchParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_sketch", {
             let key = delta_key("read_code_sketch", &params);
-            let result = read_code_sketch(&self.root, params).map_err(err)?;
+            let result = read_code_sketch(&root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "items": result.items, "token_count": result.token_count }))
         })
     }
@@ -592,10 +646,11 @@ impl T0k3nServer {
     #[tool(description = "Replace one symbol's source by skeleton ID — write counterpart of read_code_body. Flow: read_code_skeleton → read_code_body(id) → patch_symbol(id, new_body|edits). For small changes pass edits=[{find,replace}] instead of new_body — find only needs to be unique within the symbol, so unchanged lines are never resent. Pass expected_name to guard against stale line numbers; re-run read_code_skeleton after each successful patch before patching the same file again. dry_run previews the diff.")]
     async fn patch_symbol(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<PatchSymbolParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "patch_symbol", {
-            let result = patch_symbol(&self.root, params).map_err(err)?;
+            let result = patch_symbol(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "written": result.written,
                 "new_id": result.new_id,
@@ -610,10 +665,11 @@ impl T0k3nServer {
     #[tool(description = "Rename a symbol across the whole workspace in one call — write counterpart of read_symbol_usages. Whole-identifier match only (substrings like old_name_extended are left untouched). Returns affected file count + per-line before/after edits, never full file bodies. Always run once with dry_run:true to preview scope before applying. Scope to a file/dir with path. Note: textual whole-word match (same basis as read_symbol_usages) — it does not skip identical names in comments or strings, so review the dry_run output.")]
     async fn rename_symbol(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<RenameSymbolParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "rename_symbol", {
-            let result = rename_symbol(&self.root, params).map_err(err)?;
+            let result = rename_symbol(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "applied": result.applied,
                 "files_changed": result.files_changed,
@@ -627,10 +683,11 @@ impl T0k3nServer {
     #[tool(description = "Create a new file (opt-in write tool; requires --enable-writes). Refuses to overwrite an existing file unless overwrite:true. Creates parent directories. dry_run reports what would happen without writing. Fills the gap where the only way to create a file was run_command.")]
     async fn create_file(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<CreateFileParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "create_file", {
-            let result = create_file(&self.root, params).map_err(err)?;
+            let result = create_file(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path,
                 "bytes": result.bytes,
@@ -645,10 +702,11 @@ impl T0k3nServer {
     #[tool(description = "Delete a symbol by skeleton ID (opt-in write tool; requires --enable-writes) — write counterpart of read_dead_code. Removes the symbol's line range plus one trailing blank line. Pass expected_name to guard against stale line numbers; dry_run previews the diff.")]
     async fn delete_symbol(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<DeleteSymbolParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "delete_symbol", {
-            let result = delete_symbol(&self.root, params).map_err(err)?;
+            let result = delete_symbol(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "removed_lines": result.removed_lines,
                 "diff": result.diff,
@@ -661,10 +719,11 @@ impl T0k3nServer {
     #[tool(description = "Insert code at a structurally correct location (opt-in write tool; requires --enable-writes). mode: 'after_symbol'/'before_symbol' (need anchor_id from read_code_skeleton), 'after_imports' (after the import block), or 'end_of_file'. Adds blank-line separation automatically. dry_run previews the diff. Completes symbol CRUD with patch_symbol (update) and delete_symbol (delete).")]
     async fn insert_symbol(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<InsertSymbolParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "insert_symbol", {
-            let result = insert_symbol(&self.root, params).map_err(err)?;
+            let result = insert_symbol(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "inserted_at_line": result.inserted_at_line,
                 "diff": result.diff,
@@ -677,10 +736,11 @@ impl T0k3nServer {
     #[tool(description = "Apply find/replace edits across one or more files atomically (opt-in write tool; requires --enable-writes) — write counterpart of batch_read. Each find must match exactly once per file (ambiguous matches report candidate line numbers). If any edit fails, nothing is written. Returns per-edit line + before/after summaries only. dry_run validates and previews without writing.")]
     async fn apply_edits(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ApplyEditsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "apply_edits", {
-            let result = apply_edits(&self.root, params).map_err(err)?;
+            let result = apply_edits(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "files_changed": result.files_changed,
                 "edits_applied": result.edits_applied,
@@ -694,10 +754,11 @@ impl T0k3nServer {
     #[tool(description = "Set a value at a dot-notation key path in a JSON/YAML/TOML file (opt-in write tool; requires --enable-writes) — write counterpart of read_json_yaml_value. Creates intermediate objects as needed; value may be any JSON type. JSON key order is preserved; YAML/TOML comments are not. dry_run previews the diff. Returns old/new value + diff only.")]
     async fn set_config_value(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<SetConfigValueParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "set_config_value", {
-            let result = set_config_value(&self.root, params).map_err(err)?;
+            let result = set_config_value(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "old_value": result.old_value,
                 "new_value": result.new_value,
@@ -712,10 +773,11 @@ impl T0k3nServer {
     #[tool(description = "Add or remove import statements (opt-in write tool; requires --enable-writes). Operates on whole import lines (language-agnostic): adds at the import block, removes by trimmed equality, and de-duplicates against existing imports. dry_run previews the diff.")]
     async fn manage_imports(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ManageImportsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "manage_imports", {
-            let result = manage_imports(&self.root, params).map_err(err)?;
+            let result = manage_imports(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "added": result.added,
                 "removed": result.removed,
@@ -730,10 +792,11 @@ impl T0k3nServer {
     #[tool(description = "Run the language's formatter on a file (opt-in write tool; requires --enable-writes): rustfmt / prettier / black / gofmt by extension. Returns the diff and whether anything changed. dry_run formats a copy and previews without writing. If the formatter is not installed, returns formatter_available:false + an install hint (no error).")]
     async fn format_code(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<FormatCodeParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "format_code", {
-            let result = format_code(&self.root, params).map_err(err)?;
+            let result = format_code(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "formatter": result.formatter,
                 "formatter_available": result.formatter_available,
@@ -749,10 +812,11 @@ impl T0k3nServer {
     #[tool(description = "Move a symbol from one file to another by skeleton ID (opt-in write tool; requires --enable-writes). Extracts it from src_path and appends to dest_path (created if missing). Import fixups are best-effort: imports are NOT rewritten, but referencing files are reported in warnings. Pass symbol_name for a stale-line guard + the reference-impact warning. dry_run previews both diffs.")]
     async fn move_symbol(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<MoveSymbolParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "move_symbol", {
-            let result = move_symbol(&self.root, params).map_err(err)?;
+            let result = move_symbol(&root, params).map_err(err)?;
             let tok = tools::fs::estimate_tokens(&result.src_diff)
                 + tools::fs::estimate_tokens(&result.dest_diff);
             ok_json(serde_json::json!({
@@ -770,10 +834,11 @@ impl T0k3nServer {
     #[tool(description = "Snapshot the working tree before a batch of edits (opt-in write tool; requires --enable-writes) — safety net for autonomous write loops. In a git repo uses `git stash create` (does not touch the tree); otherwise copies gitignore-aware files into .t0k3n/checkpoints/. Returns a checkpoint_id to pass to rollback. Distinct from session_snapshot (which saves tool state, not files).")]
     async fn edit_checkpoint(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<EditCheckpointParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "edit_checkpoint", {
-            let result = edit_checkpoint(&self.root, params).map_err(err)?;
+            let result = edit_checkpoint(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "checkpoint_id": result.checkpoint_id,
                 "strategy": result.strategy,
@@ -787,10 +852,11 @@ impl T0k3nServer {
     #[tool(description = "Restore the working tree to a prior edit_checkpoint (opt-in write tool; requires --enable-writes). Pass the checkpoint_id from edit_checkpoint. git checkpoints restore tracked files via `git checkout`; copy checkpoints copy files back. Note: files created after the checkpoint are not removed.")]
     async fn rollback(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<RollbackParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "rollback", {
-            let result = rollback(&self.root, params).map_err(err)?;
+            let result = rollback(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "strategy": result.strategy,
                 "restored": result.restored,
@@ -803,10 +869,11 @@ impl T0k3nServer {
     #[tool(description = "Get import/dependency graph for a code file. Returns what it imports and what files import it (imported_by). direction: \"imports\" | \"imported_by\" | \"both\".")]
     async fn read_code_deps(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadCodeDepsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_deps", {
-            let result = read_code_deps(&self.root, params).map_err(err)?;
+            let result = read_code_deps(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "language": result.language,
                 "imports": result.imports, "imported_by": result.imported_by,
@@ -818,11 +885,12 @@ impl T0k3nServer {
     #[tool(description = "Get a unified outline of any file. Auto-detects type: code → skeleton, markdown → TOC, json/yaml → keys. Single entry point — no need to know the file type first.")]
     async fn read_file_outline(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadFileOutlineParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_file_outline", {
             let key = delta_key("read_file_outline", &params);
-            let result = read_file_outline(&self.root, params).map_err(err)?;
+            let result = read_file_outline(&root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({
                 "path": result.path, "kind": result.kind, "language": result.language,
                 "outline": result.outline, "token_count": result.token_count,
@@ -833,14 +901,15 @@ impl T0k3nServer {
     #[tool(description = "One-call task context collection: ranks workspace files and symbols by relevance to a task description, returns ranked files + relevant signatures + top symbol bodies, greedily filled up to a token budget. Replaces the tree→search→skeleton→body round-trip sequence when starting a task. No subprocess needed (lexical ranking).")]
     async fn read_context_pack(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadContextPackParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_context_pack", {
-            let mut result = read_context_pack(&self.root, params).map_err(err)?;
+            let mut result = read_context_pack(&root, params).map_err(err)?;
             // Record each body in the cross-tool ledger so a later read_code_body for
             // the same symbol is stubbed; stub here too if it was already sent.
             for body in &mut result.bodies {
-                if let Some(stub) = self.dedup_body(&body.path, &body.id, &body.content) {
+                if let Some(stub) = self.dedup_body(&root, &body.path, &body.id, &body.content) {
                     body.content = stub;
                 }
             }
@@ -859,10 +928,11 @@ impl T0k3nServer {
     #[tool(description = "Search code semantically using a natural language query. Spawns Claude CLI to identify relevant functions from the skeleton, then returns their bodies. Requires `claude` CLI to be installed and authenticated.")]
     async fn semantic_search(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<SemanticSearchParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "semantic_search", {
-            let result = semantic_search(&self.root, params).map_err(err)?;
+            let result = semantic_search(&root, params).map_err(err)?;
             ok_json(serde_json::json!({ "items": result.items, "token_count": result.token_count }))
         })
     }
@@ -870,13 +940,14 @@ impl T0k3nServer {
     #[tool(description = "Get compressed git diff. Defaults to all uncommitted changes vs HEAD. Use stat_only for a quick file-level summary. zoom mirrors read_code_body: 'body' (full diff), 'sketch' (file + hunk headers only), 'skeleton' (per-file × enclosing-symbol +/- line counts, no diff text), or 'auto' (follows the latest check_budget strategy). Apply the structure-first read to change itself: skeleton to map a large diff, then body on the suspicious files.")]
     async fn read_git_diff(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(mut params): Parameters<ReadGitDiffParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_diff", {
             // Resolve `auto` (and any synonym) against the latest budget strategy
             // before handing a concrete level to the stateless tool fn.
             params.zoom = Some(self.resolve_zoom(params.zoom.as_deref()).to_string());
-            let result = read_git_diff(&self.root, params).map_err(err)?;
+            let result = read_git_diff(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "diff": result.diff,
                 "files": result.files,
@@ -889,10 +960,11 @@ impl T0k3nServer {
     #[tool(description = "Get structured git commit log with sha, author, date, message, and changed files. Filter by path, author, date range, or limit.")]
     async fn read_git_log(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadGitLogParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_log", {
-            let result = read_git_log(&self.root, params).map_err(err)?;
+            let result = read_git_log(&root, params).map_err(err)?;
             ok_json(serde_json::json!({ "entries": result.entries, "token_count": result.token_count }))
         })
     }
@@ -900,10 +972,11 @@ impl T0k3nServer {
     #[tool(description = "Get per-line blame (author + date) for a specific line range in a file. Use start_line/end_line from read_code_skeleton to target a function body.")]
     async fn read_git_blame_body(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadGitBlameBodyParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_blame_body", {
-            let result = read_git_blame_body(&self.root, params).map_err(err)?;
+            let result = read_git_blame_body(&root, params).map_err(err)?;
             ok_json(serde_json::json!({ "path": result.path, "lines": result.lines, "token_count": result.token_count }))
         })
     }
@@ -911,10 +984,11 @@ impl T0k3nServer {
     #[tool(description = "Find all usages of a symbol name (function, struct, class, variable) across the workspace. Returns file path, line number, and context for each match. Max 100 results.")]
     async fn read_symbol_usages(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadSymbolUsagesParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_symbol_usages", {
-            let result = read_symbol_usages(&self.root, params).map_err(err)?;
+            let result = read_symbol_usages(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "symbol": result.symbol, "usages": result.usages,
                 "total": result.total, "truncated": result.truncated,
@@ -926,10 +1000,11 @@ impl T0k3nServer {
     #[tool(description = "Parse an OpenAPI / Swagger spec (JSON or YAML) and return a compact endpoint summary: method, path, operation_id, summary, parameters, request body, and responses.")]
     async fn read_openapi(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadOpenApiParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_openapi", {
-            let result = read_openapi(&self.root, params).map_err(err)?;
+            let result = read_openapi(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "title": result.title, "version": result.version,
                 "base_url": result.base_url, "spec_version": result.spec_version,
@@ -941,10 +1016,11 @@ impl T0k3nServer {
     #[tool(description = "Extract environment variable definitions from .env.example / .env.sample / .env.template / docker-compose.yml. Returns key, description (from comments), default value, and required flag. Omit path to auto-scan workspace root.")]
     async fn read_env_schema(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadEnvSchemaParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_env_schema", {
-            let result = read_env_schema(&self.root, params).map_err(err)?;
+            let result = read_env_schema(&root, params).map_err(err)?;
             ok_json(serde_json::json!({ "vars": result.vars, "sources": result.sources, "token_count": result.token_count }))
         })
     }
@@ -984,10 +1060,11 @@ impl T0k3nServer {
     #[tool(description = "Convert a PDF or DOCX to Markdown, return TOC and tmp_path. Use read_markdown_section(tmp_path) to read sections.")]
     async fn convert_document(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ConvertDocumentParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "convert_document", {
-            let result = convert_document(&self.root, params).map_err(err)?;
+            let result = convert_document(&root, params).map_err(err)?;
             ok_json(serde_json::json!({ "toc": result.toc, "tmp_path": result.tmp_path, "token_count": result.token_count }))
         })
     }
@@ -1192,10 +1269,11 @@ impl T0k3nServer {
     #[tool(description = "Get table/model list from a Prisma or SQL schema file. Returns name, kind, and field count. Call read_db_table for field details of a specific table.")]
     async fn read_db_schema(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadDbSchemaParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_db_schema", {
-            let result = read_db_schema(&self.root, params).map_err(err)?;
+            let result = read_db_schema(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "format": result.format,
                 "tables": result.tables, "token_count": result.token_count,
@@ -1206,10 +1284,11 @@ impl T0k3nServer {
     #[tool(description = "Get full field definitions for a specific table or model from a Prisma or SQL schema. Call read_db_schema first to get the table list.")]
     async fn read_db_table(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadDbTableParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_db_table", {
-            let result = read_db_table(&self.root, params).map_err(err)?;
+            let result = read_db_table(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "name": result.name, "kind": result.kind,
                 "fields": result.fields, "token_count": result.token_count,
@@ -1220,10 +1299,11 @@ impl T0k3nServer {
     #[tool(description = "Get CSS/SCSS/Less selector list with property counts. Returns IDs for use with read_css_body.")]
     async fn read_css_skeleton(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadCssSkeletonParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_css_skeleton", {
-            let result = read_css_skeleton(&self.root, params).map_err(err)?;
+            let result = read_css_skeleton(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "selectors": result.selectors, "token_count": result.token_count,
             }))
@@ -1233,10 +1313,11 @@ impl T0k3nServer {
     #[tool(description = "Get full CSS rule content for specific selectors by ID. Call read_css_skeleton first to get selector IDs.")]
     async fn read_css_body(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadCssBodyParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_css_body", {
-            let result = read_css_body(&self.root, params).map_err(err)?;
+            let result = read_css_body(&root, params).map_err(err)?;
             ok_json(serde_json::json!({ "items": result.items, "token_count": result.token_count }))
         })
     }
@@ -1244,10 +1325,11 @@ impl T0k3nServer {
     #[tool(description = "Get type/input/enum/interface list from a GraphQL schema file. Returns IDs for use with read_graphql_type.")]
     async fn read_graphql_schema(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadGraphqlSchemaParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_graphql_schema", {
-            let result = read_graphql_schema(&self.root, params).map_err(err)?;
+            let result = read_graphql_schema(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "types": result.types, "token_count": result.token_count,
             }))
@@ -1257,10 +1339,11 @@ impl T0k3nServer {
     #[tool(description = "Get full field definitions for a specific GraphQL type. Call read_graphql_schema first to get the type list.")]
     async fn read_graphql_type(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadGraphqlTypeParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_graphql_type", {
-            let result = read_graphql_type(&self.root, params).map_err(err)?;
+            let result = read_graphql_type(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "name": result.name, "kind": result.kind,
                 "fields": result.fields, "token_count": result.token_count,
@@ -1271,10 +1354,11 @@ impl T0k3nServer {
     #[tool(description = "Get message/service/enum list from a .proto (Protocol Buffers) file. Returns IDs for use with read_proto_type.")]
     async fn read_proto_schema(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadProtoSchemaParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_proto_schema", {
-            let result = read_proto_schema(&self.root, params).map_err(err)?;
+            let result = read_proto_schema(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "syntax": result.syntax, "package": result.package,
                 "types": result.types, "token_count": result.token_count,
@@ -1285,10 +1369,11 @@ impl T0k3nServer {
     #[tool(description = "Get full field definitions for a specific message, service, or enum in a .proto file. Call read_proto_schema first to get the type list.")]
     async fn read_proto_type(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadProtoTypeParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_proto_type", {
-            let result = read_proto_type(&self.root, params).map_err(err)?;
+            let result = read_proto_type(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "name": result.name, "kind": result.kind,
                 "fields": result.fields, "token_count": result.token_count,
@@ -1303,10 +1388,11 @@ impl T0k3nServer {
     #[tool(description = "Get cell list from a Jupyter notebook (.ipynb) with type, preview, and output count. Call before read_notebook_cell to choose which cells to read.")]
     async fn read_notebook_cells(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadNotebookCellsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_notebook_cells", {
-            let result = read_notebook_cells(&self.root, params).map_err(err)?;
+            let result = read_notebook_cells(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "nbformat": result.nbformat,
                 "cells": result.cells, "token_count": result.token_count,
@@ -1317,10 +1403,11 @@ impl T0k3nServer {
     #[tool(description = "Get full source of a specific cell from a Jupyter notebook (.ipynb). Use the index from read_notebook_cells. Set include_outputs=true to also fetch cell outputs.")]
     async fn read_notebook_cell(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadNotebookCellParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_notebook_cell", {
-            let result = read_notebook_cell(&self.root, params).map_err(err)?;
+            let result = read_notebook_cell(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "index": result.index, "cell_type": result.cell_type,
                 "execution_count": result.execution_count, "source": result.source,
@@ -1336,10 +1423,11 @@ impl T0k3nServer {
     #[tool(description = "Read the tail of a log file with optional level (ERROR/WARN/INFO/DEBUG) and regex pattern filters. Returns last N lines and level counts across the whole file.")]
     async fn read_log_tail(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadLogTailParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_log_tail", {
-            let result = read_log_tail(&self.root, params).map_err(err)?;
+            let result = read_log_tail(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "total_lines": result.total_lines,
                 "returned_lines": result.returned_lines, "level_counts": result.level_counts,
@@ -1351,10 +1439,11 @@ impl T0k3nServer {
     #[tool(description = "Parse a stack trace and fetch source context around each referenced file:line. Supports Python, Rust, JavaScript/TypeScript, Java, Go, and C#. Returns resolved code snippets from workspace files.")]
     async fn read_stack_trace(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadStackTraceParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_stack_trace", {
-            let result = read_stack_trace(&self.root, params).map_err(err)?;
+            let result = read_stack_trace(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "total_frames": result.total_frames, "resolved_frames": result.resolved_frames,
                 "frames": result.frames, "token_count": result.token_count,
@@ -1369,10 +1458,11 @@ impl T0k3nServer {
     #[tool(description = "Get test case list from a test file (Jest/pytest/Rust/#[test]/Go/JUnit/RSpec). Returns IDs usable with read_code_body to get test implementations.")]
     async fn read_test_skeleton(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadTestSkeletonParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_test_skeleton", {
-            let result = read_test_skeleton(&self.root, params).map_err(err)?;
+            let result = read_test_skeleton(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path, "framework": result.framework,
                 "tests": result.tests, "token_count": result.token_count,
@@ -1383,10 +1473,11 @@ impl T0k3nServer {
     #[tool(description = "Parse test runner output (Jest/Vitest/pytest/cargo test/go test) into a structured summary: pass/fail counts per suite and failure details. Accepts raw text or a file path.")]
     async fn read_test_results(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadTestResultsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_test_results", {
-            let result = read_test_results(&self.root, params).map_err(err)?;
+            let result = read_test_results(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "framework": result.framework, "summary": result.summary,
                 "suites": result.suites, "failures": result.failures,
@@ -1398,10 +1489,11 @@ impl T0k3nServer {
     #[tool(description = "Map a coverage report onto code symbols to see which functions are untested (risky to change). Auto-detects lcov (lcov.info / cargo llvm-cov), coverage.py JSON, or cobertura XML. Per-symbol covered/total/pct plus overall_pct. Filter with uncovered_only (pct<100) or threshold. If no report exists, returns report_available:false + a generation hint (safe to call speculatively). Pairs with read_test_results / read_test_skeleton.")]
     async fn read_test_coverage(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadTestCoverageParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_test_coverage", {
-            let result = read_test_coverage(&self.root, params).map_err(err)?;
+            let result = read_test_coverage(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "report_available": result.report_available,
                 "format": result.format,
@@ -1420,11 +1512,12 @@ impl T0k3nServer {
     #[tool(description = "Get type definitions (interface/type/enum/struct) with field names from TypeScript, Go, or Rust files. More detailed than read_code_skeleton for type-heavy files.")]
     async fn read_type_skeleton(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadTypeSkeletonParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_type_skeleton", {
             let key = delta_key("read_type_skeleton", &params);
-            let result = read_type_skeleton(&self.root, params).map_err(err)?;
+            let result = read_type_skeleton(&root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({
                 "path": result.path, "language": result.language,
                 "types": result.types, "token_count": result.token_count,
@@ -1435,10 +1528,11 @@ impl T0k3nServer {
     #[tool(description = "Get the call graph for a function: what functions it calls, and which functions in the same file call it. Uses function_id from read_code_skeleton.")]
     async fn read_call_graph(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadCallGraphParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_call_graph", {
-            let result = read_call_graph(&self.root, params).map_err(err)?;
+            let result = read_call_graph(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "function": result.function, "file": result.file,
                 "calls": result.calls, "called_by_in_file": result.called_by_in_file,
@@ -1452,10 +1546,11 @@ impl T0k3nServer {
     #[tool(description = "List all workspace files sorted by estimated token count (largest first). Use to identify token-heavy files before reading. Supports glob filtering.")]
     async fn read_token_map(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadTokenMapParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_token_map", {
-            let result = read_token_map(&self.root, params).map_err(err)?;
+            let result = read_token_map(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "files": result.files, "total_tokens": result.total_tokens,
                 "file_count": result.file_count, "token_count": result.token_count,
@@ -1466,10 +1561,11 @@ impl T0k3nServer {
     #[tool(description = "Get per-file change summary (added/deleted lines, status) for the current diff vs a base ref. Step 1 before read_git_diff — get the file list first, then read specific files' diffs.")]
     async fn read_changed_files(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadChangedFilesParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_changed_files", {
-            let result = read_changed_files(&self.root, params).map_err(err)?;
+            let result = read_changed_files(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "base": result.base, "files": result.files,
                 "total_added": result.total_added, "total_deleted": result.total_deleted,
@@ -1485,10 +1581,11 @@ impl T0k3nServer {
     #[tool(description = "List stashes and optionally get diff for a specific stash entry. Omit index to list only.")]
     async fn read_git_stash(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadGitStashParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_stash", {
-            let result = read_git_stash(&self.root, params).map_err(err)?;
+            let result = read_git_stash(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "stashes": result.stashes, "diff": result.diff, "token_count": result.token_count,
             }))
@@ -1498,10 +1595,11 @@ impl T0k3nServer {
     #[tool(description = "Fuse git log + blame into code ownership: per file, churn (commit count), the date it was last touched, and top authors by lines contributed (ownership share). Sorted by churn to surface hotspots. Use to learn who to ask about a file and where the volatile code is. Scope with path, limit with top_n, window with since (e.g. \"3 months ago\").")]
     async fn read_code_ownership(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadCodeOwnershipParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_code_ownership", {
-            let result = read_code_ownership(&self.root, params).map_err(err)?;
+            let result = read_code_ownership(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "hotspots": result.hotspots, "token_count": result.token_count,
             }))
@@ -1511,10 +1609,11 @@ impl T0k3nServer {
     #[tool(description = "Parse package.json / Cargo.toml / go.mod / pyproject.toml / pom.xml / build.gradle into a unified dependency list. Faster than read_json_yaml_value for multi-ecosystem projects.")]
     async fn read_package_manifest(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadPackageManifestParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_package_manifest", {
-            let result = read_package_manifest(&self.root, params).map_err(err)?;
+            let result = read_package_manifest(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "manifests": result.manifests, "token_count": result.token_count,
             }))
@@ -1524,10 +1623,11 @@ impl T0k3nServer {
     #[tool(description = "Parse CI pipeline configs (GitHub Actions / GitLab CI / CircleCI) into structured workflow/job/step summary. Omit path to auto-scan workspace.")]
     async fn read_ci_pipeline(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadCiPipelineParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_ci_pipeline", {
-            let result = read_ci_pipeline(&self.root, params).map_err(err)?;
+            let result = read_ci_pipeline(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "pipelines": result.pipelines, "token_count": result.token_count,
             }))
@@ -1537,10 +1637,11 @@ impl T0k3nServer {
     #[tool(description = "Get codebase-wide statistics: total files/lines/tokens, per-language breakdown with %, and top-10 largest files. Much faster overview than read_token_map.")]
     async fn read_workspace_stats(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadWorkspaceStatsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_workspace_stats", {
-            let result = read_workspace_stats(&self.root, params).map_err(err)?;
+            let result = read_workspace_stats(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "total_files": result.total_files, "total_lines": result.total_lines,
                 "total_tokens": result.total_tokens, "by_language": result.by_language,
@@ -1552,10 +1653,11 @@ impl T0k3nServer {
     #[tool(description = "Find all types that implement a given interface/trait/abstract class across the workspace. Supports TypeScript, Rust, Java, Kotlin, Go, PHP, C#.")]
     async fn read_interface_conformance(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadInterfaceConformanceParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_interface_conformance", {
-            let result = read_interface_conformance(&self.root, params).map_err(err)?;
+            let result = read_interface_conformance(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "name": result.name, "kind": result.kind,
                 "implementations": result.implementations,
@@ -1567,10 +1669,11 @@ impl T0k3nServer {
     #[tool(description = "Execute multiple read operations in one call (code_skeleton | code_body | markdown_section | json_value | file_outline). Reduces round-trips when you need several files at once. Pass factor:true to collapse near-identical results (migrations, fixtures) into one template + per-file unified diffs.")]
     async fn batch_read(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<BatchReadParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "batch_read", {
-            let result = batch_read(&self.root, params).map_err(err)?;
+            let result = batch_read(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "results": result.results,
                 "factored": result.factored,
@@ -1586,10 +1689,11 @@ impl T0k3nServer {
     #[tool(description = "Compute cyclomatic complexity for every function in a file or directory. Returns functions sorted by complexity with risk level (low/medium/high/critical). Use to identify refactoring targets without running a linter.")]
     async fn read_complexity_map(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadComplexityMapParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_complexity_map", {
-            let result = read_complexity_map(&self.root, params).map_err(err)?;
+            let result = read_complexity_map(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "entries": result.entries,
                 "total_analyzed": result.total_analyzed,
@@ -1602,10 +1706,11 @@ impl T0k3nServer {
     #[tool(description = "Find unused symbols (functions, classes, structs) that are defined but never called across the workspace. Works across all tree-sitter supported languages without a compiler or LSP.")]
     async fn read_dead_code(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadDeadCodeParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_dead_code", {
-            let result = read_dead_code(&self.root, params).map_err(err)?;
+            let result = read_dead_code(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "entries": result.entries,
                 "total_symbols_checked": result.total_symbols_checked,
@@ -1617,10 +1722,11 @@ impl T0k3nServer {
     #[tool(description = "Blast-radius analysis for a refactor: given a symbol name, returns all callers, all files that reference it, and all test files that cover it — in one call. Combines call_graph + symbol_usages + test discovery.")]
     async fn read_refactor_impact(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadRefactorImpactParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_refactor_impact", {
-            let result = read_refactor_impact(&self.root, params).map_err(err)?;
+            let result = read_refactor_impact(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "symbol": result.symbol,
                 "definition_file": result.definition_file,
@@ -1639,10 +1745,11 @@ impl T0k3nServer {
     #[tool(description = "Static security surface scan: finds potential injection vectors, XSS sinks, hardcoded secrets, unsafe code, and path traversal patterns across the codebase. No compiler needed. Categories: injection, xss, secrets, unsafe, path_traversal, all.")]
     async fn read_security_surface(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadSecuritySurfaceParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_security_surface", {
-            let result = read_security_surface(&self.root, params).map_err(err)?;
+            let result = read_security_surface(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "findings": result.findings,
                 "total": result.total,
@@ -1656,10 +1763,11 @@ impl T0k3nServer {
     #[tool(description = "Scan dependencies for known vulnerabilities — the dependency-side counterpart to read_security_surface. Auto-detects the ecosystem (Cargo.toml→cargo audit, package.json→npm audit, pyproject/requirements→pip-audit, go.mod→osv-scanner) and normalizes results to {package, severity, id, affected, patched, title}, sorted by severity. Filter with severity (minimum level) / max_items. If the scanner is not installed, returns scanner_available:false + an install hint (safe to call speculatively).")]
     async fn read_dependency_audit(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadDependencyAuditParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_dependency_audit", {
-            let result = read_dependency_audit(&self.root, params).map_err(err)?;
+            let result = read_dependency_audit(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "scanner_available": result.scanner_available,
                 "ecosystem": result.ecosystem,
@@ -1673,10 +1781,11 @@ impl T0k3nServer {
     #[tool(description = "Extract only a codebase's public API surface: Rust pub items, TS/JS exports, Python __all__ / non-underscore top-level defs, Go capitalized identifiers. Signatures only (no bodies). Use to understand a library's external boundary or to detect breaking changes (pair with diff_schemas). Scope with path; include_crate_visible:true also lists Rust pub(crate)/pub(super).")]
     async fn read_api_surface(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadApiSurfaceParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_api_surface", {
-            let result = read_api_surface(&self.root, params).map_err(err)?;
+            let result = read_api_surface(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "api": result.api,
                 "token_count": result.token_count,
@@ -1687,10 +1796,11 @@ impl T0k3nServer {
     #[tool(description = "Diff a schema file (OpenAPI, Prisma/SQL, TypeScript types) between two git refs. Returns added/removed/modified endpoints, tables, or types. Auto-detects schema type from file extension.")]
     async fn diff_schemas(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<DiffSchemasParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "diff_schemas", {
-            let result = diff_schemas(&self.root, params).map_err(err)?;
+            let result = diff_schemas(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "path": result.path,
                 "schema_type": result.schema_type,
@@ -1708,10 +1818,11 @@ impl T0k3nServer {
     #[tool(description = "Load full PR context in one call: changed files with skeletons, diff stats, related test files, and commit list. Pass branch + base to get everything needed for a code review without multiple round-trips.")]
     async fn read_pr_context(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadPrContextParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_pr_context", {
-            let result = read_pr_context(&self.root, params).map_err(err)?;
+            let result = read_pr_context(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "branch": result.branch,
                 "base": result.base,
@@ -1729,6 +1840,7 @@ impl T0k3nServer {
     #[tool(description = "Static type diagnostics (LSP-equivalent) without running a language server. OPT-IN: this tool is only registered when the server is started with --enable-diagnostics (or T0K3N_ENABLE_DIAGNOSTICS=1), because it spawns the language toolchain. Drives the language's own check-only engine — cargo check (Rust), tsc --noEmit (TypeScript), pyright/mypy (Python), go vet (Go) — and returns a compact, deduplicated list of {file, line, col, severity, code, message}. Auto-detects the language from the manifest/extension; pass `language` to force it, `path` to scope to a file/dir, `severity` (error|warning|hint) as a floor, and `max_items` to cap. If the checker is not installed it returns checker_available:false with an install hint instead of erroring.")]
     async fn read_type_diagnostics(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ReadTypeDiagnosticsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_type_diagnostics", {
@@ -1738,7 +1850,7 @@ impl T0k3nServer {
                     "token_count": 30,
                 }));
             }
-            let result = read_type_diagnostics(&self.root, params).map_err(err)?;
+            let result = read_type_diagnostics(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "language": result.language,
                 "checker": result.checker,
@@ -1754,10 +1866,11 @@ impl T0k3nServer {
     #[tool(description = "Warm-start project digest: a cached ~2k-token architecture summary (git HEAD, language stats, entry-point files with their top symbols, shallow directory tree) returned in one call. Replaces the repeated tree → stats → skeleton exploration at session start. The cache (.t0k3n/digest.json) auto-invalidates when git HEAD changes; pass refresh:true to rebuild. `dirty` flags an uncommitted working tree (digest may be stale).")]
     async fn project_digest(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<ProjectDigestParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "project_digest", {
-            let result = project_digest(&self.root, params).map_err(err)?;
+            let result = project_digest(&root, params).map_err(err)?;
             ok_json(serde_json::json!({
                 "cached": result.cached,
                 "dirty": result.dirty,
@@ -1774,11 +1887,12 @@ impl T0k3nServer {
     #[tool(description = "Execute a shell command and return token-efficient output. On success: last ~30 lines (final summary). On failure: extracted error lines + warning lines + last ~20 lines for context. Use for build tools (cargo, npm, go, make, mvn), test runners (cargo test, pytest, jest), linters (clippy, eslint, flake8), and type checkers (tsc, mypy). Repeat runs of the same command return only the delta: new/resolved/unchanged error and warning counts plus the new lines — unchanged lines equal what you already received. Call delta_reset and rerun for full output.")]
     async fn run_command(
         &self,
+        EffectiveRoot(root): EffectiveRoot,
         Parameters(params): Parameters<RunCommandParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "run_command", {
             let key = CmdLedger::key(&params.command, params.cwd.as_deref());
-            let result = run_command(&self.root, params).map_err(err)?;
+            let result = run_command(&root, params).map_err(err)?;
             let delta = self.cmd_ledger.lock().unwrap().check_and_update(&key, &result);
             match delta {
                 None => ok_json(serde_json::json!({
@@ -1870,6 +1984,7 @@ impl T0k3nServer {
                 "ok": true,
                 "version": env!("CARGO_PKG_VERSION"),
                 "root": self.root.display().to_string(),
+                "root_configured": self.root_configured,
                 "db_status": db_status,
                 "tool_count": tools.len(),
                 "tools": tools,
@@ -1886,46 +2001,58 @@ impl T0k3nServer {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for T0k3nServer {
     fn get_info(&self) -> ServerInfo {
+        let mut instructions = String::from(
+            "T0K3N-MCP is active (90 tools across 15 categories). Use t0k3n-mcp tools \
+             instead of built-in Read/Grep/Glob for all file, web, code-analysis, and \
+             memory operations.\n\
+             \n\
+             RULES:\n\
+             1. NEVER read whole files with built-in Read/Grep/Glob — on average 87% of a \
+             full-file read is content you never use. Read structure first, then extract \
+             only the parts you need.\n\
+             2. For code: read_code_skeleton first, then read_code_body for just the symbols \
+             you need (zoom: skeleton/sketch/body/auto). The same outline-then-extract \
+             pattern exists for markdown, JSON/YAML, CSS, web pages, and notebooks.\n\
+             3. Begin a task with project_digest (cached architecture warm-start) and \
+             check_budget (token budget + reading strategy). For a specific change, \
+             read_context_pack gathers ranked files + symbols + bodies in one call.\n\
+             4. Combine multiple read operations into a single batch_read call — one round \
+             trip and one response envelope instead of many.\n\
+             5. DISCOVER TOOLS WITH help — there are 90 and you will miss the best fit if you \
+             guess. Call help() for category names, help(\"<category>\") for that category's \
+             tools, or help(\"all\") for the full catalog BEFORE falling back to a generic \
+             read, search, or run_command. Categories: file / write / git / schema / web / \
+             notebook / test / log / text / memory / task / session / analysis / cmd / debug.\n\
+             6. EDITING: prefer surgical writes over rewriting files. patch_symbol (replace a \
+             symbol) and rename_symbol are always available; create_file / insert_symbol / \
+             delete_symbol / apply_edits require the server to be started with --enable-writes \
+             (read-only by default). All support dry_run and return diffs/summaries only — \
+             never resend a whole file you are editing.\n\
+             \n\
+             DELTA READS: repeat reads return {unchanged:true} stubs or unified diffs instead \
+             of re-sending identical content. Trust them — the content equals what you already \
+             received earlier this session (or, when labeled a cold cache, an unchanged file \
+             from a previous session). If that content is no longer in your context \
+             (e.g. after compaction), call delta_reset and retry the read.",
+        );
+        if !self.root_configured {
+            instructions.push_str(
+                "\n\n\
+                 NO WORKSPACE ROOT CONFIGURED: this server was started without --root \
+                 (or T0K3N_ROOT), so it defaults to its own process working directory, which is \
+                 usually NOT the project you want. Pass an absolute `root` argument (e.g. \
+                 root: \"D:\\path\\to\\project\") on every tool call to point it at the right \
+                 workspace — every tool accepts it even though it is not listed in the tool's \
+                 formal input schema. Once `root` is set on the MCP client side (--root / \
+                 T0K3N_ROOT), this per-call override is ignored in favor of the configured root.",
+            );
+        }
         ServerInfo {
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()
                 .build(),
-            instructions: Some(
-                "T0K3N-MCP is active (90 tools across 15 categories). Use t0k3n-mcp tools \
-                 instead of built-in Read/Grep/Glob for all file, web, code-analysis, and \
-                 memory operations.\n\
-                 \n\
-                 RULES:\n\
-                 1. NEVER read whole files with built-in Read/Grep/Glob — on average 87% of a \
-                 full-file read is content you never use. Read structure first, then extract \
-                 only the parts you need.\n\
-                 2. For code: read_code_skeleton first, then read_code_body for just the symbols \
-                 you need (zoom: skeleton/sketch/body/auto). The same outline-then-extract \
-                 pattern exists for markdown, JSON/YAML, CSS, web pages, and notebooks.\n\
-                 3. Begin a task with project_digest (cached architecture warm-start) and \
-                 check_budget (token budget + reading strategy). For a specific change, \
-                 read_context_pack gathers ranked files + symbols + bodies in one call.\n\
-                 4. Combine multiple read operations into a single batch_read call — one round \
-                 trip and one response envelope instead of many.\n\
-                 5. DISCOVER TOOLS WITH help — there are 90 and you will miss the best fit if you \
-                 guess. Call help() for category names, help(\"<category>\") for that category's \
-                 tools, or help(\"all\") for the full catalog BEFORE falling back to a generic \
-                 read, search, or run_command. Categories: file / write / git / schema / web / \
-                 notebook / test / log / text / memory / task / session / analysis / cmd / debug.\n\
-                 6. EDITING: prefer surgical writes over rewriting files. patch_symbol (replace a \
-                 symbol) and rename_symbol are always available; create_file / insert_symbol / \
-                 delete_symbol / apply_edits require the server to be started with --enable-writes \
-                 (read-only by default). All support dry_run and return diffs/summaries only — \
-                 never resend a whole file you are editing.\n\
-                 \n\
-                 DELTA READS: repeat reads return {unchanged:true} stubs or unified diffs instead \
-                 of re-sending identical content. Trust them — the content equals what you already \
-                 received earlier this session (or, when labeled a cold cache, an unchanged file \
-                 from a previous session). If that content is no longer in your context \
-                 (e.g. after compaction), call delta_reset and retry the read."
-                    .into(),
-            ),
+            instructions: Some(instructions.into()),
             ..Default::default()
         }
     }
@@ -1976,13 +2103,13 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
 
-        let off = T0k3nServer::new(root.clone(), None, false, false);
+        let off = T0k3nServer::new(root.clone(), None, false, false, true);
         assert!(
             !off.tool_router.map.contains_key("read_type_diagnostics"),
             "diagnostics tool must NOT be registered by default"
         );
 
-        let on = T0k3nServer::new(root, None, true, false);
+        let on = T0k3nServer::new(root, None, true, false, true);
         assert!(
             on.tool_router.map.contains_key("read_type_diagnostics"),
             "diagnostics tool must be registered with --enable-diagnostics"
@@ -2012,7 +2139,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().to_string_lossy().to_string();
 
-        let off = T0k3nServer::new(root.clone(), None, false, false);
+        let off = T0k3nServer::new(root.clone(), None, false, false, true);
         for t in WRITE_TOOLS {
             assert!(
                 !off.tool_router.map.contains_key(*t),
@@ -2023,7 +2150,7 @@ mod tests {
         assert!(off.tool_router.map.contains_key("patch_symbol"));
         assert!(off.tool_router.map.contains_key("rename_symbol"));
 
-        let on = T0k3nServer::new(root, None, false, true);
+        let on = T0k3nServer::new(root, None, false, true, true);
         for t in WRITE_TOOLS {
             assert!(
                 on.tool_router.map.contains_key(*t),
@@ -2054,11 +2181,55 @@ mod tests {
     #[test]
     fn check_budget_updates_zoom_status() {
         let tmp = tempfile::tempdir().unwrap();
-        let server = T0k3nServer::new(tmp.path().to_string_lossy().to_string(), None, false, false);
+        let server = T0k3nServer::new(tmp.path().to_string_lossy().to_string(), None, false, false, true);
         // Before any check_budget call, auto falls back to body.
         assert_eq!(server.resolve_zoom(Some("auto")), "body");
         // Simulate a critical-budget check_budget result being recorded.
         *server.budget_status.lock().unwrap() = Some("critical".to_string());
         assert_eq!(server.resolve_zoom(Some("auto")), "skeleton");
+    }
+
+    #[test]
+    fn effective_root_ignores_override_when_configured() {
+        let configured = PathBuf::from("/configured/root");
+        let mut args: Option<JsonObject> = Some(
+            serde_json::json!({ "root": "/override/root", "path": "a.rs" })
+                .as_object()
+                .unwrap()
+                .clone(),
+        );
+        let resolved = resolve_effective_root(true, &configured, &mut args);
+        assert_eq!(resolved, configured);
+        // The override key must NOT be consumed when ignored — irrelevant here since the
+        // tool's own Parameters<T> never sees a "root" key it would reject anyway, but the
+        // unrelated "path" key must survive untouched either way.
+        assert_eq!(args.unwrap().get("path").unwrap(), "a.rs");
+    }
+
+    #[test]
+    fn effective_root_applies_override_when_unconfigured() {
+        let configured = PathBuf::from("/configured/root");
+        let mut args: Option<JsonObject> = Some(
+            serde_json::json!({ "root": "/override/root", "path": "a.rs" })
+                .as_object()
+                .unwrap()
+                .clone(),
+        );
+        let resolved = resolve_effective_root(false, &configured, &mut args);
+        assert_eq!(resolved, PathBuf::from("/override/root"));
+        // "root" must be popped out so it never reaches Parameters<T> deserialization.
+        let remaining = args.unwrap();
+        assert!(!remaining.contains_key("root"));
+        assert_eq!(remaining.get("path").unwrap(), "a.rs");
+    }
+
+    #[test]
+    fn effective_root_falls_back_when_unconfigured_and_no_override_given() {
+        let configured = PathBuf::from("/configured/root");
+        let mut args: Option<JsonObject> = Some(
+            serde_json::json!({ "path": "a.rs" }).as_object().unwrap().clone(),
+        );
+        let resolved = resolve_effective_root(false, &configured, &mut args);
+        assert_eq!(resolved, configured);
     }
 }
