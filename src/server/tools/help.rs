@@ -60,6 +60,7 @@ pub(crate) fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
         ("move_symbol",      "move a symbol to another file; warns on referencing files (opt-in: --enable-writes)"),
         ("edit_checkpoint",  "snapshot the working tree before edits — git stash or copy (opt-in: --enable-writes)"),
         ("rollback",         "restore the working tree to an edit_checkpoint (opt-in: --enable-writes)"),
+        ("write_markdown_section", "edit a Markdown section by heading anchor — pairs with read_markdown_toc/section (opt-in: --enable-writes)"),
     ]);
     cat!("git", [
         ("read_git_diff",        "compressed diff vs HEAD or any ref (zoom: skeleton/sketch/body/auto)"),

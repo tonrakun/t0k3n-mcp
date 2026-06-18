@@ -119,17 +119,17 @@ pub fn read_markdown_section(root: &Path, params: ReadMarkdownSectionParams) -> 
     Ok(ReadMarkdownSectionResult { sections, token_count })
 }
 
-struct HeadingLine {
-    line_idx: usize,
-    level: usize,
-    title: String,
-    anchor: String,
+pub(crate) struct HeadingLine {
+    pub(crate) line_idx: usize,
+    pub(crate) level: usize,
+    pub(crate) title: String,
+    pub(crate) anchor: String,
 }
 
 /// Scan raw lines for ATX headings, skipping fenced code blocks.
 /// Anchors are computed with the same `make_anchor` used by `extract_toc`,
 /// so lookups by anchor match regardless of inline formatting (backticks etc.).
-fn scan_headings(lines: &[&str]) -> Vec<HeadingLine> {
+pub(crate) fn scan_headings(lines: &[&str]) -> Vec<HeadingLine> {
     let mut in_fence = false;
     let mut fence_marker = "```";
     let mut out = Vec::new();

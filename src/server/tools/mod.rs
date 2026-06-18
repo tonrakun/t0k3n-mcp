@@ -30,6 +30,7 @@ pub mod json_yaml;
 pub mod log;
 pub mod manifest;
 pub mod markdown;
+pub mod markdown_write;
 pub mod memory;
 pub mod move_symbol;
 pub mod notebook;

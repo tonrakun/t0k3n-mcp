@@ -54,6 +54,7 @@ use tools::{
     stats::{ReadWorkspaceStatsParams, read_workspace_stats},
     json_yaml::{ReadJsonYamlKeysParams, ReadJsonYamlValueParams, read_json_yaml_keys, read_json_yaml_value},
     markdown::{ReadMarkdownSectionParams, ReadMarkdownTocParams, read_markdown_section, read_markdown_toc},
+    markdown_write::{WriteMarkdownSectionParams, write_markdown_section},
     memory::{MemoryDeleteParams, MemoryGetParams, MemoryListParams, MemorySaveParams, memory_delete, memory_get, memory_list, memory_save},
     notebook::{ReadNotebookCellParams, ReadNotebookCellsParams, read_notebook_cell, read_notebook_cells},
     outline::{ReadFileOutlineParams, read_file_outline},
@@ -185,6 +186,8 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "move_symbol",
     "edit_checkpoint",
     "rollback",
+    // Phase 18 — Markdown structural write
+    "write_markdown_section",
 ];
 
 /// Mutating write tools gated behind --enable-writes / T0K3N_ENABLE_WRITES.
@@ -201,6 +204,7 @@ pub const WRITE_TOOLS: &[&str] = &[
     "move_symbol",
     "edit_checkpoint",
     "rollback",
+    "write_markdown_section",
 ];
 
 #[derive(Clone)]
@@ -508,6 +512,22 @@ impl T0k3nServer {
             let key = delta_key("read_markdown_section", &params);
             let result = read_markdown_section(&root, params).map_err(err)?;
             self.ok_delta(key, serde_json::json!({ "sections": result.sections, "token_count": result.token_count }))
+        })
+    }
+
+    #[tool(description = "Write/edit a Markdown section by heading anchor (opt-in write tool; requires --enable-writes) — write counterpart of read_markdown_toc / read_markdown_section. mode: 'replace' (swap an existing section's full text, heading included), 'insert_before'/'insert_after' (add a new block relative to anchor's section), 'append' (add at end of file, anchor not required), or 'delete' (remove the section). Pass expected_title to guard against a stale TOC. dry_run previews the diff.")]
+    async fn write_markdown_section(
+        &self,
+        EffectiveRoot(root): EffectiveRoot,
+        Parameters(params): Parameters<WriteMarkdownSectionParams>,
+    ) -> Result<CallToolResult, McpError> {
+        instrument!(self, "write_markdown_section", {
+            let result = write_markdown_section(&root, params).map_err(err)?;
+            ok_json(serde_json::json!({
+                "diff": result.diff,
+                "written": result.written,
+                "token_count": tools::fs::estimate_tokens(&result.diff),
+            }))
         })
     }
 
@@ -2002,7 +2022,7 @@ impl T0k3nServer {
 impl ServerHandler for T0k3nServer {
     fn get_info(&self) -> ServerInfo {
         let mut instructions = String::from(
-            "T0K3N-MCP is active (90 tools across 15 categories). Use t0k3n-mcp tools \
+            "T0K3N-MCP is active (91 tools across 15 categories). Use t0k3n-mcp tools \
              instead of built-in Read/Grep/Glob for all file, web, code-analysis, and \
              memory operations.\n\
              \n\
@@ -2018,7 +2038,7 @@ impl ServerHandler for T0k3nServer {
              read_context_pack gathers ranked files + symbols + bodies in one call.\n\
              4. Combine multiple read operations into a single batch_read call — one round \
              trip and one response envelope instead of many.\n\
-             5. DISCOVER TOOLS WITH help — there are 90 and you will miss the best fit if you \
+             5. DISCOVER TOOLS WITH help — there are 91 and you will miss the best fit if you \
              guess. Call help() for category names, help(\"<category>\") for that category's \
              tools, or help(\"all\") for the full catalog BEFORE falling back to a generic \
              read, search, or run_command. Categories: file / write / git / schema / web / \

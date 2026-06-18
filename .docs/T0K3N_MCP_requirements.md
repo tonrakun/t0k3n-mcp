@@ -1455,6 +1455,33 @@ root を優先する。
 
 ---
 
+### 2.38 `write_markdown_section`（Markdown構造書き込み・Phase 18）
+
+`read_markdown_toc` / `read_markdown_section` には読み取り対のみあり、**Markdown/ドキュメント系の書き込みツールが欠落**していた。`patch_symbol`（更新）・`insert_symbol`（挿入）・`delete_symbol`（削除）の設計をスケルトン ID ではなく Markdown の見出しアンカーに適用し、1ツールで CRUD を完結させる。`--enable-writes` ゲート配下。
+
+`mode` ごとの挙動:
+
+- `replace` — `anchor` で指定した見出し〜次の同レベル以上の見出し直前までを `content`（見出し行含む）で丸ごと置換
+- `insert_before` / `insert_after` — `anchor` のセクション境界の直前/直後に `content` を新規ブロックとして挿入（前後の空行は自動付与）
+- `append` — ファイル末尾に `content` を追加（`anchor` 不要）
+- `delete` — `anchor` のセクションを末尾の空行1行ごと削除
+
+`expected_title` を渡すと実際の見出しテキストと比較し、不一致なら拒否する（`patch_symbol`/`delete_symbol` の `expected_name` と同じ陳腐化ガード）。`read_markdown_section`/`extract_sections` と同じ「次の同レベル以上の見出しで打ち切る」境界判定を共有するため、`scan_headings`/`HeadingLine` を `markdown.rs` から `pub(crate)` で再利用する。house rules（`dry_run` プレビュー・CRLF/末尾改行保持・出力は diff のみ）に準拠。
+
+```ts
+{
+  path: string;
+  mode: "replace" | "insert_before" | "insert_after" | "append" | "delete";
+  anchor?: string;       // append 以外で必須
+  content?: string;      // delete 以外で必須
+  expected_title?: string;
+  dry_run?: boolean;
+}
+→ { diff, written }
+```
+
+---
+
 ## 3. 非機能要件
 
 ### 3.1 パフォーマンス
@@ -1915,6 +1942,14 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
   `resolve_effective_root` を切り出しユニットテスト3件を追加。
   `get_info` instructions（root 未設定時のみ追記）と `debug_info.root_configured`
   でクライアントに状態を通知。`main.rs` に `T0K3N_ROOT` 環境変数フォールバックを追加
+
+---
+
+### Phase 18 — Markdown構造書き込み v3.4+
+
+`read_markdown_toc` / `read_markdown_section` に書き込み対が無く、Markdown/ドキュメント系の編集は `apply_edits`（find/replace）や `create_file`（全文上書き）しか手段が無かったギャップを埋める。
+
+- [x] `write_markdown_section`（タスク48）— 見出しアンカー基準の Markdown 書き込みツール（`read_markdown_toc`/`read_markdown_section` の対）。`mode`: `replace`（セクション丸ごと置換）/ `insert_before` / `insert_after`（セクション境界へ新規ブロック挿入）/ `append`（ファイル末尾追加）/ `delete`（セクション削除）。`expected_title` で TOC 陳腐化ガード。`markdown.rs` の `scan_headings`/`HeadingLine` を `pub(crate)` 化して境界判定（`read_markdown_section` と同じ「次の同レベル以上の見出しで打ち切る」ロジック）を共有。`--enable-writes` ゲート配下、house rules（dry_run・CRLF/末尾改行保持・diff のみ出力）準拠
 
 ---
 

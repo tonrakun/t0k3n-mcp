@@ -152,7 +152,7 @@ t0k3n setup
 | `--list-tools` | 登録済みツール一覧を表示して終了 |
 | `--refresh-parsers` | 起動時に tree-sitter パーサーキャッシュをクリア |
 | `--enable-diagnostics` | オプトインの `read_type_diagnostics` を登録（`T0K3N_ENABLE_DIAGNOSTICS=1` でも可） |
-| `--enable-writes` | オプトインの書き込みツール（`create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` / `set_config_value` / `manage_imports` / `format_code` / `move_symbol` / `edit_checkpoint` / `rollback`）を登録（`T0K3N_ENABLE_WRITES=1` でも可）。デフォルトは読み取り専用 |
+| `--enable-writes` | オプトインの書き込みツール（`create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` / `set_config_value` / `manage_imports` / `format_code` / `move_symbol` / `edit_checkpoint` / `rollback` / `write_markdown_section`）を登録（`T0K3N_ENABLE_WRITES=1` でも可）。デフォルトは読み取り専用 |
 
 ### root 未設定で動かす場合
 
@@ -220,7 +220,7 @@ t0k3n setup
 
 ---
 
-## ツール一覧（90 ツール）
+## ツール一覧（91 ツール）
 
 ### ファイル読み取り
 
@@ -377,7 +377,7 @@ t0k3n setup
 
 ---
 
-## 書き込みツール（Phase 14–15・オプトイン）
+## 書き込みツール（Phase 14–15・18・オプトイン）
 
 T0K3N-MCP は読み取り優先。ソースを変更するツールは**デフォルト無効**で、`--enable-writes`（または `T0K3N_ENABLE_WRITES=1`）でのみ登録される。オプトインするまでは任意のリポジトリに安全に向けられる。共通ルール: `dry_run` プレビュー・行番号陳腐化ガード・CRLF/末尾改行保持・出力は diff/サマリのみ（全文を返さない）。（`patch_symbol`・`rename_symbol` はゲート以前からあり常時有効）
 
@@ -392,6 +392,7 @@ T0K3N-MCP は読み取り優先。ソースを変更するツールは**デフ�
 | `format_code` | 言語フォーマッタ（rustfmt/prettier/black/gofmt）を駆動。diff を返す。未導入時はインストールヒントで非エラー |
 | `move_symbol` | シンボルを別ファイルへ移動（無ければ作成）。import 追従は best-effort（参照ファイルを warnings に列挙） |
 | `edit_checkpoint` / `rollback` | 書込前に作業ツリーをスナップショットし失敗時に復元。git 管理下は `git stash create`、非 git 時は gitignore 対応コピー。自律書き込みループの安全網 |
+| `write_markdown_section` | 見出しアンカー指定でMarkdownセクションを編集（`read_markdown_toc` / `read_markdown_section` の対）。`mode`: `replace` / `insert_before` / `insert_after` / `append` / `delete`。`expected_title` でTOC陳腐化ガード |
 
 ---
 
