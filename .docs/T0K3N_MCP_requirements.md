@@ -1800,7 +1800,7 @@ root を優先する。
 - [x] `read_git_stash`（スタッシュ一覧と diff 取得）
 - [x] `read_interface_conformance`（interface / trait 実装型の全ワークスペース検索）
 - [x] ダッシュボード強化（ツール使用統計・累計トークン節約量の可視化）
-- [x] ダッシュボード リリース・パッチノート表示（git タグ発行時の文章を `/api/releases` 経由で取得：注釈付きタグはタグメッセージ、軽量タグはコミットメッセージにフォールバック）
+- [x] ダッシュボード リリース・パッチノート表示（`/api/releases` 経由で T0K3N-MCP 自身（`tonrakun/t0k3n-mcp`）の GitHub Releases を取得・表示。`--root` で指定した対象プロジェクトのディレクトリには依存しない）
 
 ### Phase 5 — 差別化分析ツール v2.4+
 

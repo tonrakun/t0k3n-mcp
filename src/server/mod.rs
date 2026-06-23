@@ -2072,7 +2072,7 @@ impl ServerHandler for T0k3nServer {
                 .enable_tools()
                 .enable_resources()
                 .build(),
-            instructions: Some(instructions.into()),
+            instructions: Some(instructions),
             ..Default::default()
         }
     }

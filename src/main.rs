@@ -127,10 +127,7 @@ async fn main() -> Result<()> {
     let dashboard = if no_dashboard {
         None
     } else {
-        let state = dashboard::DashboardState::new(
-            env!("CARGO_PKG_VERSION"),
-            std::path::PathBuf::from(&root),
-        );
+        let state = dashboard::DashboardState::new(env!("CARGO_PKG_VERSION"));
         let state_clone = state.clone();
         tokio::spawn(async move { dashboard::run(state_clone, port).await });
 

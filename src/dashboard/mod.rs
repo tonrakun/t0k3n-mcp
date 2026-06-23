@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -51,7 +49,6 @@ pub enum UpdateKind {
 
 pub struct DashboardState {
     pub version: &'static str,
-    root: PathBuf,
     start_instant: Instant,
     pub start_ms: u64,
     pub total_calls: AtomicUsize,
@@ -65,7 +62,7 @@ pub struct DashboardState {
 }
 
 impl DashboardState {
-    pub fn new(version: &'static str, root: PathBuf) -> Arc<Self> {
+    pub fn new(version: &'static str) -> Arc<Self> {
         let (tx, _) = broadcast::channel(512);
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -73,7 +70,6 @@ impl DashboardState {
             .as_millis() as u64;
         Arc::new(Self {
             version,
-            root,
             start_instant: Instant::now(),
             start_ms: now_ms,
             total_calls: AtomicUsize::new(0),
@@ -185,37 +181,42 @@ pub struct ReleaseNote {
     pub body: String,
 }
 
-/// Read all git tags (newest first) together with their release/patch note text.
-/// Field separator is 0x1f, record separator is 0x1e — both safe against
-/// newlines inside multi-line tag messages.
-fn read_releases(root: &Path) -> Vec<ReleaseNote> {
-    let output = Command::new("git")
-        .current_dir(root)
-        .args([
-            "for-each-ref",
-            "refs/tags",
-            "--sort=-creatordate",
-            "--format=%(refname:short)%1f%(creatordate:short)%1f%(contents)%1e",
-        ])
-        .output();
+/// Fetches T0K3N-MCP's own GitHub releases (newest first), regardless of which
+/// project directory the dashboard's `--root` points at — this panel shows the
+/// tool's changelog, not the analyzed project's tags.
+async fn fetch_releases() -> Vec<ReleaseNote> {
+    let url = format!("https://api.github.com/repos/{}/releases", crate::update::GITHUB_REPO);
 
-    let stdout = match output {
-        Ok(o) if o.status.success() => o.stdout,
-        _ => return Vec::new(),
+    let client = match reqwest::Client::builder()
+        .user_agent(format!("t0k3n/{}", env!("CARGO_PKG_VERSION")))
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
     };
 
-    String::from_utf8_lossy(&stdout)
-        .split('\u{1e}')
-        .map(str::trim)
-        .filter(|rec| !rec.is_empty())
-        .filter_map(|rec| {
-            let mut fields = rec.splitn(3, '\u{1f}');
-            let tag = fields.next().unwrap_or("").trim().to_string();
-            let date = fields.next().unwrap_or("").trim().to_string();
-            let body = fields.next().unwrap_or("").trim().to_string();
-            if tag.is_empty() {
-                return None;
-            }
+    let resp = match client.get(&url).send().await.and_then(|r| r.error_for_status()) {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    let body = match resp.text().await {
+        Ok(b) => b,
+        Err(_) => return Vec::new(),
+    };
+    let json: serde_json::Value = match serde_json::from_str(&body) {
+        Ok(j) => j,
+        Err(_) => return Vec::new(),
+    };
+
+    json.as_array()
+        .into_iter()
+        .flatten()
+        .filter(|r| !r["draft"].as_bool().unwrap_or(false))
+        .filter_map(|r| {
+            let tag = r["tag_name"].as_str()?.to_string();
+            let date = r["published_at"].as_str().unwrap_or("").chars().take(10).collect();
+            let body = r["body"].as_str().unwrap_or("").trim().to_string();
             Some(ReleaseNote { tag, date, body })
         })
         .collect()
@@ -249,12 +250,8 @@ async fn api_state(State(state): State<Arc<DashboardState>>) -> impl IntoRespons
     axum::Json(state.snapshot().await)
 }
 
-async fn api_releases(State(state): State<Arc<DashboardState>>) -> impl IntoResponse {
-    let root = state.root.clone();
-    let releases = tokio::task::spawn_blocking(move || read_releases(&root))
-        .await
-        .unwrap_or_default();
-    axum::Json(releases)
+async fn api_releases() -> impl IntoResponse {
+    axum::Json(fetch_releases().await)
 }
 
 async fn ws_handler(

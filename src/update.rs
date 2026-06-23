@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::dashboard::{DashboardState, UpdateInfo, UpdateKind};
 
-const GITHUB_REPO: &str = "tonrakun/t0k3n-mcp";
+pub(crate) const GITHUB_REPO: &str = "tonrakun/t0k3n-mcp";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn spawn_update_check(dashboard: Option<Arc<DashboardState>>) {
