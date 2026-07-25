@@ -1,0 +1,6 @@
+# Commits that only reformat code. `git blame` skips these with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub honors this file automatically.)
+
+# style: repo-wide cargo fmt normalization, alongside adding the CI fmt check
+d54290f14b9d5f1b063aa0175c684cfe7fdd0f6e
