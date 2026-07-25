@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
     // No args (or flags only) keeps the legacy behavior: start the server.
     match args.get(1).map(String::as_str) {
         Some("upgrade") => return cli::upgrade().await,
-        Some("setup") => return cli::setup(args.get(2).map(String::as_str)),
+        Some("setup") => return cli::setup(&args[2..]),
         Some("version") => {
             println!("t0k3n {}", env!("CARGO_PKG_VERSION"));
             return Ok(());

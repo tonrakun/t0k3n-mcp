@@ -110,7 +110,14 @@ Run in your project directory:
 t0k3n setup
 ```
 
-This writes (or merges into) `.mcp.json`:
+An interactive wizard asks where to write the config (project `.mcp.json` or
+user-wide `~/.claude.json`), the server name, the workspace root, the tool
+roster (all / `core` profile / hand-picked categories), the output format, the
+dashboard settings and the capability flags — then previews the JSON before
+writing. `t0k3n setup --yes` (or any non-TTY invocation) skips every prompt and
+writes the defaults.
+
+The default answers produce:
 
 ```json
 {
@@ -129,7 +136,7 @@ This writes (or merges into) `.mcp.json`:
 |---------|-------------|
 | `t0k3n` | Start the MCP server (stdio; MCP clients launch it with no subcommand) |
 | `t0k3n upgrade` | Download the latest release and replace the binary in place |
-| `t0k3n setup [dir]` | Write or merge `.mcp.json` with `--root` pinned to that directory (default: current directory) |
+| `t0k3n setup [dir] [--yes]` | Interactive wizard that writes or merges an MCP config (scope, server name, root, tool roster, format, dashboard, capabilities). `--yes` writes the defaults without prompting |
 | `t0k3n version` | Print version |
 | `t0k3n help` | Show help |
 
