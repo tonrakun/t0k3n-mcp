@@ -20,7 +20,7 @@ pub struct ReadGitDiffParams {
     #[schemars(description = "Return only --stat summary instead of full diff (default: false)")]
     pub stat_only: Option<bool>,
     #[schemars(
-        description = "Detail level for the change, mirroring read_code_body: 'body' (default, full unified diff), 'sketch' (file + hunk headers only, no +/- body lines), 'skeleton' (per-file × enclosing-symbol +/- line counts, no diff text), or 'auto' (pick by the latest check_budget strategy). The chosen level is echoed back as zoom_applied. Ignored when stat_only is set."
+        description = "Detail level for the change, mirroring read_code: 'body' (default, full unified diff), 'sketch' (file + hunk headers only, no +/- body lines), 'skeleton' (per-file × enclosing-symbol +/- line counts, no diff text), or 'auto' (pick by the latest check_budget strategy). The chosen level is echoed back as zoom_applied. Ignored when stat_only is set."
     )]
     pub zoom: Option<String>,
 }
@@ -376,11 +376,9 @@ pub fn read_git_log(root: &Path, params: ReadGitLogParams) -> Result<ReadGitLogR
 pub struct ReadGitBlameBodyParams {
     #[schemars(description = "Root-relative path to the code file")]
     pub path: String,
-    #[schemars(
-        description = "Start line number (1-based, use start_line from read_code_skeleton)"
-    )]
+    #[schemars(description = "Start line number (1-based, use start_line from read_code)")]
     pub start_line: u32,
-    #[schemars(description = "End line number (1-based, use end_line from read_code_skeleton)")]
+    #[schemars(description = "End line number (1-based, use end_line from read_code)")]
     pub end_line: u32,
 }
 

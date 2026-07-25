@@ -58,8 +58,8 @@ read_file("server/mod.rs")  →  4,997 トークン消費
 T0K3N-MCP は **「構造を先に取得し、必要な部分だけを取得する」** 設計でこれを解決します。
 
 ```
-read_code_skeleton("server/mod.rs")  →  1,162 トークン（シグネチャのみ）
-read_code_body(["function:54-67"])   →    150 トークン（対象関数のみ）
+read_code("server/mod.rs")                       →  1,162 トークン（シグネチャのみ）
+read_code("server/mod.rs", ["function:54-67"])  →    150 トークン（対象関数のみ）
                                          ────────────────────────────
 合計                                       1,312 トークン  ← 74% 削減
 ```
@@ -196,9 +196,9 @@ t0k3n setup
 
 | ロスター | ツール数 | スキーマ量 |
 | --- | ---: | ---: |
-| デフォルト | 79 | 44.5k文字（約13kトークン） |
-| `--tools core` | 33 | 18.9k文字（約5.4kトークン） |
-| `--enable-writes` | 90 | 54.5k文字（約16kトークン） |
+| デフォルト | 72 | 43.9k文字（約13kトークン） |
+| `--tools core` | 31 | 18.7k文字（約5.3kトークン） |
+| `--enable-writes` | 83 | 53.8k文字（約15kトークン） |
 
 プロファイル: `core` = `file,git,text,debug`（構造を読む・履歴を読む・予算を管理する）。
 
@@ -224,10 +224,10 @@ t0k3n setup
 ### コードファイル（Rust / Python / JS / TS / Go）
 
 ```
-1. read_code_skeleton("path/to/file.rs")
+1. read_code("path/to/file.rs")
    → 関数・struct・impl のシグネチャ一覧 + ID を返す
 
-2. read_code_body(["function:10-45", "impl:87-130"])
+2. read_code("path/to/file.rs", ["function:10-45", "impl:87-130"])
    → 指定した関数だけの本文を返す
 ```
 
@@ -272,7 +272,7 @@ t0k3n setup
 
 ---
 
-## ツール一覧（91 ツール）
+## ツール一覧（84 ツール）
 
 ### ファイル読み取り
 
@@ -281,9 +281,7 @@ t0k3n setup
 | `read_directory_tree` | `.gitignore` 適用済みのディレクトリツリー |
 | `read_markdown_toc` | Markdown 見出し一覧（TOC） |
 | `read_markdown_section` | anchor 指定でセクション本文取得 |
-| `read_code_skeleton` | 関数・クラス一覧をシグネチャのみで返す |
-| `read_code_body` | skeleton の ID 指定で関数本文取得。`zoom` で詳細度を選択（`body`/`sketch`/`skeleton`/`auto`）。`auto` は直近の `check_budget` 戦略に追従（critical→skeleton、aggressive→sketch） |
-| `read_code_sketch` | skeleton と body の中間ズーム。ID 指定で制御フロー骨格（分岐/ループ/呼び出しを残し純データ行を畳む。body 比 60〜70% 削減） |
+| `read_code` | `ids` 省略時は関数・クラス一覧をシグネチャと ID で返す。`ids` 指定時はそのシンボルを展開し、`zoom` で詳細度を選択（`body`/`sketch`/`skeleton`/`auto`）。`sketch` は分岐/ループ/呼び出しを残し純データ行を畳む（body 比 60〜70% 削減）、`auto` は直近の `check_budget` 戦略に追従（critical→skeleton、aggressive→sketch） |
 | `rename_symbol` | シンボルを全ワークスペースで 1 コールリネーム（`read_symbol_usages` の書き込み版）。識別子境界一致。影響ファイル＋各行 before/after のみ返却（`dry_run` でプレビュー） |
 | `read_type_skeleton` | 型定義スケルトン（TS interface/type/enum・Go struct/interface・Rust struct/enum/trait） |
 | `read_call_graph` | 関数の呼び出し先・呼び出し元グラフ（depth 指定でクロスファイル対応） |
@@ -317,36 +315,31 @@ t0k3n setup
 
 | ツール | 説明 |
 |--------|------|
-| `read_db_schema` | Prisma / SQL スキーマのテーブル/モデル一覧（自動検出対応） |
-| `read_db_table` | テーブル/モデルのフィールド定義詳細取得 |
+| `read_db` | Prisma / SQL スキーマのテーブル/モデル一覧（自動検出対応）。`table` 指定でそのフィールド定義詳細 |
 
 ### CSS
 
 | ツール | 説明 |
 |--------|------|
-| `read_css_skeleton` | CSS/SCSS セレクタ一覧（プロパティ数・行範囲） |
-| `read_css_body` | セレクタ ID 指定でルールセット本文取得 |
+| `read_css` | CSS/SCSS セレクタ一覧（プロパティ数・行範囲）。`ids` 指定でルールセット本文取得 |
 
 ### GraphQL
 
 | ツール | 説明 |
 |--------|------|
-| `read_graphql_schema` | GraphQL スキーマの型一覧（type/input/enum/interface） |
-| `read_graphql_type` | 型名指定でフィールド定義詳細取得 |
+| `read_graphql` | GraphQL スキーマの型一覧（type/input/enum/interface）。`type_name` 指定でフィールド定義詳細 |
 
 ### Proto
 
 | ツール | 説明 |
 |--------|------|
-| `read_proto_schema` | Protocol Buffers スキーマの型/サービス一覧（message/enum/service） |
-| `read_proto_type` | メッセージ/サービス名指定でフィールド・RPC 定義取得 |
+| `read_proto` | Protocol Buffers の型/サービス一覧（message/enum/service）。`type_name` 指定でフィールド・RPC 定義 |
 
 ### Notebook
 
 | ツール | 説明 |
 |--------|------|
-| `read_notebook_cells` | Jupyter Notebook のセル一覧（タイプ・ソース・行数） |
-| `read_notebook_cell` | セル番号指定で本文・出力取得 |
+| `read_notebook` | Jupyter Notebook のセル一覧（タイプ・ソース・行数）。`index` 指定で本文・出力取得 |
 
 ### テスト
 
@@ -452,7 +445,7 @@ T0K3N-MCP は読み取り優先。構造化された書き込みツールは**�
 
 ## 対応言語
 
-`read_code_skeleton` / `read_code_body` / `read_code_deps` / `read_complexity_map` 等が対応するコード解析言語：
+`read_code` / `read_code_deps` / `read_complexity_map` 等が対応するコード解析言語：
 
 | 言語 | 拡張子 |
 |------|--------|

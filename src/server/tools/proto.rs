@@ -15,6 +15,18 @@ pub struct ReadProtoSchemaParams {
     pub path: String,
 }
 
+/// MCP-facing parameters of `read_proto`, which in v4.0 replaced the separate
+/// `read_proto_schema` / `read_proto_type` tools.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadProtoParams {
+    #[schemars(description = "Root-relative path to a .proto file.")]
+    pub path: String,
+    #[schemars(
+        description = "Message, service, or enum name to expand into full field definitions. Omit to list everything in the file."
+    )]
+    pub type_name: Option<String>,
+}
+
 #[derive(Debug, Serialize, JsonSchema, Clone)]
 pub struct ProtoTypeEntry {
     pub id: String,

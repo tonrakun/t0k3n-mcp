@@ -2187,7 +2187,7 @@ dependencies = [
 
 [[package]]
 name = "t0k3n-mcp"
-version = "3.4.0"
+version = "4.0.0"
 dependencies = [
  "anyhow",
  "axum",

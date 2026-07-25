@@ -42,133 +42,148 @@ impl T0k3nServer {
     }
 
     #[tool(
-        description = "Get table/model list from a Prisma or SQL schema file. Returns name, kind, and field count. Call read_db_table for field details of a specific table."
+        description = "Read a Prisma or SQL schema. Omit table to list every table/model with its kind and field count; pass a table name to get its full field definitions. Omit path to auto-detect the schema file."
     )]
-    async fn read_db_schema(
+    async fn read_db(
         &self,
         EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadDbSchemaParams>,
+        Parameters(params): Parameters<ReadDbParams>,
     ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_db_schema", {
-            let result = read_db_schema(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({
-                "path": result.path, "format": result.format,
-                "tables": result.tables, "token_count": result.token_count,
-            }))
+        instrument!(self, "read_db", {
+            match params.table {
+                Some(table) => {
+                    // The table list carries the path that found it, so by the time a
+                    // caller names a table they have a concrete path to pass back.
+                    let path = params.path.ok_or_else(|| {
+                        err(anyhow::anyhow!(
+                            "'path' is required when 'table' is given — call read_db without \
+                             'table' first to locate the schema file"
+                        ))
+                    })?;
+                    let result =
+                        read_db_table(&root, ReadDbTableParams { path, table }).map_err(err)?;
+                    ok_json(serde_json::json!({
+                        "name": result.name, "kind": result.kind,
+                        "fields": result.fields, "token_count": result.token_count,
+                    }))
+                }
+                None => {
+                    let result = read_db_schema(&root, ReadDbSchemaParams { path: params.path })
+                        .map_err(err)?;
+                    ok_json(serde_json::json!({
+                        "path": result.path, "format": result.format,
+                        "tables": result.tables, "token_count": result.token_count,
+                    }))
+                }
+            }
         })
     }
 
     #[tool(
-        description = "Get full field definitions for a specific table or model from a Prisma or SQL schema. Call read_db_schema first to get the table list."
+        description = "Read a CSS/SCSS/Less file. Omit ids to list every selector with its property count and an id; pass those ids back to get the full rule bodies."
     )]
-    async fn read_db_table(
+    async fn read_css(
         &self,
         EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadDbTableParams>,
+        Parameters(params): Parameters<ReadCssParams>,
     ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_db_table", {
-            let result = read_db_table(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({
-                "name": result.name, "kind": result.kind,
-                "fields": result.fields, "token_count": result.token_count,
-            }))
+        instrument!(self, "read_css", {
+            match params.ids {
+                Some(ids) => {
+                    let result = read_css_body(
+                        &root,
+                        ReadCssBodyParams {
+                            path: params.path,
+                            ids,
+                        },
+                    )
+                    .map_err(err)?;
+                    ok_json(
+                        serde_json::json!({ "items": result.items, "token_count": result.token_count }),
+                    )
+                }
+                None => {
+                    let result =
+                        read_css_skeleton(&root, ReadCssSkeletonParams { path: params.path })
+                            .map_err(err)?;
+                    ok_json(serde_json::json!({
+                        "path": result.path, "selectors": result.selectors, "token_count": result.token_count,
+                    }))
+                }
+            }
         })
     }
 
     #[tool(
-        description = "Get CSS/SCSS/Less selector list with property counts. Returns IDs for use with read_css_body."
+        description = "Read a GraphQL schema file. Omit type_name to list every type/input/enum/interface; pass a type name to get its full field definitions."
     )]
-    async fn read_css_skeleton(
+    async fn read_graphql(
         &self,
         EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadCssSkeletonParams>,
+        Parameters(params): Parameters<ReadGraphqlParams>,
     ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_css_skeleton", {
-            let result = read_css_skeleton(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({
-                "path": result.path, "selectors": result.selectors, "token_count": result.token_count,
-            }))
+        instrument!(self, "read_graphql", {
+            match params.type_name {
+                Some(type_name) => {
+                    let result = read_graphql_type(
+                        &root,
+                        ReadGraphqlTypeParams {
+                            path: params.path,
+                            type_name,
+                        },
+                    )
+                    .map_err(err)?;
+                    ok_json(serde_json::json!({
+                        "name": result.name, "kind": result.kind,
+                        "fields": result.fields, "token_count": result.token_count,
+                    }))
+                }
+                None => {
+                    let result =
+                        read_graphql_schema(&root, ReadGraphqlSchemaParams { path: params.path })
+                            .map_err(err)?;
+                    ok_json(serde_json::json!({
+                        "path": result.path, "types": result.types, "token_count": result.token_count,
+                    }))
+                }
+            }
         })
     }
 
     #[tool(
-        description = "Get full CSS rule content for specific selectors by ID. Call read_css_skeleton first to get selector IDs."
+        description = "Read a .proto (Protocol Buffers) file. Omit type_name to list every message/service/enum; pass a name to get its full field definitions."
     )]
-    async fn read_css_body(
+    async fn read_proto(
         &self,
         EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadCssBodyParams>,
+        Parameters(params): Parameters<ReadProtoParams>,
     ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_css_body", {
-            let result = read_css_body(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({ "items": result.items, "token_count": result.token_count }))
-        })
-    }
-
-    #[tool(
-        description = "Get type/input/enum/interface list from a GraphQL schema file. Returns IDs for use with read_graphql_type."
-    )]
-    async fn read_graphql_schema(
-        &self,
-        EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadGraphqlSchemaParams>,
-    ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_graphql_schema", {
-            let result = read_graphql_schema(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({
-                "path": result.path, "types": result.types, "token_count": result.token_count,
-            }))
-        })
-    }
-
-    #[tool(
-        description = "Get full field definitions for a specific GraphQL type. Call read_graphql_schema first to get the type list."
-    )]
-    async fn read_graphql_type(
-        &self,
-        EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadGraphqlTypeParams>,
-    ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_graphql_type", {
-            let result = read_graphql_type(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({
-                "name": result.name, "kind": result.kind,
-                "fields": result.fields, "token_count": result.token_count,
-            }))
-        })
-    }
-
-    #[tool(
-        description = "Get message/service/enum list from a .proto (Protocol Buffers) file. Returns IDs for use with read_proto_type."
-    )]
-    async fn read_proto_schema(
-        &self,
-        EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadProtoSchemaParams>,
-    ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_proto_schema", {
-            let result = read_proto_schema(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({
-                "path": result.path, "syntax": result.syntax, "package": result.package,
-                "types": result.types, "token_count": result.token_count,
-            }))
-        })
-    }
-
-    #[tool(
-        description = "Get full field definitions for a specific message, service, or enum in a .proto file. Call read_proto_schema first to get the type list."
-    )]
-    async fn read_proto_type(
-        &self,
-        EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadProtoTypeParams>,
-    ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_proto_type", {
-            let result = read_proto_type(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({
-                "name": result.name, "kind": result.kind,
-                "fields": result.fields, "token_count": result.token_count,
-            }))
+        instrument!(self, "read_proto", {
+            match params.type_name {
+                Some(type_name) => {
+                    let result = read_proto_type(
+                        &root,
+                        ReadProtoTypeParams {
+                            path: params.path,
+                            type_name,
+                        },
+                    )
+                    .map_err(err)?;
+                    ok_json(serde_json::json!({
+                        "name": result.name, "kind": result.kind,
+                        "fields": result.fields, "token_count": result.token_count,
+                    }))
+                }
+                None => {
+                    let result =
+                        read_proto_schema(&root, ReadProtoSchemaParams { path: params.path })
+                            .map_err(err)?;
+                    ok_json(serde_json::json!({
+                        "path": result.path, "syntax": result.syntax, "package": result.package,
+                        "types": result.types, "token_count": result.token_count,
+                    }))
+                }
+            }
         })
     }
 

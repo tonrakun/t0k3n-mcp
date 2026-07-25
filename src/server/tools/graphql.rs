@@ -15,6 +15,20 @@ pub struct ReadGraphqlSchemaParams {
     pub path: String,
 }
 
+/// MCP-facing parameters of `read_graphql`, which in v4.0 replaced the separate
+/// `read_graphql_schema` / `read_graphql_type` tools. Listing the types and
+/// reading one of them is one operation at two levels of detail, not two
+/// capabilities — see [`super::code::ReadCodeParams`] for the same reasoning.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadGraphqlParams {
+    #[schemars(description = "Root-relative path to a .graphql or .gql file.")]
+    pub path: String,
+    #[schemars(
+        description = "Type name to expand into full field definitions. Omit to list every type/input/enum/interface in the file."
+    )]
+    pub type_name: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct GraphqlTypeEntry {
     pub id: String,

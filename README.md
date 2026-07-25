@@ -60,8 +60,8 @@ read_file("server/mod.rs")  →  4,997 tokens consumed
 T0K3N-MCP solves this with **"structure first, fetch only what you need"**:
 
 ```
-read_code_skeleton("server/mod.rs")  →  1,162 tokens (signatures only)
-read_code_body(["function:54-67"])   →    150 tokens (target function only)
+read_code("server/mod.rs")                        →  1,162 tokens (signatures only)
+read_code("server/mod.rs", ["function:54-67"])   →    150 tokens (target function only)
                                          ─────────────────────────────────
 Total                                      1,312 tokens  ← 74% reduction
 ```
@@ -191,9 +191,9 @@ Measured on this repository, with `tools/list` serialized compactly:
 
 | Roster | Tools | Schema payload |
 | --- | ---: | ---: |
-| default | 79 | 44.5k chars (~13k tokens) |
-| `--tools core` | 33 | 18.9k chars (~5.4k tokens) |
-| `--enable-writes` | 90 | 54.5k chars (~16k tokens) |
+| default | 72 | 43.9k chars (~13k tokens) |
+| `--tools core` | 31 | 18.7k chars (~5.3k tokens) |
+| `--enable-writes` | 83 | 53.8k chars (~15k tokens) |
 
 Profiles: `core` = `file,git,text,debug` — read structure, read history, manage the budget.
 
@@ -212,7 +212,7 @@ no configured root; `get_info`'s `instructions` and `debug_info`'s `root_configu
 both surface this state to the connecting client. Once `--root` / `T0K3N_ROOT` is set, the
 configured root always wins and any `root` argument on a call is ignored.
 
-## Tools (91 tools)
+## Tools (84 tools)
 
 ### File Reading
 
@@ -221,9 +221,7 @@ configured root always wins and any `root` argument on a call is ignored.
 | `read_directory_tree` | `.gitignore`-aware directory tree |
 | `read_markdown_toc` | Markdown heading list (TOC) |
 | `read_markdown_section` | Fetch section by anchor |
-| `read_code_skeleton` | Functions/classes with signatures only — no body |
-| `read_code_body` | Full body for specific skeleton IDs. `zoom` selects detail (`body`/`sketch`/`skeleton`/`auto`); `auto` follows the latest `check_budget` strategy (critical→skeleton, aggressive→sketch) |
-| `read_code_sketch` | Control-flow sketch by ID — between skeleton and body (keeps branches/loops/calls, collapses data lines; ~60-70% smaller than the body) |
+| `read_code` | Without `ids`: functions/classes as signatures plus an id — no body. With `ids`: those symbols expanded, `zoom` selecting detail (`body`/`sketch`/`skeleton`/`auto`). `sketch` keeps branches/loops/calls and collapses data lines (~60-70% smaller than the body); `auto` follows the latest `check_budget` strategy (critical→skeleton, aggressive→sketch) |
 | `rename_symbol` | Rename a symbol workspace-wide in one call — write counterpart of `read_symbol_usages`. Whole-identifier match; returns affected files + per-line before/after only (`dry_run` to preview) |
 | `read_type_skeleton` | Type definitions (TS interface/type/enum, Go struct, Rust struct/enum/trait) |
 | `read_call_graph` | Caller/callee graph; `depth` param for cross-file tracing |
@@ -257,16 +255,11 @@ configured root always wins and any `root` argument on a call is ignored.
 
 | Tool | Description |
 |------|-------------|
-| `read_db_schema` | Prisma / SQL schema table/model list |
-| `read_db_table` | Field details for a specific table |
-| `read_css_skeleton` | CSS/SCSS selector list |
-| `read_css_body` | Full ruleset for specific selectors |
-| `read_graphql_schema` | GraphQL type list |
-| `read_graphql_type` | Field definitions for a specific type |
-| `read_proto_schema` | Protocol Buffers message/service list |
-| `read_proto_type` | Field/RPC definitions for a specific type |
-| `read_notebook_cells` | Jupyter notebook cell list |
-| `read_notebook_cell` | Full source and output of a specific cell |
+| `read_db` | Prisma / SQL schema: table/model list, or one table's field details with `table` |
+| `read_css` | CSS/SCSS: selector list, or full rulesets with `ids` |
+| `read_graphql` | GraphQL: type list, or one type's field definitions with `type_name` |
+| `read_proto` | Protocol Buffers: message/service list, or one type's field/RPC definitions with `type_name` |
+| `read_notebook` | Jupyter notebook: cell list, or one cell's source and output with `index` |
 | `read_test_skeleton` | Test suite/case list (Jest/pytest/Cargo/Go/JUnit/RSpec) |
 | `read_test_results` | Parse test runner output into a summary |
 | `read_test_coverage` | Map a coverage report (lcov / coverage.py JSON / cobertura) onto symbols — per-function covered/total/pct to spot untested code. `uncovered_only` / `threshold` filters |
@@ -354,7 +347,7 @@ Note that this gate covers the *tools*, not the filesystem: `run_command` is reg
 
 ## Language Support
 
-`read_code_skeleton`, `read_code_body`, `read_complexity_map`, and other code analysis tools support:
+`read_code`, `read_complexity_map`, and other code analysis tools support:
 
 | Language | Extensions |
 |----------|------------|

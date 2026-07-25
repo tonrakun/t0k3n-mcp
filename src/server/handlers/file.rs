@@ -111,44 +111,45 @@ impl T0k3nServer {
     }
 
     #[tool(
-        description = "Get code skeleton (functions, structs, classes) with signatures only. Call before read_code_body."
+        description = "Read a code file at a chosen level of detail. Omit ids to get the skeleton — every function/struct/class as a signature plus an id. Pass those ids back to expand them: zoom 'body' (default, full source), 'sketch' (control flow only, 60-70% smaller), 'skeleton', or 'auto' (follows the latest check_budget strategy). Start without ids, then expand only what you need."
     )]
-    async fn read_code_skeleton(
+    async fn read_code(
         &self,
         EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadCodeSkeletonParams>,
+        Parameters(params): Parameters<ReadCodeParams>,
     ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_code_skeleton", {
-            let key = delta_key("read_code_skeleton", &params);
-            let result = read_code_skeleton(&root, params).map_err(err)?;
-            self.ok_delta(key, serde_json::json!({ "language": result.language, "skeleton": result.skeleton, "token_count": result.token_count }))
-        })
-    }
-
-    #[tool(
-        description = "Get full body of specific code items by ID from read_code_skeleton. Optional zoom controls detail: 'body' (default), 'sketch' (control-flow only), 'skeleton' (signatures only), or 'auto' (pick by the latest check_budget strategy). The chosen level is echoed back as zoom_applied."
-    )]
-    async fn read_code_body(
-        &self,
-        EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadCodeBodyParams>,
-    ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_code_body", {
-            let level = self.resolve_zoom(params.zoom.as_deref());
+        instrument!(self, "read_code", {
             let path = params.path.clone();
-            let ids = params.ids.clone();
 
-            match level {
+            // No ids means "show me what is in this file" — the entry point of every
+            // read, and the only case where include_blocks applies. zoom describes
+            // how far to expand *given* symbols, so it has nothing to act on here.
+            let Some(ids) = params.ids.clone() else {
+                let sk_params = ReadCodeSkeletonParams {
+                    path,
+                    include_blocks: params.include_blocks,
+                };
+                let key = delta_key("read_code:skeleton", &sk_params);
+                let result = read_code_skeleton(&root, sk_params).map_err(err)?;
+                return self.ok_delta(
+                    key,
+                    serde_json::json!({
+                        "zoom_applied": "skeleton",
+                        "language": result.language,
+                        "skeleton": result.skeleton,
+                        "token_count": result.token_count,
+                    }),
+                );
+            };
+
+            match self.resolve_zoom(params.zoom.as_deref()) {
                 "skeleton" => {
-                    let key = delta_key("read_code_body:skeleton", &path);
-                    let result = read_code_skeleton(
-                        &root,
-                        ReadCodeSkeletonParams {
-                            path: path.clone(),
-                            include_blocks: None,
-                        },
-                    )
-                    .map_err(err)?;
+                    let sk_params = ReadCodeSkeletonParams {
+                        path,
+                        include_blocks: params.include_blocks,
+                    };
+                    let key = delta_key("read_code:skeleton", &sk_params);
+                    let result = read_code_skeleton(&root, sk_params).map_err(err)?;
                     self.ok_delta(
                         key,
                         serde_json::json!({
@@ -160,11 +161,8 @@ impl T0k3nServer {
                     )
                 }
                 "sketch" => {
-                    let sk_params = ReadCodeSketchParams {
-                        path: path.clone(),
-                        ids,
-                    };
-                    let key = delta_key("read_code_body:sketch", &sk_params);
+                    let sk_params = ReadCodeSketchParams { path, ids };
+                    let key = delta_key("read_code:sketch", &sk_params);
                     let result = read_code_sketch(&root, sk_params).map_err(err)?;
                     self.ok_delta(
                         key,
@@ -176,8 +174,13 @@ impl T0k3nServer {
                     )
                 }
                 _ => {
-                    let key = delta_key("read_code_body", &params);
-                    let mut result = read_code_body(&root, params).map_err(err)?;
+                    let body_params = ReadCodeBodyParams {
+                        path: path.clone(),
+                        ids,
+                        zoom: None,
+                    };
+                    let key = delta_key("read_code:body", &body_params);
+                    let mut result = read_code_body(&root, body_params).map_err(err)?;
                     // Cross-tool dedup: stub bodies already sent this session (e.g. by read_context_pack).
                     for item in &mut result.items {
                         if item.content.starts_with("Error:") {
@@ -200,24 +203,6 @@ impl T0k3nServer {
                     )
                 }
             }
-        })
-    }
-
-    #[tool(
-        description = "Zoom level between read_code_skeleton (signatures) and read_code_body (full source). Given skeleton IDs, returns each symbol's control-flow sketch: signature + branches/loops + block delimiters + call lines kept verbatim, runs of pure-data lines (assignments, literals) collapsed into '… N lines …'. Typically 60-70% smaller than the body — use it to understand what a function does before deciding whether you need the full body."
-    )]
-    async fn read_code_sketch(
-        &self,
-        EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ReadCodeSketchParams>,
-    ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "read_code_sketch", {
-            let key = delta_key("read_code_sketch", &params);
-            let result = read_code_sketch(&root, params).map_err(err)?;
-            self.ok_delta(
-                key,
-                serde_json::json!({ "items": result.items, "token_count": result.token_count }),
-            )
         })
     }
 
@@ -290,7 +275,7 @@ impl T0k3nServer {
     }
 
     #[tool(
-        description = "Search code semantically using a natural language query. EXPENSIVE AND NOT A GREP SUBSTITUTE: this spawns a separate `claude -p` CLI process, which is a billed model call of its own, adds seconds of latency, and gives non-deterministic results. Requires the `claude` CLI installed and authenticated. Prefer search_file (regex) or read_code_skeleton + read_code_body when you can name what you are looking for; reach for this only when the query is genuinely conceptual."
+        description = "Search code semantically using a natural language query. EXPENSIVE AND NOT A GREP SUBSTITUTE: this spawns a separate `claude -p` CLI process, which is a billed model call of its own, adds seconds of latency, and gives non-deterministic results. Requires the `claude` CLI installed and authenticated. Prefer search_file (regex) or read_code when you can name what you are looking for; reach for this only when the query is genuinely conceptual."
     )]
     async fn semantic_search(
         &self,
@@ -322,7 +307,7 @@ impl T0k3nServer {
     }
 
     #[tool(
-        description = "Get type definitions (interface/type/enum/struct) with field names from TypeScript, Go, or Rust files. More detailed than read_code_skeleton for type-heavy files."
+        description = "Get type definitions (interface/type/enum/struct) with field names from TypeScript, Go, or Rust files. More detailed than read_code for type-heavy files."
     )]
     async fn read_type_skeleton(
         &self,
@@ -343,7 +328,7 @@ impl T0k3nServer {
     }
 
     #[tool(
-        description = "Get the call graph for a function: what functions it calls, and which functions in the same file call it. Uses function_id from read_code_skeleton."
+        description = "Get the call graph for a function: what functions it calls, and which functions in the same file call it. Uses function_id from read_code."
     )]
     async fn read_call_graph(
         &self,

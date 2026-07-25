@@ -28,7 +28,7 @@ pub(crate) use tools::{
     ci::{ReadCiPipelineParams, read_ci_pipeline},
     cmd::{CmdLedger, RunCommandParams, run_command},
     code::{
-        ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams,
+        ReadCallGraphParams, ReadCodeBodyParams, ReadCodeParams, ReadCodeSkeletonParams,
         ReadInterfaceConformanceParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams,
         read_call_graph, read_code_body, read_code_skeleton, read_interface_conformance,
         read_symbol_usages, read_type_skeleton,
@@ -37,8 +37,12 @@ pub(crate) use tools::{
     config_write::{SetConfigValueParams, set_config_value},
     context_pack::{ReadContextPackParams, read_context_pack},
     coverage::{ReadTestCoverageParams, read_test_coverage},
-    css::{ReadCssBodyParams, ReadCssSkeletonParams, read_css_body, read_css_skeleton},
-    db_schema::{ReadDbSchemaParams, ReadDbTableParams, read_db_schema, read_db_table},
+    css::{
+        ReadCssBodyParams, ReadCssParams, ReadCssSkeletonParams, read_css_body, read_css_skeleton,
+    },
+    db_schema::{
+        ReadDbParams, ReadDbSchemaParams, ReadDbTableParams, read_db_schema, read_db_table,
+    },
     dead_code::{ReadDeadCodeParams, read_dead_code},
     delta::{ContentDedup, ContentLedger, Delta, DeltaResetParams, ReadLedger},
     deps::{ReadCodeDepsParams, read_code_deps},
@@ -57,7 +61,8 @@ pub(crate) use tools::{
         read_git_stash,
     },
     graphql::{
-        ReadGraphqlSchemaParams, ReadGraphqlTypeParams, read_graphql_schema, read_graphql_type,
+        ReadGraphqlParams, ReadGraphqlSchemaParams, ReadGraphqlTypeParams, read_graphql_schema,
+        read_graphql_type,
     },
     help::{HelpParams, help},
     impact::{ReadRefactorImpactParams, read_refactor_impact},
@@ -77,14 +82,18 @@ pub(crate) use tools::{
     },
     move_symbol::{MoveSymbolParams, move_symbol},
     notebook::{
-        ReadNotebookCellParams, ReadNotebookCellsParams, read_notebook_cell, read_notebook_cells,
+        ReadNotebookCellParams, ReadNotebookCellsParams, ReadNotebookParams, read_notebook_cell,
+        read_notebook_cells,
     },
     openapi::{ReadOpenApiParams, read_openapi},
     outline::{ReadFileOutlineParams, read_file_outline},
     ownership::{ReadCodeOwnershipParams, read_code_ownership},
     patch::{PatchSymbolParams, patch_symbol},
     pr_context::{ReadPrContextParams, read_pr_context},
-    proto::{ReadProtoSchemaParams, ReadProtoTypeParams, read_proto_schema, read_proto_type},
+    proto::{
+        ReadProtoParams, ReadProtoSchemaParams, ReadProtoTypeParams, read_proto_schema,
+        read_proto_type,
+    },
     rename::{RenameSymbolParams, rename_symbol},
     search::{SemanticSearchParams, semantic_search},
     security_surface::{ReadSecuritySurfaceParams, read_security_surface},
@@ -122,9 +131,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "search_file",
     "read_json_yaml_keys",
     "read_json_yaml_value",
-    "read_code_skeleton",
-    "read_code_body",
-    "read_code_sketch",
+    "read_code",
     "patch_symbol",
     "rename_symbol",
     "read_code_deps",
@@ -143,14 +150,10 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_git_stash",
     "read_code_ownership",
     // Schema / DSL
-    "read_db_schema",
-    "read_db_table",
-    "read_css_skeleton",
-    "read_css_body",
-    "read_graphql_schema",
-    "read_graphql_type",
-    "read_proto_schema",
-    "read_proto_type",
+    "read_db",
+    "read_css",
+    "read_graphql",
+    "read_proto",
     "read_openapi",
     "read_env_schema",
     "read_package_manifest",
@@ -159,8 +162,7 @@ pub const REGISTERED_TOOLS: &[&str] = &[
     "read_interface_conformance",
     "batch_read",
     // Notebook
-    "read_notebook_cells",
-    "read_notebook_cell",
+    "read_notebook",
     // Test
     "read_test_skeleton",
     "read_test_results",
@@ -756,7 +758,7 @@ impl ServerHandler for T0k3nServer {
              1. NEVER read whole files with built-in Read/Grep/Glob — on average 87% of a \
              full-file read is content you never use. Read structure first, then extract \
              only the parts you need.\n\
-             2. For code: read_code_skeleton first, then read_code_body for just the symbols \
+             2. For code: read_code without ids first, then read_code with ids for just the symbols \
              you need (zoom: skeleton/sketch/body/auto). The same outline-then-extract \
              pattern exists for markdown, JSON/YAML, CSS, web pages, and notebooks.\n\
              3. Begin a task with project_digest (cached architecture warm-start) and \
@@ -946,14 +948,14 @@ mod tests {
         });
         let result = match futures_util::FutureExt::catch_unwind(fut).await {
             Ok(r) => r,
-            Err(payload) => Err(panic_to_error("read_code_body", payload)),
+            Err(payload) => Err(panic_to_error("read_code", payload)),
         };
         std::panic::set_hook(previous);
 
         let message = result
             .expect_err("a panic must surface as an error")
             .message;
-        assert!(message.contains("read_code_body panicked"));
+        assert!(message.contains("read_code panicked"));
         assert!(message.contains("index out of bounds"));
     }
 
@@ -967,7 +969,7 @@ mod tests {
     #[test]
     fn tool_availability_explains_gated_and_compiled_out_tools() {
         // Always-on tools carry no note.
-        assert_eq!(tool_availability("read_code_skeleton"), None);
+        assert_eq!(tool_availability("read_code"), None);
         assert_eq!(tool_availability("run_command"), None);
         // Capability-gated tools do.
         assert!(tool_availability("create_file").is_some());
@@ -1049,7 +1051,7 @@ mod tests {
         );
         // One representative per bundled category.
         for t in [
-            "read_code_skeleton",
+            "read_code",
             "read_git_log",
             "check_budget",
             "help",
@@ -1061,7 +1063,7 @@ mod tests {
             );
         }
         // Categories deliberately left out of core.
-        for t in ["read_openapi", "read_notebook_cells", "task_create"] {
+        for t in ["read_openapi", "read_notebook", "task_create"] {
             assert!(
                 !core.tool_router.map.contains_key(t),
                 "{t} is outside core and must not be registered"

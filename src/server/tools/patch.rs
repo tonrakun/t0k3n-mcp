@@ -25,7 +25,7 @@ pub struct PatchSymbolParams {
     #[schemars(description = "Root-relative path to the code file")]
     pub path: String,
     #[schemars(
-        description = "Skeleton ID from read_code_skeleton (e.g. 'function:10-25'). Line numbers must be from a CURRENT skeleton — re-run read_code_skeleton after any other edit to the same file."
+        description = "Skeleton ID from read_code (e.g. 'function:10-25'). Line numbers must be from a CURRENT skeleton — re-run read_code after any other edit to the same file."
     )]
     pub id: String,
     #[schemars(

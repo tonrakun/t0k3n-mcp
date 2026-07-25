@@ -36,16 +36,8 @@ pub(crate) fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
             ("read_markdown_toc", "headings TOC from a Markdown file"),
             ("read_markdown_section", "extract sections by anchor"),
             (
-                "read_code_skeleton",
-                "function/struct/class signatures only"
-            ),
-            (
-                "read_code_body",
-                "full body of skeleton items by ID (zoom: body/sketch/skeleton/auto)"
-            ),
-            (
-                "read_code_sketch",
-                "control-flow sketch by ID (between skeleton and body)"
+                "read_code",
+                "signatures, then bodies by ID (zoom: body/sketch/skeleton/auto)"
             ),
             ("read_code_deps", "imports + imported_by dependency graph"),
             (
@@ -151,14 +143,10 @@ pub(crate) fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
     cat!(
         "schema",
         [
-            ("read_db_schema", "Prisma/SQL table list"),
-            ("read_db_table", "field definitions for a table"),
-            ("read_css_skeleton", "CSS/SCSS selector list"),
-            ("read_css_body", "ruleset body by selector ID"),
-            ("read_graphql_schema", "GraphQL type list"),
-            ("read_graphql_type", "fields of a GraphQL type"),
-            ("read_proto_schema", "Protobuf message/service list"),
-            ("read_proto_type", "fields of a proto message/service"),
+            ("read_db", "Prisma/SQL tables, or one table's fields"),
+            ("read_css", "CSS/SCSS selectors, or rule bodies by ID"),
+            ("read_graphql", "GraphQL types, or one type's fields"),
+            ("read_proto", "Protobuf messages, or one type's fields"),
             ("read_openapi", "OpenAPI/Swagger endpoint list"),
             ("read_env_schema", ".env.example / docker-compose variables"),
             (
@@ -184,13 +172,10 @@ pub(crate) fn catalog() -> BTreeMap<&'static str, Vec<ToolEntry>> {
     );
     cat!(
         "notebook",
-        [
-            (
-                "read_notebook_cells",
-                "Jupyter cell list with output summaries"
-            ),
-            ("read_notebook_cell", "full cell content and output"),
-        ]
+        [(
+            "read_notebook",
+            "Jupyter cell list, or one cell's source and output"
+        ),]
     );
     cat!(
         "test",

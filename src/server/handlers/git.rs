@@ -8,7 +8,7 @@ use crate::server::*;
 #[tool_router(router = git_router, vis = "pub(crate)")]
 impl T0k3nServer {
     #[tool(
-        description = "Get compressed git diff. Defaults to all uncommitted changes vs HEAD. Use stat_only for a quick file-level summary. zoom mirrors read_code_body: 'body' (full diff), 'sketch' (file + hunk headers only), 'skeleton' (per-file × enclosing-symbol +/- line counts, no diff text), or 'auto' (follows the latest check_budget strategy). Apply the structure-first read to change itself: skeleton to map a large diff, then body on the suspicious files."
+        description = "Get compressed git diff. Defaults to all uncommitted changes vs HEAD. Use stat_only for a quick file-level summary. zoom mirrors read_code: 'body' (full diff), 'sketch' (file + hunk headers only), 'skeleton' (per-file × enclosing-symbol +/- line counts, no diff text), or 'auto' (follows the latest check_budget strategy). Apply the structure-first read to change itself: skeleton to map a large diff, then body on the suspicious files."
     )]
     async fn read_git_diff(
         &self,
@@ -46,7 +46,7 @@ impl T0k3nServer {
     }
 
     #[tool(
-        description = "Get per-line blame (author + date) for a specific line range in a file. Use start_line/end_line from read_code_skeleton to target a function body."
+        description = "Get per-line blame (author + date) for a specific line range in a file. Use start_line/end_line from read_code to target a function body."
     )]
     async fn read_git_blame_body(
         &self,

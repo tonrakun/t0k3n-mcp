@@ -19,9 +19,7 @@ use crate::security::{rel_display, safe_path};
 pub struct MoveSymbolParams {
     #[schemars(description = "Root-relative path of the source file")]
     pub src_path: String,
-    #[schemars(
-        description = "Skeleton ID of the symbol to move (from read_code_skeleton on src_path)"
-    )]
+    #[schemars(description = "Skeleton ID of the symbol to move (from read_code on src_path)")]
     pub id: String,
     #[schemars(
         description = "Root-relative path of the destination file (created if it does not exist)"

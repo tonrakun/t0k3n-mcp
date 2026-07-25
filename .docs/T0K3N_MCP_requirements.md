@@ -2162,6 +2162,14 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
   | `--tools core` | 33 | 18,888 文字（**-58%**） |
   | `--enable-writes` | 90 | 54,499 文字 |
 
+  Phase C 完了後の最終値（v4.0.0）:
+
+  | ロスター | ツール数 | スキーマ量 | v3 比 |
+  |---|---:|---:|---:|
+  | デフォルト | 72 | 43,857 文字 | **-16.8%** |
+  | `--tools core` | 31 | 18,672 文字 | -64.6% |
+  | `--enable-writes` | 83 | 53,805 文字 | — |
+
 - [x] **A-2 説明文の圧縮 — 見送り**。当初は「定型句の重複を削れば大きい」と見込んだが、
   実測すると成立しなかった。フィールド説明 184 個の中で完全一致する重複の合計は
   **382 文字**（最大でも "Root-relative path to the code file" の 5 回・140 文字）しかない。
@@ -2171,9 +2179,35 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
   という当初の懸念と同じ失敗モードを、別の経路で悪化させる。
   機械的な余地（`$schema` / `title` / `nullable`）は A-1 で汲み尽くしたと判断し、
   以降の削減は本数そのものを減らす Phase C に委ねる
-- [ ] **C ツール統合（破壊的・v4.0）**: `read_code_skeleton` / `sketch` / `body` の
-  `zoom` 一本化、`read_{graphql,proto,db}_{schema,type}` の `detail` 一本化など。
-  91 → 約 70。旧名エイリアスと移行期間の設計が必要
+- [x] **C ツール統合（破壊的・v4.0）**: 91 → 84。旧名はエイリアスを残さず削除した。
+
+  統合の動機はトークンではない。実際の削減は数千文字にとどまり、`--tools core` の
+  -58% には遠く及ばない。狙いは**選択誤りの排除**である。`read_code_skeleton` /
+  `read_code_sketch` / `read_code_body` は互いの説明の中で互いを参照しており
+  （「Call before read_code_body」「between skeleton and body」）、エージェントが
+  三者から選ぶ行為は能力の選択ではなく詳細度の選択だった。詳細度はパラメータである。
+
+  | 統合後 | 統合前 | 分岐 |
+  |---|---|---|
+  | `read_code` | `read_code_skeleton` / `read_code_sketch` / `read_code_body` | `ids` 省略で skeleton、指定時は `zoom` |
+  | `read_db` | `read_db_schema` / `read_db_table` | `table` |
+  | `read_css` | `read_css_skeleton` / `read_css_body` | `ids` |
+  | `read_graphql` | `read_graphql_schema` / `read_graphql_type` | `type_name` |
+  | `read_proto` | `read_proto_schema` / `read_proto_type` | `type_name` |
+  | `read_notebook` | `read_notebook_cells` / `read_notebook_cell` | `index` |
+
+  - MCP 公開面のみの変更で、内部の `tools::*` 関数と `Read*Params` 構造体は据え置き。
+    `read_context_pack` / `project_digest` / `batch_read` はそれらを直接呼んでいるため
+    無改修。ハンドラが公開パラメータを内部パラメータへ翻訳する形にした
+  - `read_db` だけは `table` 指定時に `path` が必須になる（自動検出はテーブル一覧を
+    返す側の責務で、一覧応答が見つけたパスを返すため、テーブル名を言える時点で
+    呼び出し側は具体的なパスを持っている）。省略時は理由を明示したエラーを返す
+  - 旧ツール名は他ツールの説明文からも参照されていた（`patch_symbol` の
+    「Flow: read_code_skeleton → read_code_body(id) → patch_symbol」など計 21 箇所）。
+    ツール名を変えて説明文を放置すると、存在しないツールを指す案内が残る
+  - `readme_tool_counts_match_the_registry` と
+    `help_catalog_covers_every_registered_tool` が README・カタログの追従漏れを
+    すべて検出した。今回のようなリネームでこの手のガードは効く
 
 ---
 

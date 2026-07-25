@@ -14,6 +14,18 @@ pub struct ReadCssSkeletonParams {
     pub path: String,
 }
 
+/// MCP-facing parameters of `read_css`, which in v4.0 replaced the separate
+/// `read_css_skeleton` / `read_css_body` tools.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadCssParams {
+    #[schemars(description = "Root-relative path to a .css, .scss, or .less file.")]
+    pub path: String,
+    #[schemars(
+        description = "Selector IDs to expand into full rule bodies (e.g. 'selector:5-12'), from a previous read_css call. Omit to list every selector with its property count."
+    )]
+    pub ids: Option<Vec<String>>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct CssSelectorItem {
     pub id: String,

@@ -8,7 +8,7 @@ use crate::server::*;
 #[tool_router(router = test_router, vis = "pub(crate)")]
 impl T0k3nServer {
     #[tool(
-        description = "Get test case list from a test file (Jest/pytest/Rust/#[test]/Go/JUnit/RSpec). Returns IDs usable with read_code_body to get test implementations."
+        description = "Get test case list from a test file (Jest/pytest/Rust/#[test]/Go/JUnit/RSpec). Returns IDs usable with read_code to get test implementations."
     )]
     async fn read_test_skeleton(
         &self,

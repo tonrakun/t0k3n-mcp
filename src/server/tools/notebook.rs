@@ -15,6 +15,22 @@ pub struct ReadNotebookCellsParams {
     pub path: String,
 }
 
+/// MCP-facing parameters of `read_notebook`, which in v4.0 replaced the separate
+/// `read_notebook_cells` / `read_notebook_cell` tools.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadNotebookParams {
+    #[schemars(description = "Root-relative path to a .ipynb file.")]
+    pub path: String,
+    #[schemars(
+        description = "Cell index (0-based) to expand into full source. Omit to list every cell with a preview and its output count."
+    )]
+    pub index: Option<usize>,
+    #[schemars(
+        description = "Include cell outputs when reading a single cell (default: false). Outputs may contain large binary data."
+    )]
+    pub include_outputs: Option<bool>,
+}
+
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct NotebookCellEntry {
     pub index: usize,

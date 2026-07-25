@@ -603,6 +603,35 @@ fn find_python_block_end(lines: &[&str], start: usize) -> usize {
     lines.len()
 }
 
+// ── read_code ──────────────────────────────────────────────────────────────
+
+/// The MCP-facing parameters of `read_code`, which in v4.0 replaced the separate
+/// `read_code_skeleton` / `read_code_sketch` / `read_code_body` tools.
+///
+/// Three tools distinguished only by how much of the same file they return made
+/// the boundary a guess: their descriptions had to explain each other, and an
+/// agent picking between them was choosing a detail level, not a capability.
+/// Detail level is a parameter. The handler translates this into the internal
+/// `ReadCodeSkeletonParams` / `ReadCodeSketchParams` / `ReadCodeBodyParams`,
+/// which other tools (context_pack, digest, batch_read) still use directly.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadCodeParams {
+    #[schemars(description = "Root-relative path to the code file")]
+    pub path: String,
+    #[schemars(
+        description = "Skeleton IDs to expand (e.g. 'function:10-25'), from a previous read_code call on this file. Omit to get the file's skeleton — signatures only — which is where you start."
+    )]
+    pub ids: Option<Vec<String>>,
+    #[schemars(
+        description = "Detail level for the requested ids: 'body' (default, full source), 'sketch' (control flow only, typically 60-70% smaller), 'skeleton' (signatures only), or 'auto' (pick by the latest check_budget strategy: critical→skeleton, aggressive→sketch, else body). Ignored when ids is omitted. Echoed back as zoom_applied."
+    )]
+    pub zoom: Option<String>,
+    #[schemars(
+        description = "Include block-level constructs (if/for/etc) in the skeleton - default false"
+    )]
+    pub include_blocks: Option<bool>,
+}
+
 // ── read_code_body ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]

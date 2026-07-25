@@ -18,6 +18,20 @@ pub struct ReadDbSchemaParams {
     pub path: Option<String>,
 }
 
+/// MCP-facing parameters of `read_db`, which in v4.0 replaced the separate
+/// `read_db_schema` / `read_db_table` tools.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+pub struct ReadDbParams {
+    #[schemars(
+        description = "Root-relative path to a .prisma or .sql file. Omit to auto-detect (searches *.prisma, then *.sql under workspace root, depth ≤ 4)."
+    )]
+    pub path: Option<String>,
+    #[schemars(
+        description = "Table or model name to expand into full field definitions. Omit to list every table/model in the schema."
+    )]
+    pub table: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct DbTableEntry {
     pub name: String,
