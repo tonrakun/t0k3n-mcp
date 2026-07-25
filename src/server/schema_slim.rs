@@ -193,7 +193,10 @@ mod tests {
 
         slim_schema(&mut schema);
 
-        assert!(!schema.contains_key("title"), "the root title is boilerplate");
+        assert!(
+            !schema.contains_key("title"),
+            "the root title is boilerplate"
+        );
         assert_eq!(
             schema["properties"]["title"]["description"],
             json!("Task title"),

@@ -285,26 +285,52 @@ pub fn unavailable_tools() -> Vec<&'static str> {
 /// cannot discover what else it has or report its own configuration.
 const ALWAYS_KEEP_TOOLS: &[&str] = &["help", "debug_info"];
 
-/// Resolve a list of help() category names to the set of tool names to keep.
-/// Unknown categories are ignored (validated and reported at startup instead).
+/// Named bundles of categories accepted by `--tools` alongside bare category names.
+/// Choosing a roster is the single biggest lever a user has over schema cost, and
+/// asking them to know which of 15 categories matter is a poor way to expose it.
+///
+/// `core` is the everyday code-reading set: read structure, read history, manage
+/// the token budget. Everything left out (schema DSLs, notebooks, databases,
+/// sessions, tasks, memory) is real work for the sessions that need it and dead
+/// schema weight for the sessions that do not.
+pub const TOOL_PROFILES: &[(&str, &[&str])] = &[("core", &["file", "git", "text", "debug"])];
+
+/// Expand one `--tools` token into the help() categories it selects. A profile
+/// name expands to several; anything else is passed through as a category name
+/// and validated by the caller.
+fn expand_profile(token: &str) -> Vec<String> {
+    TOOL_PROFILES
+        .iter()
+        .find(|(name, _)| *name == token)
+        .map(|(_, cats)| cats.iter().map(|c| (*c).to_string()).collect())
+        .unwrap_or_else(|| vec![token.to_string()])
+}
+
+/// Resolve a list of help() category names (or profile names) to the set of tool
+/// names to keep. Unknown categories are ignored (validated and reported at
+/// startup instead).
 pub(crate) fn tools_in_categories(
     categories: &[String],
 ) -> std::collections::HashSet<&'static str> {
     let catalog = tools::help::catalog();
     let mut keep: std::collections::HashSet<&'static str> =
         ALWAYS_KEEP_TOOLS.iter().copied().collect();
-    for cat in categories {
-        if let Some(entries) = catalog.get(cat.trim().to_ascii_lowercase().as_str()) {
-            keep.extend(entries.iter().map(|e| e.name));
+    for token in categories {
+        for cat in expand_profile(token.trim().to_ascii_lowercase().as_str()) {
+            if let Some(entries) = catalog.get(cat.as_str()) {
+                keep.extend(entries.iter().map(|e| e.name));
+            }
         }
     }
     keep
 }
 
-/// Category names accepted by `--tools`, taken from the help() catalog so the two
-/// can never drift apart.
+/// Names accepted by `--tools`: every help() category (taken from the catalog so
+/// the two can never drift apart) plus the named profiles.
 pub fn known_tool_categories() -> Vec<&'static str> {
-    tools::help::catalog().keys().copied().collect()
+    let mut names: Vec<&'static str> = TOOL_PROFILES.iter().map(|(name, _)| *name).collect();
+    names.extend(tools::help::catalog().keys().copied());
+    names
 }
 
 /// Startup capability configuration. Grouped into a struct so adding a capability
@@ -1005,6 +1031,71 @@ mod tests {
                  REGISTERED_TOOLS has {expected} entries"
             );
         }
+    }
+
+    /// A profile that silently expands to nothing would look like a working flag
+    /// while serving only help/debug_info, so pin down what `core` actually selects.
+    #[test]
+    fn core_profile_expands_to_the_everyday_reading_roster() {
+        let tmp = tempfile::tempdir().unwrap();
+        let full = test_server(tmp.path(), |_| {});
+        let core = test_server(tmp.path(), |c| {
+            c.tool_categories = Some(vec!["core".to_string()]);
+        });
+
+        assert!(
+            core.tool_router.map.len() < full.tool_router.map.len(),
+            "a profile that trims nothing is not a profile"
+        );
+        // One representative per bundled category.
+        for t in [
+            "read_code_skeleton",
+            "read_git_log",
+            "check_budget",
+            "help",
+            "debug_info",
+        ] {
+            assert!(
+                core.tool_router.map.contains_key(t),
+                "{t} belongs to the core profile"
+            );
+        }
+        // Categories deliberately left out of core.
+        for t in ["read_openapi", "read_notebook_cells", "task_create"] {
+            assert!(
+                !core.tool_router.map.contains_key(t),
+                "{t} is outside core and must not be registered"
+            );
+        }
+    }
+
+    /// Every category a profile names must exist in the catalog, or the profile
+    /// quietly shrinks when a category is renamed.
+    #[test]
+    fn every_profile_names_only_real_categories() {
+        let catalog = tools::help::catalog();
+        for (profile, categories) in TOOL_PROFILES {
+            for cat in *categories {
+                assert!(
+                    catalog.contains_key(*cat),
+                    "profile `{profile}` names `{cat}`, which is not a help() category"
+                );
+            }
+        }
+    }
+
+    /// `--tools` validates its input against this list, so a profile missing from
+    /// it would be rejected at startup as an unknown category.
+    #[test]
+    fn known_tool_categories_advertises_the_profiles() {
+        let known = known_tool_categories();
+        for (profile, _) in TOOL_PROFILES {
+            assert!(
+                known.contains(profile),
+                "profile `{profile}` must be accepted by --tools"
+            );
+        }
+        assert!(known.contains(&"git"), "bare categories still work");
     }
 
     /// Schema boilerplate is invisible in normal use — nothing breaks, the context

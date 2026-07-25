@@ -180,12 +180,22 @@ omits.
 ### Trimming the tool roster
 
 Every registered tool's JSON schema is carried by the MCP client on **every** request, so a
-narrower roster is itself a token saving. `--tools file,git,analysis` registers only those
-categories (`help` and `debug_info` are always kept):
+narrower roster is itself a token saving. `--tools` takes categories or a named profile
+(`help` and `debug_info` are always kept):
 
 ```jsonc
-"args": ["--root", "/path/to/project", "--tools", "file,git,analysis"]
+"args": ["--root", "/path/to/project", "--tools", "core"]
 ```
+
+Measured on this repository, with `tools/list` serialized compactly:
+
+| Roster | Tools | Schema payload |
+| --- | ---: | ---: |
+| default | 79 | 46.2k chars (~13k tokens) |
+| `--tools core` | 33 | 19.5k chars (~5.6k tokens) |
+| `--enable-writes` | 90 | 56.5k chars (~16k tokens) |
+
+Profiles: `core` = `file,git,text,debug` — read structure, read history, manage the budget.
 
 Categories: `file` `write` `git` `schema` `web` `notebook` `test` `log` `text` `memory`
 `task` `session` `analysis` `cmd` `debug`. Capability gates still apply on top — selecting

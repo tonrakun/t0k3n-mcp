@@ -38,7 +38,8 @@ OPTIONS:
     --dashboard-port <port>   Dashboard port (default: 14123)
     --list-tools              Print all registered tool names and exit
     --refresh-parsers         Clear the tree-sitter parser cache on startup
-    --tools <categories>      Register only these help() categories, comma-separated
+    --tools <categories>      Register only these help() categories or profiles,
+                              comma-separated. Profile: core (file,git,text,debug)
                               (e.g. file,git,analysis). Every tool schema is carried by
                               the client on every request, so a narrower roster saves
                               tokens. help and debug_info are always kept.

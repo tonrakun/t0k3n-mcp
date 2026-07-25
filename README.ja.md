@@ -186,11 +186,21 @@ t0k3n setup
 ### ツール数を絞る
 
 登録済みツールの JSON スキーマは、MCP クライアントが**毎リクエスト**で運搬する。つまりツールを絞ること自体が
-トークン削減になる。`--tools file,git,analysis` で該当カテゴリのみを登録する（`help` と `debug_info` は常に残る）:
+トークン削減になる。`--tools` はカテゴリ名か名前付きプロファイルを受け取る（`help` と `debug_info` は常に残る）:
 
 ```jsonc
-"args": ["--root", "/path/to/project", "--tools", "file,git,analysis"]
+"args": ["--root", "/path/to/project", "--tools", "core"]
 ```
+
+本リポジトリでの実測（`tools/list` をコンパクト直列化した文字数）:
+
+| ロスター | ツール数 | スキーマ量 |
+| --- | ---: | ---: |
+| デフォルト | 79 | 46.2k文字（約13kトークン） |
+| `--tools core` | 33 | 19.5k文字（約5.6kトークン） |
+| `--enable-writes` | 90 | 56.5k文字（約16kトークン） |
+
+プロファイル: `core` = `file,git,text,debug`（構造を読む・履歴を読む・予算を管理する）。
 
 カテゴリ: `file` `write` `git` `schema` `web` `notebook` `test` `log` `text` `memory`
 `task` `session` `analysis` `cmd` `debug`。ケイパビリティのゲートは上位で適用されるため、
