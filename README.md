@@ -191,9 +191,9 @@ Measured on this repository, with `tools/list` serialized compactly:
 
 | Roster | Tools | Schema payload |
 | --- | ---: | ---: |
-| default | 79 | 46.2k chars (~13k tokens) |
-| `--tools core` | 33 | 19.5k chars (~5.6k tokens) |
-| `--enable-writes` | 90 | 56.5k chars (~16k tokens) |
+| default | 79 | 44.5k chars (~13k tokens) |
+| `--tools core` | 33 | 18.9k chars (~5.4k tokens) |
+| `--enable-writes` | 90 | 54.5k chars (~16k tokens) |
 
 Profiles: `core` = `file,git,text,debug` — read structure, read history, manage the budget.
 

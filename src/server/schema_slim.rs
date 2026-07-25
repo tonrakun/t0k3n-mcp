@@ -14,11 +14,16 @@
 use rmcp::model::JsonObject;
 use serde_json::{Map, Value};
 
-/// Schema *keywords* removed wherever a subschema appears. `$schema` is redundant
-/// once the object is nested inside an MCP `inputSchema`; `title` is a schemars
-/// artifact of the Rust type name (`ReadGitLogParams`) and never describes
-/// anything the caller needs.
-const DROPPED_KEYS: &[&str] = &["$schema", "title"];
+/// Schema *keywords* removed wherever a subschema appears.
+///
+/// - `$schema` is redundant once the object is nested inside an MCP `inputSchema`.
+/// - `title` is a schemars artifact of the Rust type name (`ReadGitLogParams`)
+///   and never describes anything the caller needs.
+/// - `nullable` is OpenAPI 3.0 vocabulary, not a draft-07 keyword, so validators
+///   already ignore it — and every field carrying it is an `Option<T>` that is
+///   absent from `required`, which is how draft-07 says "optional" anyway. It
+///   costs 1.5k characters to restate what the schema already conveys.
+const DROPPED_KEYS: &[&str] = &["$schema", "title", "nullable"];
 
 /// Keywords whose value is a map from *names* to subschemas. Their keys are
 /// caller-facing identifiers, not keywords: `properties.title` is the `title`
@@ -165,6 +170,49 @@ mod tests {
                 .unwrap()
                 .len(),
             2
+        );
+    }
+
+    #[test]
+    fn drops_nullable_without_touching_optionality() {
+        // `required` is what actually makes a field optional in draft-07; the
+        // OpenAPI-flavoured `nullable` alongside it is pure restatement.
+        let mut schema = object(json!({
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+                "path": { "type": "string" },
+                "depth": { "type": "integer", "nullable": true, "minimum": 0 }
+            }
+        }));
+
+        slim_schema(&mut schema);
+
+        assert!(schema["properties"]["depth"].get("nullable").is_none());
+        assert_eq!(
+            schema["properties"]["depth"]["minimum"],
+            json!(0),
+            "real validation keywords must survive"
+        );
+        assert_eq!(
+            schema["required"],
+            json!(["path"]),
+            "optionality is expressed by `required`, which must not change"
+        );
+    }
+
+    #[test]
+    fn keeps_a_property_named_nullable() {
+        let mut schema = object(json!({
+            "type": "object",
+            "properties": { "nullable": { "type": "boolean" } }
+        }));
+
+        slim_schema(&mut schema);
+
+        assert!(
+            schema["properties"].get("nullable").is_some(),
+            "a key under `properties` is an argument name, not a keyword"
         );
     }
 
