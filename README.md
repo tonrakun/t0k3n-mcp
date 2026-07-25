@@ -286,7 +286,7 @@ configured root always wins and any `root` argument on a call is ignored.
 | `read_complexity_map` | Cyclomatic complexity per function, risk-rated low/medium/high/critical. No compiler needed |
 | `read_dead_code` | Find symbols defined but never referenced. All languages, no LSP required |
 | `read_refactor_impact` | Blast-radius for a rename/refactor: callers + all referencing files + test files in one call |
-| `read_security_surface` | Static security scan: injection, XSS, hardcoded secrets, unsafe code, path traversal (50 patterns) |
+| `read_security_surface` | Static security scan: injection, XSS, hardcoded secrets, unsafe code, path traversal (54 patterns). A **heuristic** line matcher, not taint analysis — every finding carries `confidence` (is it real?) alongside `severity` (impact if real), sorted confidence-first, filterable with `min_confidence`. Suppresses patterns quoted inside string literals, mid-identifier matches, and test code (`include_tests:true` to include). Opt out per line with a `// t0k3n:ignore-security` comment, or per file with `t0k3n:ignore-security-scan` in the first 20 lines |
 | `diff_schemas` | Schema diff between git refs — OpenAPI endpoints, Prisma/SQL tables, TypeScript types |
 | `read_pr_context` | Full PR context in one call: changed file skeletons + related tests + commit list |
 

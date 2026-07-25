@@ -2024,6 +2024,19 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
 - [x] テストコードの除外（既定）。Rust の `#[cfg(test)]` 以降を打ち切り、
   `tests`/`__tests__`/`spec`/`fixtures`/`testdata` セグメントや `*_test.go`/`*.spec.ts` 等の
   パスをスキップ。`include_tests: true` で従来動作。テストフィクスチャは誤検知の最大要因
+- [x] 単語境界の要求。識別子で始まるパターンは識別子境界から始まることを要求し、
+  `system(` が `detect_ecosystem(` にマッチする類の部分文字列誤検知を解消
+- [x] 抑制マーカーを追加。`t0k3n:ignore-security-scan`（ファイル先頭 20 行以内でファイル全体を除外）と
+  `t0k3n:ignore-security`（行単位で除外）。ヒューリスティックには還元不能な誤検知
+  （パターン表・セキュリティテストのフィクスチャ・意図的なサンプル）が残るため、
+  毎回トリアージし直すのではなくソース側で表明できる必要がある。
+  `security_surface.rs` 自身にファイルマーカーを付与した（攻撃パターンの表を持つファイルは
+  構造的に自分の表にマッチする）
+- [x] PEM ルールを `-----BEGIN`→`-----BEGIN `（末尾スペース）に厳格化。実際の PEM ヘッダは
+  必ず `-----BEGIN <TYPE>-----` の形をとるため、マーカーを列挙しているだけの行に反応しなくなる
+- [x] 効果測定（自プロジェクトを新バイナリでスキャン）: 40 件 → 29 件、
+  自己参照の誤検知 10 件 → 0 件、`min_confidence:"medium"` では 0 件
+  （このリポジトリは git/シェルを正当に起動するため、残る 29 件が全て low confidence なのが正しい）
 - [x] `read_dead_code` / `read_security_surface` のツール説明に「ヒューリスティックであり
   `confidence` を確認してから報告せよ」を明記し、`get_info` instructions にルール 7 として追加
 

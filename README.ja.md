@@ -379,7 +379,7 @@ t0k3n setup
 | `read_complexity_map` | 関数ごとの循環的複雑度を計算し low / medium / high / critical でリスク分類。コンパイラ不要 |
 | `read_dead_code` | 定義されているが参照ゼロのシンボルを検出。全言語対応・LSP 不要 |
 | `read_refactor_impact` | シンボル名 1 つで「呼び出し元・全参照ファイル・テストファイル・ブラスト半径」を 1 コールで返す |
-| `read_security_surface` | injection / XSS / hardcoded secrets / unsafe / path_traversal を 50 パターンで静的スキャン |
+| `read_security_surface` | injection / XSS / hardcoded secrets / unsafe / path_traversal を 54 パターンで静的スキャン。**ヒューリスティック**な行マッチャーであり taint 解析ではないため、各検出は `severity`（実際に問題だった場合の影響）に加えて `confidence`（実際に問題である確度）を持つ。confidence 降順でソートし `min_confidence` で絞り込み可。文字列リテラル内に引用されたパターン・識別子途中のマッチ・テストコードは抑制（`include_tests:true` で含める）。行単位は `// t0k3n:ignore-security` コメント、ファイル単位は先頭 20 行以内の `t0k3n:ignore-security-scan` でオプトアウト |
 | `diff_schemas` | OpenAPI・Prisma/SQL・TypeScript 型を git ref 間で比較し added / removed / modified を返す |
 | `read_pr_context` | branch + base 指定で変更ファイルのスケルトン・関連テスト・コミット一覧を 1 コールでロード |
 
