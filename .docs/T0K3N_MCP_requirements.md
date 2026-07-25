@@ -2209,6 +2209,77 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
     `help_catalog_covers_every_registered_tool` が README・カタログの追従漏れを
     すべて検出した。今回のようなリネームでこの手のガードは効く
 
+### Phase 23 — `setup` の対話ウィザード化 v4.1
+
+インストール直後の `.mcp.json` は `--root` だけの最小構成で、ロスターも出力形式も
+ケイパビリティも「ヘルプを読んで手で足す」ものだった。Phase 22 で最大の削減レバーが
+ロスター選択だと分かった以上、それを手動編集の先に置いたままにはできない。
+
+- [x] `t0k3n setup` を対話ウィザードに。設定スコープ（プロジェクトの `.mcp.json` /
+  ユーザースコープ）、サーバー名、ツールロスター（すべて / `core` プロファイル /
+  カテゴリを自分で選ぶ）、出力形式、ダッシュボード、ケイパビリティフラグを順に尋ね、
+  設定ファイルを新規作成または既存 JSON へマージする
+- [x] `--yes` / `-y` は全項目を既定値で書き出す。非 TTY 実行はプロンプトを出さずに
+  既定値へ倒し、`--interactive` / `-i` でのみウィザードを強制する（CI やインストール
+  スクリプトから呼ばれて stdin を待って固まるのが最悪の失敗モード）
+- [x] 選択はすべて `SetupOptions::args()` を通って起動引数になる。ウィザードの分岐と
+  生成される引数列の対応をテストで固定し、選択肢を足したときの取りこぼしを防ぐ
+
+### Phase 24 — 組み込み Read/Grep/Glob の矯正フック v4.1
+
+MCP サーバーはツールを提供できるが、エージェントが組み込みの Read/Grep/Glob を
+選ぶことは止められない。ツールを 87% 削る製品を入れても、丸読みの経路が隣に開いて
+いれば削減は起きない。Claude Code の PreToolUse フックはこの穴を塞げる唯一の口。
+
+- [x] `t0k3n hook` を追加。stdin のフック JSON を読み、`deny` 判定のみを stdout に
+  返す。`Grep` / `Glob` は常に deny し、`search_file` / `semantic_search` /
+  `read_symbol_usages` / `read_directory_tree` へ案内する
+- [x] `Read` は三条件が揃ったときだけ deny: t0k3n が担当する拡張子であること、
+  `offset` / `limit` の指定が無いこと（範囲指定は既に部分読み）、そして N 行超
+  （既定 200、`--max-lines` / `T0K3N_HOOK_MAX_LINES`）であること。小さいファイルは
+  outline→抽出より丸読みの方が安く、そこで deny すると往復だけ増える
+- [x] 拡張子ごとに案内先を変える（`.rs` 等 → `read_code`、`.md` →
+  `read_markdown_toc`→`section`、`.json`/`.yaml`/`.toml` → `read_json_yaml_keys`→
+  `value`、`.ipynb` → `read_notebook`、`.css` → `read_css`、`.log`/`.txt` →
+  `read_log_tail`、その他 → `read_file_outline`）。画像・PDF・zip は組み込み Read の
+  仕事なので対象外
+- [x] 落とし穴: フックが失敗するとセッションが止まる。JSON がパースできない・パスが
+  読めない・拡張子が不明のいずれも、判断せず素通りさせる（黙って許可する側に倒す）
+- [x] `setup` が `.claude/settings.json` に配線する。推奨設定は
+  `permissions.deny` に `Grep` / `Glob`、`hooks.PreToolUse` に matcher `Read` の
+  フックエントリ。フックのみの構成も選べる。既存 JSON はマージし、t0k3n 由来の
+  エントリは重複追加せず置換する
+
+### Phase 25 — ロスターとケイパビリティの整合 v4.1.1
+
+v4.1.0 の動作確認中に、実運用の設定
+（`--tools core --no-dashboard --enable-writes --enable-diagnostics`）で
+書き込みツールが 1 つも登録されていないことに気づいたのが発端。フラグは受理され、
+`debug_info` も `writes_enabled: true` と答え、しかしツールは無い。
+
+- [x] **ケイパビリティ opt-in がロスターに優先する**。`roster_for()` を追加し、
+  `--enable-writes` は write カテゴリを、`--enable-diagnostics` は
+  `read_type_diagnostics` を、ロスターが外していても登録し直す。`core` は
+  `file,git,text,debug` で write を含まないため、従来 `--tools core --enable-writes`
+  は 31 ツールのままだった（31 → 45）。明示的に有効化したフラグが黙って
+  打ち消される方が、ロスターが少し広がるより悪い驚きである
+  - opt-out の `run_command`（`cmd` カテゴリ）は対象外とした。`--disable-commands`
+    を渡さないことは意図の表明ではなく、これを戻すと絞ったロスターが全部黙って広がる
+- [x] **`--list-tools` が実際の起動構成を答える**。従来は宣言カタログ 84 件を常に
+  全表示し、31 ツールで起動する予定のセッションにも 84 と答えていた。各行に除外理由
+  （`not in --tools core` / `opt-in — needs --enable-writes` /
+  `off — --disable-commands` / ビルド不在）を注記し、ヘッダを
+  「84 tools declared, N served with these flags」に変更
+  - フラグ解析を `--list-tools` の分岐より前に移動。判定は `tool_exclusion_reason()`
+    に集約し、`T0k3nServer::new` とは `roster_for()` を共有する
+  - `list_tools_agrees_with_the_router` で 4 通りのフラグ構成について「一覧が約束する
+    集合 == ルーターが登録する集合」を検証する。ここのズレは無症状で、
+    もっともらしい嘘の一覧が動き続ける
+  - `tool_availability()` はフラグを見ない旧版のため削除し、`debug_info` の
+    `compiled_out_tools` は `unavailable_tools()` を呼ぶ形へ整理
+- [x] README（英日）・`--help`・本ドキュメントを更新。テスト 225 件緑・
+  clippy 警告 0（既定ビルド / `--no-default-features` 両方）
+
 ---
 
 ## 6. 決定事項
