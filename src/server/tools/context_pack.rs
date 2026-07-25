@@ -11,35 +11,75 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::security::{rel_display, safe_path, scoped_root};
 use super::code::{ReadCodeSkeletonParams, read_code_skeleton};
 use super::fs::estimate_tokens;
+use crate::security::{rel_display, safe_path, scoped_root};
 
 const DEFAULT_BUDGET: usize = 5000;
 const DEFAULT_MAX_FILES: usize = 8;
 const MAX_FILE_BYTES: u64 = 1024 * 1024;
 
 const CODE_EXTENSIONS: &[&str] = &[
-    "rs", "py", "js", "jsx", "ts", "tsx", "go",
-    "cpp", "cc", "cxx", "hpp", "hh", "h", "c", "java", "kt", "rb",
-    "cs", "php", "swift", "lua",
+    "rs", "py", "js", "jsx", "ts", "tsx", "go", "cpp", "cc", "cxx", "hpp", "hh", "h", "c", "java",
+    "kt", "rb", "cs", "php", "swift", "lua",
 ];
 
 const STOPWORDS: &[&str] = &[
-    "the", "and", "for", "with", "this", "that", "from", "into", "when",
-    "should", "would", "could", "have", "has", "are", "was", "were", "not",
-    "fix", "add", "implement", "make", "update", "change", "refactor",
-    "function", "method", "file", "code", "bug", "error", "issue", "where",
-    "how", "why", "what", "all", "any", "new", "old", "use", "using",
+    "the",
+    "and",
+    "for",
+    "with",
+    "this",
+    "that",
+    "from",
+    "into",
+    "when",
+    "should",
+    "would",
+    "could",
+    "have",
+    "has",
+    "are",
+    "was",
+    "were",
+    "not",
+    "fix",
+    "add",
+    "implement",
+    "make",
+    "update",
+    "change",
+    "refactor",
+    "function",
+    "method",
+    "file",
+    "code",
+    "bug",
+    "error",
+    "issue",
+    "where",
+    "how",
+    "why",
+    "what",
+    "all",
+    "any",
+    "new",
+    "old",
+    "use",
+    "using",
 ];
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadContextPackParams {
-    #[schemars(description = "Task description. English code-related keywords work best (identifiers, file names, concepts).")]
+    #[schemars(
+        description = "Task description. English code-related keywords work best (identifiers, file names, concepts)."
+    )]
     pub query: String,
     #[schemars(description = "Token budget for the pack (default: 5000)")]
     pub budget: Option<usize>,
-    #[schemars(description = "Restrict to this directory (root-relative). Omit for whole workspace.")]
+    #[schemars(
+        description = "Restrict to this directory (root-relative). Omit for whole workspace."
+    )]
     pub path: Option<String>,
     #[schemars(description = "Max files to consider for the pack (default: 8)")]
     pub max_files: Option<usize>,
@@ -109,12 +149,17 @@ fn score_text(text_lower: &str, keywords: &[String], per_kw_cap: usize) -> usize
         .sum()
 }
 
-pub fn read_context_pack(root: &Path, params: ReadContextPackParams) -> anyhow::Result<ReadContextPackResult> {
+pub fn read_context_pack(
+    root: &Path,
+    params: ReadContextPackParams,
+) -> anyhow::Result<ReadContextPackResult> {
     let budget = params.budget.unwrap_or(DEFAULT_BUDGET).max(500);
     let max_files = params.max_files.unwrap_or(DEFAULT_MAX_FILES).clamp(1, 30);
     let keywords = extract_keywords(&params.query);
     if keywords.is_empty() {
-        anyhow::bail!("no usable keywords in query — include identifiers, file names or concepts (min 3 chars)");
+        anyhow::bail!(
+            "no usable keywords in query — include identifiers, file names or concepts (min 3 chars)"
+        );
     }
 
     let scope = scoped_root(root, params.path.as_deref())?;
@@ -137,7 +182,11 @@ pub fn read_context_pack(root: &Path, params: ReadContextPackParams) -> anyhow::
         if !CODE_EXTENSIONS.contains(&ext) {
             continue;
         }
-        if entry.metadata().map(|m| m.len() > MAX_FILE_BYTES).unwrap_or(true) {
+        if entry
+            .metadata()
+            .map(|m| m.len() > MAX_FILE_BYTES)
+            .unwrap_or(true)
+        {
             continue;
         }
         let rel = rel_display(root, p);
@@ -157,10 +206,20 @@ pub fn read_context_pack(root: &Path, params: ReadContextPackParams) -> anyhow::
     let mut files = Vec::new();
     let mut symbols: Vec<PackSymbol> = Vec::new();
     for (rel, score) in &scored_files {
-        let Ok(sk) = read_code_skeleton(root, ReadCodeSkeletonParams { path: rel.clone(), include_blocks: Some(false) }) else {
+        let Ok(sk) = read_code_skeleton(
+            root,
+            ReadCodeSkeletonParams {
+                path: rel.clone(),
+                include_blocks: Some(false),
+            },
+        ) else {
             continue;
         };
-        files.push(PackFile { path: rel.clone(), score: *score, language: sk.language });
+        files.push(PackFile {
+            path: rel.clone(),
+            score: *score,
+            language: sk.language,
+        });
         for item in sk.skeleton {
             let name_score = score_text(&item.name.to_lowercase(), &keywords, 1) * 10;
             let sig_score = score_text(&item.signature.to_lowercase(), &keywords, 3) * 3;
@@ -185,13 +244,19 @@ pub fn read_context_pack(root: &Path, params: ReadContextPackParams) -> anyhow::
     let mut bodies = Vec::new();
     let mut omitted = 0usize;
     for sym in &symbols {
-        let Ok(abs) = safe_path(root, &sym.path) else { continue };
-        let Ok(content) = std::fs::read_to_string(&abs) else { continue };
+        let Ok(abs) = safe_path(root, &sym.path) else {
+            continue;
+        };
+        let Ok(content) = std::fs::read_to_string(&abs) else {
+            continue;
+        };
         let lines: Vec<&str> = content.lines().collect();
         let Some((start, end)) = sym.id.rsplit_once(':').and_then(|(_, r)| {
             let (s, e) = r.split_once('-')?;
             Some((s.parse::<usize>().ok()?, e.parse::<usize>().ok()?))
-        }) else { continue };
+        }) else {
+            continue;
+        };
         if start == 0 || end > lines.len() {
             continue;
         }
@@ -202,7 +267,12 @@ pub fn read_context_pack(root: &Path, params: ReadContextPackParams) -> anyhow::
             continue;
         }
         used += cost;
-        bodies.push(PackBody { path: sym.path.clone(), id: sym.id.clone(), name: sym.name.clone(), content: body });
+        bodies.push(PackBody {
+            path: sym.path.clone(),
+            id: sym.id.clone(),
+            name: sym.name.clone(),
+            content: body,
+        });
     }
 
     Ok(ReadContextPackResult {
@@ -238,28 +308,42 @@ mod tests {
     #[test]
     fn relevant_file_and_symbol_ranked_first() {
         let dir = workspace();
-        let r = read_context_pack(dir.path(), ReadContextPackParams {
-            query: "fix the login password validation".into(),
-            budget: None,
-            path: None,
-            max_files: None,
-        })
+        let r = read_context_pack(
+            dir.path(),
+            ReadContextPackParams {
+                query: "fix the login password validation".into(),
+                budget: None,
+                path: None,
+                max_files: None,
+            },
+        )
         .unwrap();
         assert_eq!(r.files[0].path, "auth.rs");
-        assert!(r.symbols.iter().any(|s| s.name.contains("validate_password")));
+        assert!(
+            r.symbols
+                .iter()
+                .any(|s| s.name.contains("validate_password"))
+        );
         assert!(r.bodies.iter().any(|b| b.content.contains("is_empty")));
-        assert!(!r.bodies.iter().any(|b| b.content.contains("charge_invoice")));
+        assert!(
+            !r.bodies
+                .iter()
+                .any(|b| b.content.contains("charge_invoice"))
+        );
     }
 
     #[test]
     fn budget_omits_bodies() {
         let dir = workspace();
-        let r = read_context_pack(dir.path(), ReadContextPackParams {
-            query: "login password validation".into(),
-            budget: Some(500), // floor; ranking+signatures may already exceed body room
-            path: None,
-            max_files: None,
-        })
+        let r = read_context_pack(
+            dir.path(),
+            ReadContextPackParams {
+                query: "login password validation".into(),
+                budget: Some(500), // floor; ranking+signatures may already exceed body room
+                path: None,
+                max_files: None,
+            },
+        )
         .unwrap();
         assert!(r.token_count <= 500 || r.bodies.is_empty());
     }
@@ -267,12 +351,17 @@ mod tests {
     #[test]
     fn empty_query_rejected() {
         let dir = workspace();
-        assert!(read_context_pack(dir.path(), ReadContextPackParams {
-            query: "fix the bug".into(), // all stopwords
-            budget: None,
-            path: None,
-            max_files: None,
-        })
-        .is_err());
+        assert!(
+            read_context_pack(
+                dir.path(),
+                ReadContextPackParams {
+                    query: "fix the bug".into(), // all stopwords
+                    budget: None,
+                    path: None,
+                    max_files: None,
+                }
+            )
+            .is_err()
+        );
     }
 }

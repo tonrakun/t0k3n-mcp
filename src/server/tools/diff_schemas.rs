@@ -10,9 +10,13 @@ use crate::security::safe_path;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DiffSchemasParams {
-    #[schemars(description = "Root-relative path to the schema file (OpenAPI .yaml/.json, Prisma .prisma, SQL .sql, TypeScript .ts/.d.ts)")]
+    #[schemars(
+        description = "Root-relative path to the schema file (OpenAPI .yaml/.json, Prisma .prisma, SQL .sql, TypeScript .ts/.d.ts)"
+    )]
     pub path: String,
-    #[schemars(description = "Git ref for the 'before' state (default: HEAD~1). Examples: HEAD~1, main, abc1234")]
+    #[schemars(
+        description = "Git ref for the 'before' state (default: HEAD~1). Examples: HEAD~1, main, abc1234"
+    )]
     pub before_ref: Option<String>,
     #[schemars(description = "Git ref for the 'after' state (default: HEAD = working tree)")]
     pub after_ref: Option<String>,
@@ -122,7 +126,11 @@ fn detect_schema_type(path: &str) -> String {
 fn diff_openapi(
     before: &str,
     after: &str,
-) -> (Vec<SchemaDiffEntry>, Vec<SchemaDiffEntry>, Vec<SchemaDiffEntry>) {
+) -> (
+    Vec<SchemaDiffEntry>,
+    Vec<SchemaDiffEntry>,
+    Vec<SchemaDiffEntry>,
+) {
     let before_endpoints = parse_openapi_endpoints(before);
     let after_endpoints = parse_openapi_endpoints(after);
 
@@ -168,7 +176,9 @@ fn diff_openapi(
 
 fn parse_openapi_endpoints(content: &str) -> HashMap<String, String> {
     let mut endpoints: HashMap<String, String> = HashMap::new();
-    let methods = ["get:", "post:", "put:", "patch:", "delete:", "head:", "options:"];
+    let methods = [
+        "get:", "post:", "put:", "patch:", "delete:", "head:", "options:",
+    ];
     let mut current_path: Option<String> = None;
 
     for line in content.lines() {
@@ -196,7 +206,11 @@ fn diff_db_schema(
     before: &str,
     after: &str,
     schema_type: &str,
-) -> (Vec<SchemaDiffEntry>, Vec<SchemaDiffEntry>, Vec<SchemaDiffEntry>) {
+) -> (
+    Vec<SchemaDiffEntry>,
+    Vec<SchemaDiffEntry>,
+    Vec<SchemaDiffEntry>,
+) {
     let before_tables = parse_db_tables(before, schema_type);
     let after_tables = parse_db_tables(after, schema_type);
 
@@ -270,31 +284,51 @@ fn parse_db_tables(content: &str, schema_type: &str) -> HashMap<String, Vec<Stri
             } else if trimmed == "}" {
                 current = None;
             } else if let Some(ref name) = current
-                && !trimmed.is_empty() && !trimmed.starts_with("//") && !trimmed.starts_with("@@") {
-                    let field_name = trimmed.split_whitespace().next().unwrap_or("").to_string();
-                    if !field_name.is_empty() {
-                        tables.entry(name.clone()).or_default().push(field_name);
-                    }
+                && !trimmed.is_empty()
+                && !trimmed.starts_with("//")
+                && !trimmed.starts_with("@@")
+            {
+                let field_name = trimmed.split_whitespace().next().unwrap_or("").to_string();
+                if !field_name.is_empty() {
+                    tables.entry(name.clone()).or_default().push(field_name);
                 }
+            }
         } else {
             // SQL
             let upper = trimmed.to_uppercase();
             if upper.starts_with("CREATE TABLE") {
                 let parts: Vec<&str> = trimmed.split_whitespace().collect();
                 if let Some(name) = parts.get(2) {
-                    let name = name.trim_matches('(').trim_matches('`').trim_matches('"').to_string();
+                    let name = name
+                        .trim_matches('(')
+                        .trim_matches('`')
+                        .trim_matches('"')
+                        .to_string();
                     current = Some(name.clone());
                     tables.insert(name, Vec::new());
                 }
             } else if trimmed.starts_with(");") || trimmed == ");" {
                 current = None;
             } else if let Some(ref name) = current
-                && !trimmed.is_empty() && !trimmed.starts_with("--") {
-                    let col = trimmed.split_whitespace().next().unwrap_or("").trim_matches('`').trim_matches('"').to_string();
-                    if !col.is_empty() && !col.to_uppercase().starts_with("PRIMARY") && !col.to_uppercase().starts_with("UNIQUE") && !col.to_uppercase().starts_with("INDEX") && !col.to_uppercase().starts_with("KEY") {
-                        tables.entry(name.clone()).or_default().push(col);
-                    }
+                && !trimmed.is_empty()
+                && !trimmed.starts_with("--")
+            {
+                let col = trimmed
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .trim_matches('`')
+                    .trim_matches('"')
+                    .to_string();
+                if !col.is_empty()
+                    && !col.to_uppercase().starts_with("PRIMARY")
+                    && !col.to_uppercase().starts_with("UNIQUE")
+                    && !col.to_uppercase().starts_with("INDEX")
+                    && !col.to_uppercase().starts_with("KEY")
+                {
+                    tables.entry(name.clone()).or_default().push(col);
                 }
+            }
         }
     }
     tables
@@ -305,7 +339,11 @@ fn parse_db_tables(content: &str, schema_type: &str) -> HashMap<String, Vec<Stri
 fn diff_typescript(
     before: &str,
     after: &str,
-) -> (Vec<SchemaDiffEntry>, Vec<SchemaDiffEntry>, Vec<SchemaDiffEntry>) {
+) -> (
+    Vec<SchemaDiffEntry>,
+    Vec<SchemaDiffEntry>,
+    Vec<SchemaDiffEntry>,
+) {
     let before_types = parse_ts_exports(before);
     let after_types = parse_ts_exports(after);
 
@@ -352,12 +390,25 @@ fn parse_ts_exports(content: &str) -> HashMap<String, String> {
     let mut types: HashMap<String, String> = HashMap::new();
     for line in content.lines() {
         let t = line.trim();
-        if t.starts_with("export interface ") || t.starts_with("export abstract class ") || t.starts_with("export class ") || t.starts_with("export type ") || t.starts_with("export enum ") || t.starts_with("export function ") || t.starts_with("export const ") || t.starts_with("export async function ") {
+        if t.starts_with("export interface ")
+            || t.starts_with("export abstract class ")
+            || t.starts_with("export class ")
+            || t.starts_with("export type ")
+            || t.starts_with("export enum ")
+            || t.starts_with("export function ")
+            || t.starts_with("export const ")
+            || t.starts_with("export async function ")
+        {
             let parts: Vec<&str> = t.splitn(4, ' ').collect();
             // "export" "kind" "name" ...
             if parts.len() >= 3 {
                 let kind = parts[1].to_string();
-                let name = parts[2].trim_end_matches('{').trim_end_matches('(').trim_end_matches('=').trim().to_string();
+                let name = parts[2]
+                    .trim_end_matches('{')
+                    .trim_end_matches('(')
+                    .trim_end_matches('=')
+                    .trim()
+                    .to_string();
                 if !name.is_empty() {
                     types.insert(name, kind);
                 }
@@ -372,7 +423,11 @@ fn parse_ts_exports(content: &str) -> HashMap<String, String> {
 fn diff_generic_lines(
     before: &str,
     after: &str,
-) -> (Vec<SchemaDiffEntry>, Vec<SchemaDiffEntry>, Vec<SchemaDiffEntry>) {
+) -> (
+    Vec<SchemaDiffEntry>,
+    Vec<SchemaDiffEntry>,
+    Vec<SchemaDiffEntry>,
+) {
     let before_lines: HashSet<&str> = before.lines().collect();
     let after_lines: HashSet<&str> = after.lines().collect();
 

@@ -19,11 +19,17 @@ use crate::security::{rel_display, safe_path};
 pub struct MoveSymbolParams {
     #[schemars(description = "Root-relative path of the source file")]
     pub src_path: String,
-    #[schemars(description = "Skeleton ID of the symbol to move (from read_code_skeleton on src_path)")]
+    #[schemars(
+        description = "Skeleton ID of the symbol to move (from read_code_skeleton on src_path)"
+    )]
     pub id: String,
-    #[schemars(description = "Root-relative path of the destination file (created if it does not exist)")]
+    #[schemars(
+        description = "Root-relative path of the destination file (created if it does not exist)"
+    )]
     pub dest_path: String,
-    #[schemars(description = "Symbol name: guards against stale line numbers and enables a reference-impact warning. Recommended.")]
+    #[schemars(
+        description = "Symbol name: guards against stale line numbers and enables a reference-impact warning. Recommended."
+    )]
     pub symbol_name: Option<String>,
     #[schemars(description = "true = return the would-be diffs without writing (default false)")]
     pub dry_run: Option<bool>,
@@ -56,7 +62,9 @@ pub fn move_symbol(root: &Path, params: MoveSymbolParams) -> anyhow::Result<Move
     if end > lines.len() {
         anyhow::bail!(
             "id range {}-{} exceeds file length {} — skeleton is stale, re-run read_code_skeleton",
-            start, end, lines.len()
+            start,
+            end,
+            lines.len()
         );
     }
 
@@ -66,7 +74,9 @@ pub fn move_symbol(root: &Path, params: MoveSymbolParams) -> anyhow::Result<Move
     {
         anyhow::bail!(
             "symbol_name '{}' not found in lines {}-{} — skeleton is stale, re-run read_code_skeleton",
-            name, start, end
+            name,
+            start,
+            end
         );
     }
     let symbol_text = symbol_lines.join("\n");
@@ -114,7 +124,10 @@ pub fn move_symbol(root: &Path, params: MoveSymbolParams) -> anyhow::Result<Move
     if let Some(name) = &params.symbol_name {
         if let Ok(usages) = read_symbol_usages(
             root,
-            ReadSymbolUsagesParams { symbol: name.clone(), path: None },
+            ReadSymbolUsagesParams {
+                symbol: name.clone(),
+                path: None,
+            },
         ) {
             let src_rel = rel_display(root, &src);
             let dest_rel = rel_display(root, &dest);

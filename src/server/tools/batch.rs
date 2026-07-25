@@ -14,7 +14,9 @@ use super::outline::{ReadFileOutlineParams, read_file_outline};
 pub struct BatchReadItem {
     #[schemars(description = "Client-assigned ID to correlate results")]
     pub id: String,
-    #[schemars(description = "Operation: code_skeleton | code_body | markdown_section | json_value | file_outline")]
+    #[schemars(
+        description = "Operation: code_skeleton | code_body | markdown_section | json_value | file_outline"
+    )]
     pub operation: String,
     #[schemars(description = "Root-relative file path")]
     pub path: String,
@@ -32,7 +34,9 @@ pub struct BatchReadItem {
 pub struct BatchReadParams {
     #[schemars(description = "List of read operations to execute")]
     pub reads: Vec<BatchReadItem>,
-    #[schemars(description = "When true, near-identical results (e.g. migrations, fixtures) are returned as one full template plus per-file unified diffs against it, instead of repeating similar content. Default false.")]
+    #[schemars(
+        description = "When true, near-identical results (e.g. migrations, fixtures) are returned as one full template plus per-file unified diffs against it, instead of repeating similar content. Default false."
+    )]
     pub factor: Option<bool>,
 }
 
@@ -82,7 +86,11 @@ pub fn batch_read(root: &Path, params: BatchReadParams) -> anyhow::Result<BatchR
     };
 
     let total_token_count = results.iter().map(|r| r.token_count).sum();
-    Ok(BatchReadResult { results, factored, total_token_count })
+    Ok(BatchReadResult {
+        results,
+        factored,
+        total_token_count,
+    })
 }
 
 /// Minimum line-similarity (0.0–1.0) for two results to be factored together.
@@ -171,10 +179,13 @@ fn factorable_text(data: &Value) -> Option<String> {
 fn execute_item(root: &Path, item: &BatchReadItem) -> anyhow::Result<(Value, usize)> {
     match item.operation.as_str() {
         "code_skeleton" => {
-            let result = read_code_skeleton(root, ReadCodeSkeletonParams {
-                path: item.path.clone(),
-                include_blocks: item.include_blocks,
-            })?;
+            let result = read_code_skeleton(
+                root,
+                ReadCodeSkeletonParams {
+                    path: item.path.clone(),
+                    include_blocks: item.include_blocks,
+                },
+            )?;
             let data = serde_json::json!({
                 "language": result.language,
                 "skeleton": result.skeleton,
@@ -184,38 +195,50 @@ fn execute_item(root: &Path, item: &BatchReadItem) -> anyhow::Result<(Value, usi
         "code_body" => {
             let ids = item.ids.clone().unwrap_or_default();
             anyhow::ensure!(!ids.is_empty(), "code_body requires ids");
-            let result = read_code_body(root, ReadCodeBodyParams {
-                path: item.path.clone(),
-                ids,
-                zoom: None,
-            })?;
+            let result = read_code_body(
+                root,
+                ReadCodeBodyParams {
+                    path: item.path.clone(),
+                    ids,
+                    zoom: None,
+                },
+            )?;
             let data = serde_json::to_value(&result.items)?;
             Ok((data, result.token_count))
         }
         "markdown_section" => {
             let anchors = item.anchors.clone().unwrap_or_default();
             anyhow::ensure!(!anchors.is_empty(), "markdown_section requires anchors");
-            let result = read_markdown_section(root, ReadMarkdownSectionParams {
-                path: item.path.clone(),
-                anchors,
-            })?;
+            let result = read_markdown_section(
+                root,
+                ReadMarkdownSectionParams {
+                    path: item.path.clone(),
+                    anchors,
+                },
+            )?;
             let data = serde_json::to_value(&result.sections)?;
             Ok((data, result.token_count))
         }
         "json_value" => {
             let key_path = item.key_path.clone().unwrap_or_default();
             anyhow::ensure!(!key_path.is_empty(), "json_value requires key_path");
-            let result = read_json_yaml_value(root, ReadJsonYamlValueParams {
-                path: item.path.clone(),
-                key_path,
-            })?;
+            let result = read_json_yaml_value(
+                root,
+                ReadJsonYamlValueParams {
+                    path: item.path.clone(),
+                    key_path,
+                },
+            )?;
             let tc = estimate_tokens(&result.value.to_string());
             Ok((result.value, tc))
         }
         "file_outline" => {
-            let result = read_file_outline(root, ReadFileOutlineParams {
-                path: item.path.clone(),
-            })?;
+            let result = read_file_outline(
+                root,
+                ReadFileOutlineParams {
+                    path: item.path.clone(),
+                },
+            )?;
             let data = serde_json::to_value(&result)?;
             let tc = estimate_tokens(&data.to_string());
             Ok((data, tc))
@@ -261,7 +284,10 @@ mod tests {
     #[test]
     fn leaves_dissimilar_results_untouched() {
         let mut results = vec![
-            item("a", "completely unrelated alpha content here\nline two\nline three"),
+            item(
+                "a",
+                "completely unrelated alpha content here\nline two\nline three",
+            ),
             item("b", "totally different beta material\nnothing alike\nzzz"),
         ];
         let n = factor_results(&mut results);
@@ -273,7 +299,10 @@ mod tests {
     fn factorable_text_extracts_content_and_scalars() {
         let arr = serde_json::json!([{ "content": "a\nb" }, { "content": "c" }]);
         assert_eq!(factorable_text(&arr).as_deref(), Some("a\nb\nc\n"));
-        assert_eq!(factorable_text(&serde_json::json!("scalar")).as_deref(), Some("scalar"));
+        assert_eq!(
+            factorable_text(&serde_json::json!("scalar")).as_deref(),
+            Some("scalar")
+        );
         assert_eq!(factorable_text(&Value::Null), None);
     }
 }

@@ -103,9 +103,7 @@ pub fn check_budget(params: CheckBudgetParams) -> CheckBudgetResult {
     let (strategy, recommendations) = if used_percent < 50.0 {
         (
             "normal".to_string(),
-            vec![
-                "Budget is healthy. Normal reading patterns are fine.".to_string(),
-            ],
+            vec!["Budget is healthy. Normal reading patterns are fine.".to_string()],
         )
     } else if used_percent < 75.0 {
         (
@@ -164,10 +162,7 @@ pub fn summarize_conversation(params: SummarizeConversationParams) -> SummarizeC
     // Simple extractive summarization: take first N tokens worth of content.
     // Slice on char boundaries — byte slicing panics on multibyte (CJK) text.
     let target_chars = max_tokens * 4;
-    let cut = params.text
-        .char_indices()
-        .nth(target_chars)
-        .map(|(i, _)| i);
+    let cut = params.text.char_indices().nth(target_chars).map(|(i, _)| i);
     let summary = match cut {
         None => params.text.clone(),
         Some(cut) => {
@@ -177,11 +172,17 @@ pub fn summarize_conversation(params: SummarizeConversationParams) -> SummarizeC
                 .rfind(['.', '!', '?', '。', '！', '？'])
                 .map(|i| i + truncated[i..].chars().next().map_or(0, char::len_utf8))
                 .unwrap_or(cut);
-            format!("{}...\n\n[Conversation truncated to fit token budget]", &params.text[..end])
+            format!(
+                "{}...\n\n[Conversation truncated to fit token budget]",
+                &params.text[..end]
+            )
         }
     };
     let token_count = estimate_tokens(&summary);
-    SummarizeConversationResult { summary, token_count }
+    SummarizeConversationResult {
+        summary,
+        token_count,
+    }
 }
 
 #[cfg(test)]
@@ -211,7 +212,9 @@ mod tests {
 
     #[test]
     fn count_tokens_counts_chars_not_bytes() {
-        let result = count_tokens(CountTokensParams { text: "日本語".to_string() });
+        let result = count_tokens(CountTokensParams {
+            text: "日本語".to_string(),
+        });
         assert_eq!(result.char_count, 3);
     }
 }

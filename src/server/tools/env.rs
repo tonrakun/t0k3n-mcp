@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::security::safe_path;
 use super::fs::estimate_tokens;
+use crate::security::safe_path;
 
 const ENV_TEMPLATE_NAMES: &[&str] = &[
     ".env.example",
@@ -16,7 +16,9 @@ const ENV_TEMPLATE_NAMES: &[&str] = &[
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadEnvSchemaParams {
-    #[schemars(description = "Root-relative path to a specific .env* or docker-compose.yml file. Omit to auto-scan workspace root for .env.example / .env.sample / .env.template / .env.dist and docker-compose.yml.")]
+    #[schemars(
+        description = "Root-relative path to a specific .env* or docker-compose.yml file. Omit to auto-scan workspace root for .env.example / .env.sample / .env.template / .env.dist and docker-compose.yml."
+    )]
     pub path: Option<String>,
 }
 
@@ -36,7 +38,10 @@ pub struct ReadEnvSchemaResult {
     pub token_count: usize,
 }
 
-pub fn read_env_schema(root: &Path, params: ReadEnvSchemaParams) -> anyhow::Result<ReadEnvSchemaResult> {
+pub fn read_env_schema(
+    root: &Path,
+    params: ReadEnvSchemaParams,
+) -> anyhow::Result<ReadEnvSchemaResult> {
     let mut all_vars: Vec<EnvVarEntry> = Vec::new();
     let mut sources: Vec<String> = Vec::new();
 
@@ -45,26 +50,43 @@ pub fn read_env_schema(root: &Path, params: ReadEnvSchemaParams) -> anyhow::Resu
         let fname = full.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if fname == "docker-compose.yml" || fname == "docker-compose.yaml" {
             let vars = parse_docker_compose(&full, p)?;
-            if !vars.is_empty() { sources.push(p.clone()); all_vars.extend(vars); }
+            if !vars.is_empty() {
+                sources.push(p.clone());
+                all_vars.extend(vars);
+            }
         } else {
             let content = std::fs::read_to_string(&full)
                 .map_err(|e| anyhow::anyhow!("Failed to read '{}': {}", p, e))?;
             let vars = parse_env_file(&content, p);
-            if !vars.is_empty() { sources.push(p.clone()); all_vars.extend(vars); }
+            if !vars.is_empty() {
+                sources.push(p.clone());
+                all_vars.extend(vars);
+            }
         }
     } else {
         for name in ENV_TEMPLATE_NAMES {
             let candidate = root.join(name);
-            if !candidate.exists() { continue; }
+            if !candidate.exists() {
+                continue;
+            }
             let content = std::fs::read_to_string(&candidate).unwrap_or_default();
             let vars = parse_env_file(&content, name);
-            if !vars.is_empty() { sources.push(name.to_string()); all_vars.extend(vars); }
+            if !vars.is_empty() {
+                sources.push(name.to_string());
+                all_vars.extend(vars);
+            }
         }
         for dc in &["docker-compose.yml", "docker-compose.yaml"] {
             let candidate = root.join(dc);
-            if !candidate.exists() { continue; }
+            if !candidate.exists() {
+                continue;
+            }
             if let Ok(vars) = parse_docker_compose(&candidate, dc)
-                && !vars.is_empty() { sources.push(dc.to_string()); all_vars.extend(vars); }
+                && !vars.is_empty()
+            {
+                sources.push(dc.to_string());
+                all_vars.extend(vars);
+            }
         }
     }
 
@@ -74,7 +96,11 @@ pub fn read_env_schema(root: &Path, params: ReadEnvSchemaParams) -> anyhow::Resu
 
     let json = serde_json::to_string(&all_vars).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadEnvSchemaResult { vars: all_vars, sources, token_count })
+    Ok(ReadEnvSchemaResult {
+        vars: all_vars,
+        sources,
+        token_count,
+    })
 }
 
 fn parse_env_file(content: &str, source: &str) -> Vec<EnvVarEntry> {
@@ -89,7 +115,9 @@ fn parse_env_file(content: &str, source: &str) -> Vec<EnvVarEntry> {
         }
         if let Some(comment) = trimmed.strip_prefix('#') {
             let c = comment.trim();
-            if !c.is_empty() { pending_desc.push(c.to_string()); }
+            if !c.is_empty() {
+                pending_desc.push(c.to_string());
+            }
             continue;
         }
         if let Some(eq_pos) = trimmed.find('=') {
@@ -107,7 +135,11 @@ fn parse_env_file(content: &str, source: &str) -> Vec<EnvVarEntry> {
             vars.push(EnvVarEntry {
                 key,
                 required: default_value.is_none(),
-                description: if pending_desc.is_empty() { None } else { Some(pending_desc.join(" ")) },
+                description: if pending_desc.is_empty() {
+                    None
+                } else {
+                    Some(pending_desc.join(" "))
+                },
                 default_value,
                 source: source.to_string(),
             });
@@ -149,10 +181,16 @@ fn parse_docker_compose(path: &Path, source: &str) -> anyhow::Result<Vec<EnvVarE
                 let default_value = if v.is_null() {
                     None
                 } else if let Some(s) = v.as_str() {
-                    if s.is_empty() { None } else { Some(s.to_string()) }
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s.to_string())
+                    }
                 } else if let Some(n) = v.as_i64() {
                     Some(n.to_string())
-                } else { v.as_bool().map(|b| b.to_string()) };
+                } else {
+                    v.as_bool().map(|b| b.to_string())
+                };
                 vars.push(EnvVarEntry {
                     key: key.to_string(),
                     required: default_value.is_none(),
@@ -170,7 +208,11 @@ fn push_kv(s: &str, source: &str, vars: &mut Vec<EnvVarEntry>) {
     if let Some(eq) = s.find('=') {
         let key = s[..eq].trim().to_string();
         let raw = s[eq + 1..].trim();
-        let default_value = if raw.is_empty() { None } else { Some(raw.to_string()) };
+        let default_value = if raw.is_empty() {
+            None
+        } else {
+            Some(raw.to_string())
+        };
         vars.push(EnvVarEntry {
             key,
             required: default_value.is_none(),

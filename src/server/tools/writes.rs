@@ -35,7 +35,9 @@ pub struct CreateFileParams {
     pub path: String,
     #[schemars(description = "Full file content to write")]
     pub content: String,
-    #[schemars(description = "Allow replacing an existing file (default false — refuses to overwrite)")]
+    #[schemars(
+        description = "Allow replacing an existing file (default false — refuses to overwrite)"
+    )]
     pub overwrite: Option<bool>,
     #[schemars(description = "true = report what would happen without writing (default false)")]
     pub dry_run: Option<bool>,
@@ -82,9 +84,13 @@ pub fn create_file(root: &Path, params: CreateFileParams) -> anyhow::Result<Crea
 pub struct DeleteSymbolParams {
     #[schemars(description = "Root-relative path to the code file")]
     pub path: String,
-    #[schemars(description = "Skeleton ID from read_code_skeleton (e.g. 'function:10-25'). Re-run read_code_skeleton after any other edit to the same file.")]
+    #[schemars(
+        description = "Skeleton ID from read_code_skeleton (e.g. 'function:10-25'). Re-run read_code_skeleton after any other edit to the same file."
+    )]
     pub id: String,
-    #[schemars(description = "Symbol name expected inside the deleted range. Strongly recommended: deletion is rejected if not found there, catching stale line numbers.")]
+    #[schemars(
+        description = "Symbol name expected inside the deleted range. Strongly recommended: deletion is rejected if not found there, catching stale line numbers."
+    )]
     pub expected_name: Option<String>,
     #[schemars(description = "true = return the would-be diff without writing (default false)")]
     pub dry_run: Option<bool>,
@@ -97,7 +103,10 @@ pub struct DeleteSymbolResult {
     pub written: bool,
 }
 
-pub fn delete_symbol(root: &Path, params: DeleteSymbolParams) -> anyhow::Result<DeleteSymbolResult> {
+pub fn delete_symbol(
+    root: &Path,
+    params: DeleteSymbolParams,
+) -> anyhow::Result<DeleteSymbolResult> {
     let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
 
@@ -111,7 +120,9 @@ pub fn delete_symbol(root: &Path, params: DeleteSymbolParams) -> anyhow::Result<
     if end > lines.len() {
         anyhow::bail!(
             "id range {}-{} exceeds file length {} — skeleton is stale, re-run read_code_skeleton",
-            start, end, lines.len()
+            start,
+            end,
+            lines.len()
         );
     }
 
@@ -121,7 +132,9 @@ pub fn delete_symbol(root: &Path, params: DeleteSymbolParams) -> anyhow::Result<
     {
         anyhow::bail!(
             "expected_name '{}' not found in lines {}-{} — skeleton is stale, re-run read_code_skeleton",
-            name, start, end
+            name,
+            start,
+            end
         );
     }
 
@@ -163,7 +176,9 @@ pub struct InsertSymbolParams {
     pub path: String,
     #[schemars(description = "Code to insert (a function, method, import, etc.)")]
     pub content: String,
-    #[schemars(description = "Where to insert: 'after_symbol' / 'before_symbol' (need anchor_id), 'after_imports', or 'end_of_file'")]
+    #[schemars(
+        description = "Where to insert: 'after_symbol' / 'before_symbol' (need anchor_id), 'after_imports', or 'end_of_file'"
+    )]
     pub mode: String,
     #[schemars(description = "Skeleton ID anchor for after_symbol / before_symbol modes")]
     pub anchor_id: Option<String>,
@@ -198,7 +213,10 @@ pub(crate) fn import_boundary(lines: &[&str]) -> usize {
     last
 }
 
-pub fn insert_symbol(root: &Path, params: InsertSymbolParams) -> anyhow::Result<InsertSymbolResult> {
+pub fn insert_symbol(
+    root: &Path,
+    params: InsertSymbolParams,
+) -> anyhow::Result<InsertSymbolResult> {
     let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
 
@@ -212,8 +230,8 @@ pub fn insert_symbol(root: &Path, params: InsertSymbolParams) -> anyhow::Result<
                 .anchor_id
                 .as_deref()
                 .ok_or_else(|| anyhow::anyhow!("mode 'after_symbol' requires anchor_id"))?;
-            let (_, _, end) = parse_id(id)
-                .ok_or_else(|| anyhow::anyhow!("invalid anchor_id '{id}'"))?;
+            let (_, _, end) =
+                parse_id(id).ok_or_else(|| anyhow::anyhow!("invalid anchor_id '{id}'"))?;
             end.min(lines.len())
         }
         "before_symbol" => {
@@ -221,8 +239,8 @@ pub fn insert_symbol(root: &Path, params: InsertSymbolParams) -> anyhow::Result<
                 .anchor_id
                 .as_deref()
                 .ok_or_else(|| anyhow::anyhow!("mode 'before_symbol' requires anchor_id"))?;
-            let (_, start, _) = parse_id(id)
-                .ok_or_else(|| anyhow::anyhow!("invalid anchor_id '{id}'"))?;
+            let (_, start, _) =
+                parse_id(id).ok_or_else(|| anyhow::anyhow!("invalid anchor_id '{id}'"))?;
             (start - 1).min(lines.len())
         }
         "after_imports" => import_boundary(&lines),
@@ -271,7 +289,9 @@ pub fn insert_symbol(root: &Path, params: InsertSymbolParams) -> anyhow::Result<
 pub struct FileEdit {
     #[schemars(description = "Root-relative path to the file to edit")]
     pub path: String,
-    #[schemars(description = "Exact text to find. Must match exactly once in the file (as edits so far leave it).")]
+    #[schemars(
+        description = "Exact text to find. Must match exactly once in the file (as edits so far leave it)."
+    )]
     pub find: String,
     #[schemars(description = "Replacement text")]
     pub replace: String,
@@ -279,9 +299,13 @@ pub struct FileEdit {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ApplyEditsParams {
-    #[schemars(description = "Edits to apply across one or more files, in order. Applied atomically: if any edit fails, nothing is written.")]
+    #[schemars(
+        description = "Edits to apply across one or more files, in order. Applied atomically: if any edit fails, nothing is written."
+    )]
     pub edits: Vec<FileEdit>,
-    #[schemars(description = "true = validate and report the changes without writing (default false)")]
+    #[schemars(
+        description = "true = validate and report the changes without writing (default false)"
+    )]
     pub dry_run: Option<bool>,
 }
 
@@ -399,10 +423,18 @@ mod tests {
         let dir = setup(&[("a.txt", "old")]);
         let err = create_file(
             dir.path(),
-            CreateFileParams { path: "a.txt".into(), content: "new".into(), overwrite: None, dry_run: None },
+            CreateFileParams {
+                path: "a.txt".into(),
+                content: "new".into(),
+                overwrite: None,
+                dry_run: None,
+            },
         );
         assert!(err.is_err());
-        assert_eq!(std::fs::read_to_string(dir.path().join("a.txt")).unwrap(), "old");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+            "old"
+        );
     }
 
     #[test]
@@ -410,11 +442,19 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let r = create_file(
             dir.path(),
-            CreateFileParams { path: "src/new/mod.rs".into(), content: "fn x() {}\n".into(), overwrite: None, dry_run: None },
+            CreateFileParams {
+                path: "src/new/mod.rs".into(),
+                content: "fn x() {}\n".into(),
+                overwrite: None,
+                dry_run: None,
+            },
         )
         .unwrap();
         assert!(r.created && r.written);
-        assert_eq!(std::fs::read_to_string(dir.path().join("src/new/mod.rs")).unwrap(), "fn x() {}\n");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("src/new/mod.rs")).unwrap(),
+            "fn x() {}\n"
+        );
     }
 
     #[test]
@@ -422,7 +462,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let r = create_file(
             dir.path(),
-            CreateFileParams { path: "a.txt".into(), content: "hi".into(), overwrite: None, dry_run: Some(true) },
+            CreateFileParams {
+                path: "a.txt".into(),
+                content: "hi".into(),
+                overwrite: None,
+                dry_run: Some(true),
+            },
         )
         .unwrap();
         assert!(!r.written);
@@ -431,10 +476,18 @@ mod tests {
 
     #[test]
     fn delete_symbol_removes_range_and_trailing_blank() {
-        let dir = setup(&[("a.rs", "fn keep() {}\n\nfn drop_me() {\n    x();\n}\n\nfn after() {}\n")]);
+        let dir = setup(&[(
+            "a.rs",
+            "fn keep() {}\n\nfn drop_me() {\n    x();\n}\n\nfn after() {}\n",
+        )]);
         let r = delete_symbol(
             dir.path(),
-            DeleteSymbolParams { path: "a.rs".into(), id: "function:3-5".into(), expected_name: Some("drop_me".into()), dry_run: None },
+            DeleteSymbolParams {
+                path: "a.rs".into(),
+                id: "function:3-5".into(),
+                expected_name: Some("drop_me".into()),
+                dry_run: None,
+            },
         )
         .unwrap();
         assert!(r.written);
@@ -449,7 +502,12 @@ mod tests {
         let dir = setup(&[("a.rs", "fn a() {}\n")]);
         let r = delete_symbol(
             dir.path(),
-            DeleteSymbolParams { path: "a.rs".into(), id: "function:1-1".into(), expected_name: Some("nonexistent".into()), dry_run: None },
+            DeleteSymbolParams {
+                path: "a.rs".into(),
+                id: "function:1-1".into(),
+                expected_name: Some("nonexistent".into()),
+                dry_run: None,
+            },
         );
         assert!(r.is_err());
     }
@@ -502,8 +560,16 @@ mod tests {
             dir.path(),
             ApplyEditsParams {
                 edits: vec![
-                    FileEdit { path: "a.rs".into(), find: "OLD".into(), replace: "NEW".into() },
-                    FileEdit { path: "b.rs".into(), find: "OLD".into(), replace: "NEW".into() },
+                    FileEdit {
+                        path: "a.rs".into(),
+                        find: "OLD".into(),
+                        replace: "NEW".into(),
+                    },
+                    FileEdit {
+                        path: "b.rs".into(),
+                        find: "OLD".into(),
+                        replace: "NEW".into(),
+                    },
                 ],
                 dry_run: None,
             },
@@ -511,8 +577,16 @@ mod tests {
         .unwrap();
         assert_eq!(r.files_changed, 2);
         assert_eq!(r.edits_applied, 2);
-        assert!(std::fs::read_to_string(dir.path().join("a.rs")).unwrap().contains("NEW"));
-        assert!(std::fs::read_to_string(dir.path().join("b.rs")).unwrap().contains("NEW"));
+        assert!(
+            std::fs::read_to_string(dir.path().join("a.rs"))
+                .unwrap()
+                .contains("NEW")
+        );
+        assert!(
+            std::fs::read_to_string(dir.path().join("b.rs"))
+                .unwrap()
+                .contains("NEW")
+        );
     }
 
     #[test]
@@ -522,15 +596,26 @@ mod tests {
             dir.path(),
             ApplyEditsParams {
                 edits: vec![
-                    FileEdit { path: "a.rs".into(), find: "OLD".into(), replace: "NEW".into() },
-                    FileEdit { path: "b.rs".into(), find: "MISSING".into(), replace: "X".into() },
+                    FileEdit {
+                        path: "a.rs".into(),
+                        find: "OLD".into(),
+                        replace: "NEW".into(),
+                    },
+                    FileEdit {
+                        path: "b.rs".into(),
+                        find: "MISSING".into(),
+                        replace: "X".into(),
+                    },
                 ],
                 dry_run: None,
             },
         );
         assert!(r.is_err());
         // a.rs must be untouched because b.rs's edit failed (atomic).
-        assert_eq!(std::fs::read_to_string(dir.path().join("a.rs")).unwrap(), "let x = OLD;\n");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.rs")).unwrap(),
+            "let x = OLD;\n"
+        );
     }
 
     #[test]
@@ -539,7 +624,11 @@ mod tests {
         let r = apply_edits(
             dir.path(),
             ApplyEditsParams {
-                edits: vec![FileEdit { path: "a.rs".into(), find: "x".into(), replace: "y".into() }],
+                edits: vec![FileEdit {
+                    path: "a.rs".into(),
+                    find: "x".into(),
+                    replace: "y".into(),
+                }],
                 dry_run: None,
             },
         );

@@ -28,8 +28,13 @@ const DIFF_WORTHWHILE_TENTHS: usize = 6;
 pub enum Delta {
     /// Send the full output (first read, untracked, or diff not worthwhile).
     Full,
-    Unchanged { full_tokens: usize },
-    Diff { diff: String, full_tokens: usize },
+    Unchanged {
+        full_tokens: usize,
+    },
+    Diff {
+        diff: String,
+        full_tokens: usize,
+    },
 }
 
 #[derive(Default)]
@@ -50,12 +55,17 @@ impl ReadLedger {
         let prev = self.entries.get(key);
         let result = match prev {
             Some(prev) if prev == rendered => {
-                return Delta::Unchanged { full_tokens: estimate_tokens(rendered) };
+                return Delta::Unchanged {
+                    full_tokens: estimate_tokens(rendered),
+                };
             }
             Some(prev) => {
                 let diff = unified_diff(prev, rendered);
                 if diff.len() * 10 <= rendered.len() * DIFF_WORTHWHILE_TENTHS {
-                    Delta::Diff { diff, full_tokens: estimate_tokens(rendered) }
+                    Delta::Diff {
+                        diff,
+                        full_tokens: estimate_tokens(rendered),
+                    }
                 } else {
                     Delta::Full
                 }
@@ -97,7 +107,9 @@ fn unified_diff(old: &str, new: &str) -> String {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DeltaResetParams {
-    #[schemars(description = "Substring filter on ledger keys (e.g. a file path). Omit to clear the entire ledger.")]
+    #[schemars(
+        description = "Substring filter on ledger keys (e.g. a file path). Omit to clear the entire ledger."
+    )]
     pub pattern: Option<String>,
 }
 
@@ -119,11 +131,17 @@ pub enum ContentDedup {
     /// Not seen (or invalidated) — send the full content; it has been recorded.
     Fresh,
     /// Identical content was already sent this session under `reference`.
-    AlreadySent { reference: String, full_tokens: usize },
+    AlreadySent {
+        reference: String,
+        full_tokens: usize,
+    },
     /// Identical content was recorded in a *previous* session (gen4 warm start).
     /// The content is NOT in the current context — the stub must say so and let
     /// the agent re-read if it needs the body.
-    UnchangedColdCache { reference: String, full_tokens: usize },
+    UnchangedColdCache {
+        reference: String,
+        full_tokens: usize,
+    },
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -219,11 +237,17 @@ impl ContentLedger {
             let range = id.rsplit_once(':').map(|(_, r)| r).unwrap_or(id);
             let reference = format!("{path}:{range}");
             return if e.hot {
-                ContentDedup::AlreadySent { reference, full_tokens: e.tokens }
+                ContentDedup::AlreadySent {
+                    reference,
+                    full_tokens: e.tokens,
+                }
             } else {
                 // Cold cross-session hit: content is NOT in context. Do not promote
                 // and do not send — the stub tells the agent to re-read if needed.
-                ContentDedup::UnchangedColdCache { reference, full_tokens: e.tokens }
+                ContentDedup::UnchangedColdCache {
+                    reference,
+                    full_tokens: e.tokens,
+                }
             };
         }
 
@@ -231,7 +255,15 @@ impl ContentLedger {
             self.entries.clear();
         }
         // We are sending the full content now, so the entry is hot (in context).
-        self.entries.insert(key, ContentEntry { mtime, hash, tokens, hot: true });
+        self.entries.insert(
+            key,
+            ContentEntry {
+                mtime,
+                hash,
+                tokens,
+                hot: true,
+            },
+        );
         self.save();
         ContentDedup::Fresh
     }
@@ -274,7 +306,10 @@ mod tests {
     fn first_read_is_full_repeat_is_unchanged() {
         let mut l = ReadLedger::new();
         assert!(matches!(l.check_and_update("k", "abc"), Delta::Full));
-        assert!(matches!(l.check_and_update("k", "abc"), Delta::Unchanged { .. }));
+        assert!(matches!(
+            l.check_and_update("k", "abc"),
+            Delta::Unchanged { .. }
+        ));
     }
 
     #[test]
@@ -291,14 +326,20 @@ mod tests {
             _ => panic!("expected diff"),
         }
         // ledger now holds the new content
-        assert!(matches!(l.check_and_update("k", &new), Delta::Unchanged { .. }));
+        assert!(matches!(
+            l.check_and_update("k", &new),
+            Delta::Unchanged { .. }
+        ));
     }
 
     #[test]
     fn total_rewrite_falls_back_to_full() {
         let mut l = ReadLedger::new();
         l.check_and_update("k", "aaa\nbbb\nccc");
-        assert!(matches!(l.check_and_update("k", "xxx\nyyy\nzzz"), Delta::Full));
+        assert!(matches!(
+            l.check_and_update("k", "xxx\nyyy\nzzz"),
+            Delta::Full
+        ));
     }
 
     #[test]
@@ -315,7 +356,10 @@ mod tests {
         let mut l = ContentLedger::default();
         let body = "fn f() {\n    work();\n}";
         // first send (e.g. from read_context_pack) records it
-        assert!(matches!(l.dedup("a.rs", "function:1-3", body, 100), ContentDedup::Fresh));
+        assert!(matches!(
+            l.dedup("a.rs", "function:1-3", body, 100),
+            ContentDedup::Fresh
+        ));
         // re-request (e.g. from read_code_body) with same mtime → stub
         match l.dedup("a.rs", "function:1-3", body, 100) {
             ContentDedup::AlreadySent { reference, .. } => assert_eq!(reference, "a.rs:1-3"),
@@ -327,16 +371,28 @@ mod tests {
     fn content_ledger_invalidates_on_mtime_change() {
         let mut l = ContentLedger::default();
         let body = "fn f() {}";
-        assert!(matches!(l.dedup("a.rs", "function:1-1", body, 100), ContentDedup::Fresh));
+        assert!(matches!(
+            l.dedup("a.rs", "function:1-1", body, 100),
+            ContentDedup::Fresh
+        ));
         // file edited (mtime changed) → no stale reference even if content matches
-        assert!(matches!(l.dedup("a.rs", "function:1-1", body, 200), ContentDedup::Fresh));
+        assert!(matches!(
+            l.dedup("a.rs", "function:1-1", body, 200),
+            ContentDedup::Fresh
+        ));
     }
 
     #[test]
     fn content_ledger_invalidates_on_content_change() {
         let mut l = ContentLedger::default();
-        assert!(matches!(l.dedup("a.rs", "function:1-1", "old", 100), ContentDedup::Fresh));
-        assert!(matches!(l.dedup("a.rs", "function:1-1", "new", 100), ContentDedup::Fresh));
+        assert!(matches!(
+            l.dedup("a.rs", "function:1-1", "old", 100),
+            ContentDedup::Fresh
+        ));
+        assert!(matches!(
+            l.dedup("a.rs", "function:1-1", "new", 100),
+            ContentDedup::Fresh
+        ));
     }
 
     #[test]

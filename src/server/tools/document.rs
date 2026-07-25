@@ -19,14 +19,21 @@ pub struct ConvertDocumentResult {
     pub token_count: usize,
 }
 
-pub fn convert_document(root: &Path, params: ConvertDocumentParams) -> anyhow::Result<ConvertDocumentResult> {
+pub fn convert_document(
+    root: &Path,
+    params: ConvertDocumentParams,
+) -> anyhow::Result<ConvertDocumentResult> {
     let path = if Path::new(&params.path).is_absolute() {
         Path::new(&params.path).to_path_buf()
     } else {
         root.join(&params.path)
     };
 
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
 
     let md = match ext.as_str() {
         "pdf" => convert_pdf(&path)?,
@@ -63,7 +70,11 @@ fn convert_pdf(path: &Path) -> anyhow::Result<String> {
             let trimmed = l.trim();
             if trimmed.is_empty() {
                 String::new()
-            } else if trimmed.len() < 60 && trimmed.chars().all(|c| c.is_uppercase() || c.is_whitespace()) {
+            } else if trimmed.len() < 60
+                && trimmed
+                    .chars()
+                    .all(|c| c.is_uppercase() || c.is_whitespace())
+            {
                 format!("## {}", trimmed)
             } else {
                 trimmed.to_string()
@@ -76,26 +87,40 @@ fn convert_pdf(path: &Path) -> anyhow::Result<String> {
 
 fn convert_docx(path: &Path) -> anyhow::Result<String> {
     let bytes = std::fs::read(path)?;
-    let docx = docx_rs::read_docx(&bytes)
-        .map_err(|e| anyhow::anyhow!("DOCX read failed: {:?}", e))?;
+    let docx =
+        docx_rs::read_docx(&bytes).map_err(|e| anyhow::anyhow!("DOCX read failed: {:?}", e))?;
 
     let mut md = String::new();
     for child in &docx.document.children {
         if let docx_rs::DocumentChild::Paragraph(para) = child {
-            let style = para.property.style.as_ref().map(|s| s.val.as_str()).unwrap_or("");
-            let text: String = para.children.iter().filter_map(|c| {
-                if let docx_rs::ParagraphChild::Run(run) = c {
-                    Some(run.children.iter().filter_map(|rc| {
-                        if let docx_rs::RunChild::Text(t) = rc {
-                            Some(t.text.clone())
-                        } else {
-                            None
-                        }
-                    }).collect::<String>())
-                } else {
-                    None
-                }
-            }).collect();
+            let style = para
+                .property
+                .style
+                .as_ref()
+                .map(|s| s.val.as_str())
+                .unwrap_or("");
+            let text: String = para
+                .children
+                .iter()
+                .filter_map(|c| {
+                    if let docx_rs::ParagraphChild::Run(run) = c {
+                        Some(
+                            run.children
+                                .iter()
+                                .filter_map(|rc| {
+                                    if let docx_rs::RunChild::Text(t) = rc {
+                                        Some(t.text.clone())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<String>(),
+                        )
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
             if text.trim().is_empty() {
                 md.push('\n');

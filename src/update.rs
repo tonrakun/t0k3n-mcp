@@ -45,20 +45,25 @@ async fn check_for_updates(dashboard: Option<Arc<DashboardState>>) -> anyhow::Re
 
     let info = match compare_semver(CURRENT_VERSION, tag) {
         Ordering::Less => {
-            tracing::info!(
-                "⬆ Update available: v{CURRENT_VERSION} → v{tag} — run `t0k3n upgrade`"
-            );
-            UpdateInfo { available: Some(tag.to_string()), kind: UpdateKind::Available }
+            tracing::info!("⬆ Update available: v{CURRENT_VERSION} → v{tag} — run `t0k3n upgrade`");
+            UpdateInfo {
+                available: Some(tag.to_string()),
+                kind: UpdateKind::Available,
+            }
         }
         Ordering::Greater => {
-            tracing::info!(
-                "🧪 Beta Preview: running v{CURRENT_VERSION} (latest release: v{tag})"
-            );
-            UpdateInfo { available: Some(tag.to_string()), kind: UpdateKind::Beta }
+            tracing::info!("🧪 Beta Preview: running v{CURRENT_VERSION} (latest release: v{tag})");
+            UpdateInfo {
+                available: Some(tag.to_string()),
+                kind: UpdateKind::Beta,
+            }
         }
         Ordering::Equal => {
             tracing::debug!("t0k3n v{CURRENT_VERSION} is up to date");
-            UpdateInfo { available: None, kind: UpdateKind::UpToDate }
+            UpdateInfo {
+                available: None,
+                kind: UpdateKind::UpToDate,
+            }
         }
     };
 

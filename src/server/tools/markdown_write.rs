@@ -8,21 +8,29 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::security::safe_path;
 use super::markdown::scan_headings;
 use super::writes::unified_diff;
+use crate::security::safe_path;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct WriteMarkdownSectionParams {
     #[schemars(description = "Root-relative path to the Markdown file")]
     pub path: String,
-    #[schemars(description = "'replace' (swap an existing section's full text, heading included), 'insert_before' / 'insert_after' (add a new block relative to the anchor's section), 'append' (add at the end of the file; anchor not required), or 'delete' (remove the section; content not required)")]
+    #[schemars(
+        description = "'replace' (swap an existing section's full text, heading included), 'insert_before' / 'insert_after' (add a new block relative to the anchor's section), 'append' (add at the end of the file; anchor not required), or 'delete' (remove the section; content not required)"
+    )]
     pub mode: String,
-    #[schemars(description = "Heading anchor from read_markdown_toc. Required for replace/insert_before/insert_after/delete; ignored for append")]
+    #[schemars(
+        description = "Heading anchor from read_markdown_toc. Required for replace/insert_before/insert_after/delete; ignored for append"
+    )]
     pub anchor: Option<String>,
-    #[schemars(description = "Full Markdown text to write, including the heading line(s) for replace/insert modes. Not used for delete")]
+    #[schemars(
+        description = "Full Markdown text to write, including the heading line(s) for replace/insert modes. Not used for delete"
+    )]
     pub content: Option<String>,
-    #[schemars(description = "Heading title expected at anchor. Strongly recommended: rejected if it doesn't match, catching a stale TOC")]
+    #[schemars(
+        description = "Heading title expected at anchor. Strongly recommended: rejected if it doesn't match, catching a stale TOC"
+    )]
     pub expected_title: Option<String>,
     #[schemars(description = "true = return the would-be diff without writing (default false)")]
     pub dry_run: Option<bool>,
@@ -34,7 +42,10 @@ pub struct WriteMarkdownSectionResult {
     pub written: bool,
 }
 
-pub fn write_markdown_section(root: &Path, params: WriteMarkdownSectionParams) -> anyhow::Result<WriteMarkdownSectionResult> {
+pub fn write_markdown_section(
+    root: &Path,
+    params: WriteMarkdownSectionParams,
+) -> anyhow::Result<WriteMarkdownSectionResult> {
     let path = safe_path(root, &params.path)?;
     let file_content = std::fs::read_to_string(&path)?;
 
@@ -43,11 +54,15 @@ pub fn write_markdown_section(root: &Path, params: WriteMarkdownSectionParams) -
     let lines: Vec<&str> = file_content.lines().collect();
     let headings = scan_headings(&lines);
 
-    let resolve_anchor = |anchor: &str, expected_title: &Option<String>| -> anyhow::Result<(usize, usize)> {
+    let resolve_anchor = |anchor: &str,
+                          expected_title: &Option<String>|
+     -> anyhow::Result<(usize, usize)> {
         let idx = headings
             .iter()
             .position(|h| h.anchor == anchor)
-            .ok_or_else(|| anyhow::anyhow!("anchor '{anchor}' not found — re-run read_markdown_toc"))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("anchor '{anchor}' not found — re-run read_markdown_toc")
+            })?;
         let h = &headings[idx];
         if let Some(title) = expected_title
             && &h.title != title
@@ -67,8 +82,14 @@ pub fn write_markdown_section(root: &Path, params: WriteMarkdownSectionParams) -
 
     let (diff_old, diff_new, new_lines): (String, String, Vec<&str>) = match params.mode.as_str() {
         "replace" => {
-            let anchor = params.anchor.as_deref().ok_or_else(|| anyhow::anyhow!("mode 'replace' requires anchor"))?;
-            let new_content = params.content.as_deref().ok_or_else(|| anyhow::anyhow!("mode 'replace' requires content"))?;
+            let anchor = params
+                .anchor
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("mode 'replace' requires anchor"))?;
+            let new_content = params
+                .content
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("mode 'replace' requires content"))?;
             let (start, end) = resolve_anchor(anchor, &params.expected_title)?;
             let old_text = lines[start..end].join("\n");
 
@@ -79,12 +100,23 @@ pub fn write_markdown_section(root: &Path, params: WriteMarkdownSectionParams) -
             (old_text, new_content.to_string(), out)
         }
         "insert_before" | "insert_after" => {
-            let anchor = params.anchor.as_deref().ok_or_else(|| anyhow::anyhow!("mode '{}' requires anchor", params.mode))?;
-            let new_content = params.content.as_deref().ok_or_else(|| anyhow::anyhow!("mode '{}' requires content", params.mode))?;
+            let anchor = params
+                .anchor
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("mode '{}' requires anchor", params.mode))?;
+            let new_content = params
+                .content
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("mode '{}' requires content", params.mode))?;
             let (start, end) = resolve_anchor(anchor, &params.expected_title)?;
-            let insert_at = if params.mode == "insert_before" { start } else { end };
+            let insert_at = if params.mode == "insert_before" {
+                start
+            } else {
+                end
+            };
 
-            let mut out: Vec<&str> = Vec::with_capacity(lines.len() + new_content.lines().count() + 2);
+            let mut out: Vec<&str> =
+                Vec::with_capacity(lines.len() + new_content.lines().count() + 2);
             out.extend_from_slice(&lines[..insert_at]);
             if insert_at > 0 && !lines[insert_at - 1].trim().is_empty() {
                 out.push("");
@@ -97,9 +129,13 @@ pub fn write_markdown_section(root: &Path, params: WriteMarkdownSectionParams) -
             (String::new(), new_content.to_string(), out)
         }
         "append" => {
-            let new_content = params.content.as_deref().ok_or_else(|| anyhow::anyhow!("mode 'append' requires content"))?;
+            let new_content = params
+                .content
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("mode 'append' requires content"))?;
 
-            let mut out: Vec<&str> = Vec::with_capacity(lines.len() + new_content.lines().count() + 1);
+            let mut out: Vec<&str> =
+                Vec::with_capacity(lines.len() + new_content.lines().count() + 1);
             out.extend_from_slice(&lines);
             if !out.is_empty() && !out.last().unwrap().trim().is_empty() {
                 out.push("");
@@ -108,7 +144,10 @@ pub fn write_markdown_section(root: &Path, params: WriteMarkdownSectionParams) -
             (String::new(), new_content.to_string(), out)
         }
         "delete" => {
-            let anchor = params.anchor.as_deref().ok_or_else(|| anyhow::anyhow!("mode 'delete' requires anchor"))?;
+            let anchor = params
+                .anchor
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("mode 'delete' requires anchor"))?;
             let (start, end) = resolve_anchor(anchor, &params.expected_title)?;
             let old_text = lines[start..end].join("\n");
 
@@ -121,7 +160,9 @@ pub fn write_markdown_section(root: &Path, params: WriteMarkdownSectionParams) -
             out.extend_from_slice(&lines[cut_end..]);
             (old_text, String::new(), out)
         }
-        other => anyhow::bail!("unknown mode '{other}' — use replace/insert_before/insert_after/append/delete"),
+        other => anyhow::bail!(
+            "unknown mode '{other}' — use replace/insert_before/insert_after/append/delete"
+        ),
     };
 
     let eol = if uses_crlf { "\r\n" } else { "\n" };
@@ -136,7 +177,10 @@ pub fn write_markdown_section(root: &Path, params: WriteMarkdownSectionParams) -
     if !dry_run {
         std::fs::write(&path, &new_full)?;
     }
-    Ok(WriteMarkdownSectionResult { diff, written: !dry_run })
+    Ok(WriteMarkdownSectionResult {
+        diff,
+        written: !dry_run,
+    })
 }
 
 #[cfg(test)]

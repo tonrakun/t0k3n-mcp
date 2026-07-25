@@ -4,8 +4,8 @@ use serde_json::Value;
 use std::path::Path;
 use toml;
 
-use crate::security::safe_path;
 use super::fs::estimate_tokens;
+use crate::security::safe_path;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadJsonYamlKeysParams {
@@ -20,7 +20,10 @@ pub struct ReadJsonYamlKeysResult {
     pub token_count: usize,
 }
 
-pub fn read_json_yaml_keys(root: &Path, params: ReadJsonYamlKeysParams) -> anyhow::Result<ReadJsonYamlKeysResult> {
+pub fn read_json_yaml_keys(
+    root: &Path,
+    params: ReadJsonYamlKeysParams,
+) -> anyhow::Result<ReadJsonYamlKeysResult> {
     let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let value = parse_file(&path, &content)?;
@@ -32,7 +35,13 @@ pub fn read_json_yaml_keys(root: &Path, params: ReadJsonYamlKeysParams) -> anyho
     Ok(ReadJsonYamlKeysResult { keys, token_count })
 }
 
-fn collect_keys(value: &Value, prefix: &str, max_depth: usize, current_depth: usize, keys: &mut Vec<String>) {
+fn collect_keys(
+    value: &Value,
+    prefix: &str,
+    max_depth: usize,
+    current_depth: usize,
+    keys: &mut Vec<String>,
+) {
     if current_depth >= max_depth {
         return;
     }
@@ -48,11 +57,10 @@ fn collect_keys(value: &Value, prefix: &str, max_depth: usize, current_depth: us
                 collect_keys(v, &key, max_depth, current_depth + 1, keys);
             }
         }
-        Value::Array(arr)
-            if !arr.is_empty() => {
-                let key = format!("{}[0]", prefix);
-                collect_keys(&arr[0], &key, max_depth, current_depth + 1, keys);
-            }
+        Value::Array(arr) if !arr.is_empty() => {
+            let key = format!("{}[0]", prefix);
+            collect_keys(&arr[0], &key, max_depth, current_depth + 1, keys);
+        }
         _ => {}
     }
 }
@@ -61,7 +69,9 @@ fn collect_keys(value: &Value, prefix: &str, max_depth: usize, current_depth: us
 pub struct ReadJsonYamlValueParams {
     #[schemars(description = "Root-relative path to the JSON, YAML, or TOML file")]
     pub path: String,
-    #[schemars(description = "Dot-notation key path, e.g. 'dependencies.tokio' or 'items[0].name'")]
+    #[schemars(
+        description = "Dot-notation key path, e.g. 'dependencies.tokio' or 'items[0].name'"
+    )]
     pub key_path: String,
 }
 
@@ -70,14 +80,20 @@ pub struct ReadJsonYamlValueResult {
     pub token_count: usize,
 }
 
-pub fn read_json_yaml_value(root: &Path, params: ReadJsonYamlValueParams) -> anyhow::Result<ReadJsonYamlValueResult> {
+pub fn read_json_yaml_value(
+    root: &Path,
+    params: ReadJsonYamlValueParams,
+) -> anyhow::Result<ReadJsonYamlValueResult> {
     let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let value = parse_file(&path, &content)?;
     let result = resolve_path(&value, &params.key_path)?;
     let json = serde_json::to_string(&result).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadJsonYamlValueResult { value: result.clone(), token_count })
+    Ok(ReadJsonYamlValueResult {
+        value: result.clone(),
+        token_count,
+    })
 }
 
 pub(crate) fn parse_file(path: &Path, content: &str) -> anyhow::Result<Value> {

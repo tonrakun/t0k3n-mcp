@@ -3,13 +3,13 @@ use std::path::Path;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::safe_path;
 use super::code::{ReadCodeSkeletonParams, read_code_skeleton};
 use super::fs::estimate_tokens;
 use super::json_yaml::{ReadJsonYamlKeysParams, read_json_yaml_keys};
 use super::markdown::{ReadMarkdownTocParams, read_markdown_toc};
 use super::notebook::{ReadNotebookCellsParams, read_notebook_cells};
 use super::proto::{ReadProtoSchemaParams, read_proto_schema};
+use crate::security::safe_path;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadFileOutlineParams {
@@ -29,11 +29,14 @@ pub struct ReadFileOutlineResult {
 }
 
 const CODE_EXTS: &[&str] = &[
-    "rs", "py", "js", "jsx", "ts", "tsx", "go",
-    "c", "cpp", "h", "hpp", "java", "cs", "rb", "php", "swift", "kt", "scala",
+    "rs", "py", "js", "jsx", "ts", "tsx", "go", "c", "cpp", "h", "hpp", "java", "cs", "rb", "php",
+    "swift", "kt", "scala",
 ];
 
-pub fn read_file_outline(root: &Path, params: ReadFileOutlineParams) -> anyhow::Result<ReadFileOutlineResult> {
+pub fn read_file_outline(
+    root: &Path,
+    params: ReadFileOutlineParams,
+) -> anyhow::Result<ReadFileOutlineResult> {
     let abs_path = safe_path(root, &params.path)?;
     let ext = abs_path
         .extension()
@@ -43,10 +46,13 @@ pub fn read_file_outline(root: &Path, params: ReadFileOutlineParams) -> anyhow::
 
     match ext.as_str() {
         e if CODE_EXTS.contains(&e) => {
-            let result = read_code_skeleton(root, ReadCodeSkeletonParams {
-                path: params.path.clone(),
-                include_blocks: None,
-            })?;
+            let result = read_code_skeleton(
+                root,
+                ReadCodeSkeletonParams {
+                    path: params.path.clone(),
+                    include_blocks: None,
+                },
+            )?;
             let token_count = result.token_count;
             let language = result.language.clone();
             let outline = serde_json::to_value(result.skeleton)?;
@@ -59,7 +65,12 @@ pub fn read_file_outline(root: &Path, params: ReadFileOutlineParams) -> anyhow::
             })
         }
         "md" | "markdown" | "mdx" => {
-            let result = read_markdown_toc(root, ReadMarkdownTocParams { path: params.path.clone() })?;
+            let result = read_markdown_toc(
+                root,
+                ReadMarkdownTocParams {
+                    path: params.path.clone(),
+                },
+            )?;
             let token_count = result.token_count;
             let outline = serde_json::to_value(result.toc)?;
             Ok(ReadFileOutlineResult {
@@ -71,10 +82,13 @@ pub fn read_file_outline(root: &Path, params: ReadFileOutlineParams) -> anyhow::
             })
         }
         "json" | "jsonc" => {
-            let result = read_json_yaml_keys(root, ReadJsonYamlKeysParams {
-                path: params.path.clone(),
-                depth: None,
-            })?;
+            let result = read_json_yaml_keys(
+                root,
+                ReadJsonYamlKeysParams {
+                    path: params.path.clone(),
+                    depth: None,
+                },
+            )?;
             let token_count = result.token_count;
             let outline = serde_json::to_value(result.keys)?;
             Ok(ReadFileOutlineResult {
@@ -86,10 +100,13 @@ pub fn read_file_outline(root: &Path, params: ReadFileOutlineParams) -> anyhow::
             })
         }
         "yaml" | "yml" => {
-            let result = read_json_yaml_keys(root, ReadJsonYamlKeysParams {
-                path: params.path.clone(),
-                depth: None,
-            })?;
+            let result = read_json_yaml_keys(
+                root,
+                ReadJsonYamlKeysParams {
+                    path: params.path.clone(),
+                    depth: None,
+                },
+            )?;
             let token_count = result.token_count;
             let outline = serde_json::to_value(result.keys)?;
             Ok(ReadFileOutlineResult {
@@ -101,10 +118,13 @@ pub fn read_file_outline(root: &Path, params: ReadFileOutlineParams) -> anyhow::
             })
         }
         "toml" => {
-            let result = read_json_yaml_keys(root, ReadJsonYamlKeysParams {
-                path: params.path.clone(),
-                depth: None,
-            })?;
+            let result = read_json_yaml_keys(
+                root,
+                ReadJsonYamlKeysParams {
+                    path: params.path.clone(),
+                    depth: None,
+                },
+            )?;
             let token_count = result.token_count;
             let outline = serde_json::to_value(result.keys)?;
             Ok(ReadFileOutlineResult {
@@ -116,7 +136,12 @@ pub fn read_file_outline(root: &Path, params: ReadFileOutlineParams) -> anyhow::
             })
         }
         "ipynb" => {
-            let result = read_notebook_cells(root, ReadNotebookCellsParams { path: params.path.clone() })?;
+            let result = read_notebook_cells(
+                root,
+                ReadNotebookCellsParams {
+                    path: params.path.clone(),
+                },
+            )?;
             let token_count = result.token_count;
             let outline = serde_json::to_value(result.cells)?;
             Ok(ReadFileOutlineResult {
@@ -128,7 +153,12 @@ pub fn read_file_outline(root: &Path, params: ReadFileOutlineParams) -> anyhow::
             })
         }
         "proto" => {
-            let result = read_proto_schema(root, ReadProtoSchemaParams { path: params.path.clone() })?;
+            let result = read_proto_schema(
+                root,
+                ReadProtoSchemaParams {
+                    path: params.path.clone(),
+                },
+            )?;
             let token_count = result.token_count;
             let outline = serde_json::to_value(result.types)?;
             Ok(ReadFileOutlineResult {

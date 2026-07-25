@@ -36,11 +36,7 @@ pub async fn fetch_webpage(
             .timeout(std::time::Duration::from_secs(15))
             .user_agent(concat!("t0k3n-mcp/", env!("CARGO_PKG_VERSION")))
             .build()?;
-        let resp = client
-            .get(&params.url)
-            .send()
-            .await?
-            .error_for_status()?;
+        let resp = client.get(&params.url).send().await?.error_for_status()?;
         let html = resp.text().await?;
         let converter = htmd::HtmlToMarkdown::new();
         let md = converter.convert(&html).unwrap_or_else(|_| html.clone());
@@ -53,7 +49,11 @@ pub async fn fetch_webpage(
 
     let toc = extract_toc(&md);
     let token_count = estimate_tokens(&md);
-    Ok(FetchWebpageResult { toc, token_count, cached })
+    Ok(FetchWebpageResult {
+        toc,
+        token_count,
+        cached,
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -84,5 +84,8 @@ pub fn read_webpage_section(
     let sections = extract_sections(&md, &params.anchors);
     let json = serde_json::to_string(&sections).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadWebpageSectionResult { sections, token_count })
+    Ok(ReadWebpageSectionResult {
+        sections,
+        token_count,
+    })
 }

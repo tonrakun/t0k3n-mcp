@@ -4,8 +4,8 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
+use crate::security::{rel_display, safe_path};
 
 // ─── read_graphql_schema ──────────────────────────────────────────────────────
 
@@ -32,7 +32,10 @@ pub struct ReadGraphqlSchemaResult {
     pub token_count: usize,
 }
 
-pub fn read_graphql_schema(root: &Path, params: ReadGraphqlSchemaParams) -> anyhow::Result<ReadGraphqlSchemaResult> {
+pub fn read_graphql_schema(
+    root: &Path,
+    params: ReadGraphqlSchemaParams,
+) -> anyhow::Result<ReadGraphqlSchemaResult> {
     let file_path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
@@ -41,16 +44,19 @@ pub fn read_graphql_schema(root: &Path, params: ReadGraphqlSchemaParams) -> anyh
     let types = parse_graphql_schema(&content);
     let json = serde_json::to_string(&types).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadGraphqlSchemaResult { path: rel, types, token_count })
+    Ok(ReadGraphqlSchemaResult {
+        path: rel,
+        types,
+        token_count,
+    })
 }
 
 pub fn parse_graphql_schema(content: &str) -> Vec<GraphqlTypeEntry> {
     let lines: Vec<&str> = content.lines().collect();
     let mut items = Vec::new();
     // Matches: (extend )? type|input|enum|interface|union|scalar|schema  Name  ...{
-    let re = Regex::new(
-        r"^(?:extend\s+)?(type|input|enum|interface|union|scalar|schema)\s+(\w+)"
-    ).unwrap();
+    let re = Regex::new(r"^(?:extend\s+)?(type|input|enum|interface|union|scalar|schema)\s+(\w+)")
+        .unwrap();
 
     let mut i = 0;
     while i < lines.len() {
@@ -77,20 +83,37 @@ pub fn parse_graphql_schema(content: &str) -> Vec<GraphqlTypeEntry> {
                 depth += opens - closes;
 
                 // Count non-empty, non-comment lines inside the body at depth 1
-                if depth == 1 && j > i && !l.is_empty() && !l.starts_with('#')
-                    && !l.contains('{') && !l.contains('}')
+                if depth == 1
+                    && j > i
+                    && !l.is_empty()
+                    && !l.starts_with('#')
+                    && !l.contains('{')
+                    && !l.contains('}')
                 {
                     field_count += 1;
                 }
 
-                if depth <= 0 && (opens > 0 || closes > 0) { break; }
+                if depth <= 0 && (opens > 0 || closes > 0) {
+                    break;
+                }
                 j += 1;
             }
 
             // scalar / union may have no braces — end_line == start_line
-            let end_line = if depth <= 0 { (j + 1).min(lines.len()) } else { start_line };
+            let end_line = if depth <= 0 {
+                (j + 1).min(lines.len())
+            } else {
+                start_line
+            };
             let id = format!("type:{}-{}", start_line, end_line);
-            items.push(GraphqlTypeEntry { id, name, kind, field_count, start_line, end_line });
+            items.push(GraphqlTypeEntry {
+                id,
+                name,
+                kind,
+                field_count,
+                start_line,
+                end_line,
+            });
             i = j + 1;
             continue;
         }
@@ -105,9 +128,13 @@ pub fn parse_graphql_schema(content: &str) -> Vec<GraphqlTypeEntry> {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadGraphqlTypeParams {
-    #[schemars(description = "Root-relative path to the .graphql or .gql file (from read_graphql_schema).")]
+    #[schemars(
+        description = "Root-relative path to the .graphql or .gql file (from read_graphql_schema)."
+    )]
     pub path: String,
-    #[schemars(description = "Type name to retrieve fields for (from read_graphql_schema types list).")]
+    #[schemars(
+        description = "Type name to retrieve fields for (from read_graphql_schema types list)."
+    )]
     pub type_name: String,
 }
 
@@ -127,13 +154,17 @@ pub struct ReadGraphqlTypeResult {
     pub token_count: usize,
 }
 
-pub fn read_graphql_type(root: &Path, params: ReadGraphqlTypeParams) -> anyhow::Result<ReadGraphqlTypeResult> {
+pub fn read_graphql_type(
+    root: &Path,
+    params: ReadGraphqlTypeParams,
+) -> anyhow::Result<ReadGraphqlTypeResult> {
     let file_path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
 
     let types = parse_graphql_schema(&content);
-    let entry = types.iter()
+    let entry = types
+        .iter()
         .find(|t| t.name == params.type_name)
         .ok_or_else(|| anyhow::anyhow!("型 '{}' が見つかりません", params.type_name))?;
 
@@ -158,9 +189,14 @@ pub fn read_graphql_type(root: &Path, params: ReadGraphqlTypeParams) -> anyhow::
         }
         if let Some(cap) = re_field.captures(t) {
             let name = cap[1].to_string();
-            let args = cap.get(2).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let args = cap
+                .get(2)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
             let field_type = cap[3]
-                .split('#').next().unwrap_or("")
+                .split('#')
+                .next()
+                .unwrap_or("")
                 .trim()
                 .trim_end_matches(',')
                 .to_string();
@@ -177,5 +213,10 @@ pub fn read_graphql_type(root: &Path, params: ReadGraphqlTypeParams) -> anyhow::
 
     let json = serde_json::to_string(&fields).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadGraphqlTypeResult { name: params.type_name, kind: entry.kind.clone(), fields, token_count })
+    Ok(ReadGraphqlTypeResult {
+        name: params.type_name,
+        kind: entry.kind.clone(),
+        fields,
+        token_count,
+    })
 }

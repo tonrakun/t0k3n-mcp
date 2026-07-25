@@ -4,8 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use rmcp::{
-    ErrorData as McpError,
-    ServerHandler,
+    ErrorData as McpError, ServerHandler,
     handler::server::tool::{FromToolCallContextPart, Parameters, ToolCallContext, ToolRouter},
     model::*,
     service::{RequestContext, RoleServer},
@@ -24,60 +23,92 @@ use tools::{
     api_surface::{ReadApiSurfaceParams, read_api_surface},
     audit::{ReadDependencyAuditParams, read_dependency_audit},
     batch::{BatchReadParams, batch_read},
+    checkpoint::{EditCheckpointParams, RollbackParams, edit_checkpoint, rollback},
     ci::{ReadCiPipelineParams, read_ci_pipeline},
     cmd::{CmdLedger, RunCommandParams, run_command},
-    code::{ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams, ReadInterfaceConformanceParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams, read_call_graph, read_code_body, read_code_skeleton, read_interface_conformance, read_symbol_usages, read_type_skeleton},
+    code::{
+        ReadCallGraphParams, ReadCodeBodyParams, ReadCodeSkeletonParams,
+        ReadInterfaceConformanceParams, ReadSymbolUsagesParams, ReadTypeSkeletonParams,
+        read_call_graph, read_code_body, read_code_skeleton, read_interface_conformance,
+        read_symbol_usages, read_type_skeleton,
+    },
     complexity::{ReadComplexityMapParams, read_complexity_map},
+    config_write::{SetConfigValueParams, set_config_value},
     context_pack::{ReadContextPackParams, read_context_pack},
     coverage::{ReadTestCoverageParams, read_test_coverage},
-    dead_code::{ReadDeadCodeParams, read_dead_code},
-    diff_schemas::{DiffSchemasParams, diff_schemas},
-    impact::{ReadRefactorImpactParams, read_refactor_impact},
-    pr_context::{ReadPrContextParams, read_pr_context},
-    security_surface::{ReadSecuritySurfaceParams, read_security_surface},
     css::{ReadCssBodyParams, ReadCssSkeletonParams, read_css_body, read_css_skeleton},
     db_schema::{ReadDbSchemaParams, ReadDbTableParams, read_db_schema, read_db_table},
+    dead_code::{ReadDeadCodeParams, read_dead_code},
     delta::{ContentDedup, ContentLedger, Delta, DeltaResetParams, ReadLedger},
     deps::{ReadCodeDepsParams, read_code_deps},
     diagnostics::{ReadTypeDiagnosticsParams, read_type_diagnostics},
+    diff_schemas::{DiffSchemasParams, diff_schemas},
     digest::{ProjectDigestParams, project_digest},
-    sketch::{ReadCodeSketchParams, read_code_sketch},
     document::{ConvertDocumentParams, convert_document},
     env::{ReadEnvSchemaParams, read_env_schema},
-    fs::{ReadDirectoryTreeParams, ReadTokenMapParams, SearchFileParams, read_directory_tree, read_token_map, search_file},
-    git::{ReadChangedFilesParams, ReadGitBlameBodyParams, ReadGitDiffParams, ReadGitLogParams, ReadGitStashParams, read_changed_files, read_git_blame_body, read_git_diff, read_git_log, read_git_stash},
-    graphql::{ReadGraphqlSchemaParams, ReadGraphqlTypeParams, read_graphql_schema, read_graphql_type},
+    format::{FormatCodeParams, format_code},
+    fs::{
+        ReadDirectoryTreeParams, ReadTokenMapParams, SearchFileParams, read_directory_tree,
+        read_token_map, search_file,
+    },
+    git::{
+        ReadChangedFilesParams, ReadGitBlameBodyParams, ReadGitDiffParams, ReadGitLogParams,
+        ReadGitStashParams, read_changed_files, read_git_blame_body, read_git_diff, read_git_log,
+        read_git_stash,
+    },
+    graphql::{
+        ReadGraphqlSchemaParams, ReadGraphqlTypeParams, read_graphql_schema, read_graphql_type,
+    },
     help::{HelpParams, help},
+    impact::{ReadRefactorImpactParams, read_refactor_impact},
+    imports::{ManageImportsParams, manage_imports},
+    json_yaml::{
+        ReadJsonYamlKeysParams, ReadJsonYamlValueParams, read_json_yaml_keys, read_json_yaml_value,
+    },
     log::{ReadLogTailParams, ReadStackTraceParams, read_log_tail, read_stack_trace},
     manifest::{ReadPackageManifestParams, read_package_manifest},
-    openapi::{ReadOpenApiParams, read_openapi},
-    stats::{ReadWorkspaceStatsParams, read_workspace_stats},
-    json_yaml::{ReadJsonYamlKeysParams, ReadJsonYamlValueParams, read_json_yaml_keys, read_json_yaml_value},
-    markdown::{ReadMarkdownSectionParams, ReadMarkdownTocParams, read_markdown_section, read_markdown_toc},
+    markdown::{
+        ReadMarkdownSectionParams, ReadMarkdownTocParams, read_markdown_section, read_markdown_toc,
+    },
     markdown_write::{WriteMarkdownSectionParams, write_markdown_section},
-    memory::{MemoryDeleteParams, MemoryGetParams, MemoryListParams, MemorySaveParams, memory_delete, memory_get, memory_list, memory_save},
-    notebook::{ReadNotebookCellParams, ReadNotebookCellsParams, read_notebook_cell, read_notebook_cells},
+    memory::{
+        MemoryDeleteParams, MemoryGetParams, MemoryListParams, MemorySaveParams, memory_delete,
+        memory_get, memory_list, memory_save,
+    },
+    move_symbol::{MoveSymbolParams, move_symbol},
+    notebook::{
+        ReadNotebookCellParams, ReadNotebookCellsParams, read_notebook_cell, read_notebook_cells,
+    },
+    openapi::{ReadOpenApiParams, read_openapi},
     outline::{ReadFileOutlineParams, read_file_outline},
     ownership::{ReadCodeOwnershipParams, read_code_ownership},
     patch::{PatchSymbolParams, patch_symbol},
-    rename::{RenameSymbolParams, rename_symbol},
+    pr_context::{ReadPrContextParams, read_pr_context},
     proto::{ReadProtoSchemaParams, ReadProtoTypeParams, read_proto_schema, read_proto_type},
+    rename::{RenameSymbolParams, rename_symbol},
     search::{SemanticSearchParams, semantic_search},
-    session::{SessionListParams, SessionRestoreParams, SessionSnapshotParams, session_list, session_restore, session_snapshot},
-    task::{TaskCreateParams, TaskDeleteParams, TaskGetParams, TaskListParams, TaskUpdateParams, task_create, task_delete, task_get, task_list, task_update},
+    security_surface::{ReadSecuritySurfaceParams, read_security_surface},
+    session::{
+        SessionListParams, SessionRestoreParams, SessionSnapshotParams, session_list,
+        session_restore, session_snapshot,
+    },
+    sketch::{ReadCodeSketchParams, read_code_sketch},
+    stats::{ReadWorkspaceStatsParams, read_workspace_stats},
+    task::{
+        TaskCreateParams, TaskDeleteParams, TaskGetParams, TaskListParams, TaskUpdateParams,
+        task_create, task_delete, task_get, task_list, task_update,
+    },
     test_results::{ReadTestResultsParams, read_test_results},
     test_skeleton::{ReadTestSkeletonParams, read_test_skeleton},
-    text::{CheckBudgetParams, CompressTextParams, CountTokensParams, SummarizeConversationParams, check_budget, compress_text, count_tokens, summarize_conversation},
+    text::{
+        CheckBudgetParams, CompressTextParams, CountTokensParams, SummarizeConversationParams,
+        check_budget, compress_text, count_tokens, summarize_conversation,
+    },
     web::{FetchWebpageParams, ReadWebpageSectionParams, fetch_webpage, read_webpage_section},
     writes::{
         ApplyEditsParams, CreateFileParams, DeleteSymbolParams, InsertSymbolParams, apply_edits,
         create_file, delete_symbol, insert_symbol,
     },
-    config_write::{SetConfigValueParams, set_config_value},
-    imports::{ManageImportsParams, manage_imports},
-    format::{FormatCodeParams, format_code},
-    move_symbol::{MoveSymbolParams, move_symbol},
-    checkpoint::{EditCheckpointParams, RollbackParams, edit_checkpoint, rollback},
 };
 
 pub const REGISTERED_TOOLS: &[&str] = &[
@@ -362,7 +393,12 @@ fn file_mtime(root: &std::path::Path, rel: &str) -> Option<u64> {
     let abs = crate::security::safe_path(root, rel).ok()?;
     let meta = std::fs::metadata(abs).ok()?;
     let modified = meta.modified().ok()?;
-    Some(modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs())
+    Some(
+        modified
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs(),
+    )
 }
 
 static OUTPUT_FORMAT: std::sync::OnceLock<OutputFormat> = std::sync::OnceLock::new();
@@ -394,16 +430,23 @@ fn ok_text(s: String) -> Result<CallToolResult, McpError> {
 /// Pull `token_count` out of a tool response rendered as JSON or compact text.
 fn extract_token_count(text: &str) -> Option<u64> {
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(text)
-        && let Some(tc) = v.get("token_count").and_then(|tc| tc.as_u64()) {
-            return Some(tc);
-        }
-    text.lines()
-        .find_map(|l| l.trim().strip_prefix("token_count: ").and_then(|n| n.trim().parse().ok()))
+        && let Some(tc) = v.get("token_count").and_then(|tc| tc.as_u64())
+    {
+        return Some(tc);
+    }
+    text.lines().find_map(|l| {
+        l.trim()
+            .strip_prefix("token_count: ")
+            .and_then(|n| n.trim().parse().ok())
+    })
 }
 
 /// Ledger key for delta reads: tool name + canonical params.
 fn delta_key<P: Serialize>(tool: &str, params: &P) -> String {
-    format!("{tool}:{}", serde_json::to_string(params).unwrap_or_default())
+    format!(
+        "{tool}:{}",
+        serde_json::to_string(params).unwrap_or_default()
+    )
 }
 
 /// Wraps a tool body: captures timing, records to dashboard on completion.
@@ -437,7 +480,11 @@ impl T0k3nServer {
         let root_path = PathBuf::from(&config.root);
         let db_path = root_path.join(".t0k3n").join("t0k3n.db");
         let db = Database::new(&db_path).unwrap_or_else(|e| {
-            tracing::warn!("Failed to open DB at {:?}: {}. Using in-memory DB.", db_path, e);
+            tracing::warn!(
+                "Failed to open DB at {:?}: {}. Using in-memory DB.",
+                db_path,
+                e
+            );
             Database::new(std::path::Path::new(":memory:")).unwrap()
         });
 
@@ -447,7 +494,9 @@ impl T0k3nServer {
         // every request, so trimming the roster is itself a token optimization.
         if let Some(cats) = &config.tool_categories {
             let keep = tools_in_categories(cats);
-            tool_router.map.retain(|name, _| keep.contains(name.as_ref()));
+            tool_router
+                .map
+                .retain(|name, _| keep.contains(name.as_ref()));
         }
 
         // read_type_diagnostics is opt-in: spawning cargo check / tsc / pyright is
@@ -478,9 +527,21 @@ impl T0k3nServer {
              (diagnostics: {}, writes: {}, commands: {})",
             env!("CARGO_PKG_VERSION"),
             tool_count,
-            if config.diagnostics_enabled { "enabled" } else { "disabled (opt-in)" },
-            if config.writes_enabled { "enabled" } else { "disabled (opt-in)" },
-            if config.commands_enabled { "enabled" } else { "disabled" },
+            if config.diagnostics_enabled {
+                "enabled"
+            } else {
+                "disabled (opt-in)"
+            },
+            if config.writes_enabled {
+                "enabled"
+            } else {
+                "disabled (opt-in)"
+            },
+            if config.commands_enabled {
+                "enabled"
+            } else {
+                "disabled"
+            },
         );
 
         Self {
@@ -505,7 +566,11 @@ impl T0k3nServer {
             OutputFormat::Json => serde_json::to_string_pretty(&v).map_err(err)?,
             OutputFormat::Compact => tools::render::to_compact_text(&v),
         };
-        let delta = self.ledger.lock().unwrap().check_and_update(&key, &rendered);
+        let delta = self
+            .ledger
+            .lock()
+            .unwrap()
+            .check_and_update(&key, &rendered);
         match delta {
             Delta::Full => ok_text(rendered),
             // The stub is only sound while the caller still holds the earlier content.
@@ -544,10 +609,16 @@ impl T0k3nServer {
             .dedup(path, id, content, mtime)
         {
             ContentDedup::Fresh => None,
-            ContentDedup::AlreadySent { reference, full_tokens } => Some(format!(
+            ContentDedup::AlreadySent {
+                reference,
+                full_tokens,
+            } => Some(format!(
                 "(already sent {reference} earlier this session — identical content not re-sent, ~{full_tokens} tokens saved. Call delta_reset and retry for the full body.)"
             )),
-            ContentDedup::UnchangedColdCache { reference, full_tokens } => Some(format!(
+            ContentDedup::UnchangedColdCache {
+                reference,
+                full_tokens,
+            } => Some(format!(
                 "(unchanged since a previous session: {reference} — content is NOT in your current context (~{full_tokens} tokens). The file has not changed since you last read it. If you need the body now, call delta_reset and retry.)"
             )),
         }
@@ -557,7 +628,9 @@ impl T0k3nServer {
     // File reading tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Get .gitignore-aware directory tree. Use to explore workspace structure before reading files.")]
+    #[tool(
+        description = "Get .gitignore-aware directory tree. Use to explore workspace structure before reading files."
+    )]
     async fn read_directory_tree(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -566,11 +639,16 @@ impl T0k3nServer {
         instrument!(self, "read_directory_tree", {
             let key = delta_key("read_directory_tree", &params);
             let result = read_directory_tree(&root, params).map_err(err)?;
-            self.ok_delta(key, serde_json::json!({ "tree": result.tree, "token_count": result.token_count }))
+            self.ok_delta(
+                key,
+                serde_json::json!({ "tree": result.tree, "token_count": result.token_count }),
+            )
         })
     }
 
-    #[tool(description = "Get all headings (TOC) from a Markdown file. Call before read_markdown_section to get anchors.")]
+    #[tool(
+        description = "Get all headings (TOC) from a Markdown file. Call before read_markdown_section to get anchors."
+    )]
     async fn read_markdown_toc(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -579,11 +657,16 @@ impl T0k3nServer {
         instrument!(self, "read_markdown_toc", {
             let key = delta_key("read_markdown_toc", &params);
             let result = read_markdown_toc(&root, params).map_err(err)?;
-            self.ok_delta(key, serde_json::json!({ "toc": result.toc, "token_count": result.token_count }))
+            self.ok_delta(
+                key,
+                serde_json::json!({ "toc": result.toc, "token_count": result.token_count }),
+            )
         })
     }
 
-    #[tool(description = "Get specific sections from a Markdown file by anchor. Call read_markdown_toc first to get anchors.")]
+    #[tool(
+        description = "Get specific sections from a Markdown file by anchor. Call read_markdown_toc first to get anchors."
+    )]
     async fn read_markdown_section(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -596,7 +679,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Write/edit a Markdown section by heading anchor (opt-in write tool; requires --enable-writes) — write counterpart of read_markdown_toc / read_markdown_section. mode: 'replace' (swap an existing section's full text, heading included), 'insert_before'/'insert_after' (add a new block relative to anchor's section), 'append' (add at end of file, anchor not required), or 'delete' (remove the section). Pass expected_title to guard against a stale TOC. dry_run previews the diff.")]
+    #[tool(
+        description = "Write/edit a Markdown section by heading anchor (opt-in write tool; requires --enable-writes) — write counterpart of read_markdown_toc / read_markdown_section. mode: 'replace' (swap an existing section's full text, heading included), 'insert_before'/'insert_after' (add a new block relative to anchor's section), 'append' (add at end of file, anchor not required), or 'delete' (remove the section). Pass expected_title to guard against a stale TOC. dry_run previews the diff."
+    )]
     async fn write_markdown_section(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -612,7 +697,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Search a file for a keyword or regex pattern with surrounding context lines.")]
+    #[tool(
+        description = "Search a file for a keyword or regex pattern with surrounding context lines."
+    )]
     async fn search_file(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -620,11 +707,15 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "search_file", {
             let result = search_file(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({ "matches": result.matches, "token_count": result.token_count }))
+            ok_json(
+                serde_json::json!({ "matches": result.matches, "token_count": result.token_count }),
+            )
         })
     }
 
-    #[tool(description = "Get key structure of a JSON or YAML file. Call before read_json_yaml_value to identify key paths.")]
+    #[tool(
+        description = "Get key structure of a JSON or YAML file. Call before read_json_yaml_value to identify key paths."
+    )]
     async fn read_json_yaml_keys(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -633,11 +724,16 @@ impl T0k3nServer {
         instrument!(self, "read_json_yaml_keys", {
             let key = delta_key("read_json_yaml_keys", &params);
             let result = read_json_yaml_keys(&root, params).map_err(err)?;
-            self.ok_delta(key, serde_json::json!({ "keys": result.keys, "token_count": result.token_count }))
+            self.ok_delta(
+                key,
+                serde_json::json!({ "keys": result.keys, "token_count": result.token_count }),
+            )
         })
     }
 
-    #[tool(description = "Get a specific value from a JSON or YAML file by dot-notation key path (e.g. 'dependencies.tokio').")]
+    #[tool(
+        description = "Get a specific value from a JSON or YAML file by dot-notation key path (e.g. 'dependencies.tokio')."
+    )]
     async fn read_json_yaml_value(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -646,11 +742,16 @@ impl T0k3nServer {
         instrument!(self, "read_json_yaml_value", {
             let key = delta_key("read_json_yaml_value", &params);
             let result = read_json_yaml_value(&root, params).map_err(err)?;
-            self.ok_delta(key, serde_json::json!({ "value": result.value, "token_count": result.token_count }))
+            self.ok_delta(
+                key,
+                serde_json::json!({ "value": result.value, "token_count": result.token_count }),
+            )
         })
     }
 
-    #[tool(description = "Get code skeleton (functions, structs, classes) with signatures only. Call before read_code_body.")]
+    #[tool(
+        description = "Get code skeleton (functions, structs, classes) with signatures only. Call before read_code_body."
+    )]
     async fn read_code_skeleton(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -670,7 +771,9 @@ impl T0k3nServer {
         zoom_level(requested, status.as_deref())
     }
 
-    #[tool(description = "Get full body of specific code items by ID from read_code_skeleton. Optional zoom controls detail: 'body' (default), 'sketch' (control-flow only), 'skeleton' (signatures only), or 'auto' (pick by the latest check_budget strategy). The chosen level is echoed back as zoom_applied.")]
+    #[tool(
+        description = "Get full body of specific code items by ID from read_code_skeleton. Optional zoom controls detail: 'body' (default), 'sketch' (control-flow only), 'skeleton' (signatures only), or 'auto' (pick by the latest check_budget strategy). The chosen level is echoed back as zoom_applied."
+    )]
     async fn read_code_body(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -686,25 +789,37 @@ impl T0k3nServer {
                     let key = delta_key("read_code_body:skeleton", &path);
                     let result = read_code_skeleton(
                         &root,
-                        ReadCodeSkeletonParams { path: path.clone(), include_blocks: None },
+                        ReadCodeSkeletonParams {
+                            path: path.clone(),
+                            include_blocks: None,
+                        },
                     )
                     .map_err(err)?;
-                    self.ok_delta(key, serde_json::json!({
-                        "zoom_applied": "skeleton",
-                        "language": result.language,
-                        "skeleton": result.skeleton,
-                        "token_count": result.token_count,
-                    }))
+                    self.ok_delta(
+                        key,
+                        serde_json::json!({
+                            "zoom_applied": "skeleton",
+                            "language": result.language,
+                            "skeleton": result.skeleton,
+                            "token_count": result.token_count,
+                        }),
+                    )
                 }
                 "sketch" => {
-                    let sk_params = ReadCodeSketchParams { path: path.clone(), ids };
+                    let sk_params = ReadCodeSketchParams {
+                        path: path.clone(),
+                        ids,
+                    };
                     let key = delta_key("read_code_body:sketch", &sk_params);
                     let result = read_code_sketch(&root, sk_params).map_err(err)?;
-                    self.ok_delta(key, serde_json::json!({
-                        "zoom_applied": "sketch",
-                        "items": result.items,
-                        "token_count": result.token_count,
-                    }))
+                    self.ok_delta(
+                        key,
+                        serde_json::json!({
+                            "zoom_applied": "sketch",
+                            "items": result.items,
+                            "token_count": result.token_count,
+                        }),
+                    )
                 }
                 _ => {
                     let key = delta_key("read_code_body", &params);
@@ -721,17 +836,22 @@ impl T0k3nServer {
                     let token_count = tools::fs::estimate_tokens(
                         &serde_json::to_string(&result.items).unwrap_or_default(),
                     );
-                    self.ok_delta(key, serde_json::json!({
-                        "zoom_applied": "body",
-                        "items": result.items,
-                        "token_count": token_count,
-                    }))
+                    self.ok_delta(
+                        key,
+                        serde_json::json!({
+                            "zoom_applied": "body",
+                            "items": result.items,
+                            "token_count": token_count,
+                        }),
+                    )
                 }
             }
         })
     }
 
-    #[tool(description = "Zoom level between read_code_skeleton (signatures) and read_code_body (full source). Given skeleton IDs, returns each symbol's control-flow sketch: signature + branches/loops + block delimiters + call lines kept verbatim, runs of pure-data lines (assignments, literals) collapsed into '… N lines …'. Typically 60-70% smaller than the body — use it to understand what a function does before deciding whether you need the full body.")]
+    #[tool(
+        description = "Zoom level between read_code_skeleton (signatures) and read_code_body (full source). Given skeleton IDs, returns each symbol's control-flow sketch: signature + branches/loops + block delimiters + call lines kept verbatim, runs of pure-data lines (assignments, literals) collapsed into '… N lines …'. Typically 60-70% smaller than the body — use it to understand what a function does before deciding whether you need the full body."
+    )]
     async fn read_code_sketch(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -740,11 +860,16 @@ impl T0k3nServer {
         instrument!(self, "read_code_sketch", {
             let key = delta_key("read_code_sketch", &params);
             let result = read_code_sketch(&root, params).map_err(err)?;
-            self.ok_delta(key, serde_json::json!({ "items": result.items, "token_count": result.token_count }))
+            self.ok_delta(
+                key,
+                serde_json::json!({ "items": result.items, "token_count": result.token_count }),
+            )
         })
     }
 
-    #[tool(description = "Replace one symbol's source by skeleton ID — write counterpart of read_code_body. Flow: read_code_skeleton → read_code_body(id) → patch_symbol(id, new_body|edits). For small changes pass edits=[{find,replace}] instead of new_body — find only needs to be unique within the symbol, so unchanged lines are never resent. Pass expected_name to guard against stale line numbers; re-run read_code_skeleton after each successful patch before patching the same file again. dry_run previews the diff.")]
+    #[tool(
+        description = "Replace one symbol's source by skeleton ID — write counterpart of read_code_body. Flow: read_code_skeleton → read_code_body(id) → patch_symbol(id, new_body|edits). For small changes pass edits=[{find,replace}] instead of new_body — find only needs to be unique within the symbol, so unchanged lines are never resent. Pass expected_name to guard against stale line numbers; re-run read_code_skeleton after each successful patch before patching the same file again. dry_run previews the diff."
+    )]
     async fn patch_symbol(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -763,7 +888,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Rename a symbol across the whole workspace in one call — write counterpart of read_symbol_usages. Whole-identifier match only (substrings like old_name_extended are left untouched). Returns affected file count + per-line before/after edits, never full file bodies. Always run once with dry_run:true to preview scope before applying. Scope to a file/dir with path. Note: textual whole-word match (same basis as read_symbol_usages) — it does not skip identical names in comments or strings, so review the dry_run output.")]
+    #[tool(
+        description = "Rename a symbol across the whole workspace in one call — write counterpart of read_symbol_usages. Whole-identifier match only (substrings like old_name_extended are left untouched). Returns affected file count + per-line before/after edits, never full file bodies. Always run once with dry_run:true to preview scope before applying. Scope to a file/dir with path. Note: textual whole-word match (same basis as read_symbol_usages) — it does not skip identical names in comments or strings, so review the dry_run output."
+    )]
     async fn rename_symbol(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -781,7 +908,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Create a new file (opt-in write tool; requires --enable-writes). Refuses to overwrite an existing file unless overwrite:true. Creates parent directories. dry_run reports what would happen without writing. Fills the gap where the only way to create a file was run_command.")]
+    #[tool(
+        description = "Create a new file (opt-in write tool; requires --enable-writes). Refuses to overwrite an existing file unless overwrite:true. Creates parent directories. dry_run reports what would happen without writing. Fills the gap where the only way to create a file was run_command."
+    )]
     async fn create_file(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -800,7 +929,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Delete a symbol by skeleton ID (opt-in write tool; requires --enable-writes) — write counterpart of read_dead_code. Removes the symbol's line range plus one trailing blank line. Pass expected_name to guard against stale line numbers; dry_run previews the diff.")]
+    #[tool(
+        description = "Delete a symbol by skeleton ID (opt-in write tool; requires --enable-writes) — write counterpart of read_dead_code. Removes the symbol's line range plus one trailing blank line. Pass expected_name to guard against stale line numbers; dry_run previews the diff."
+    )]
     async fn delete_symbol(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -817,7 +948,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Insert code at a structurally correct location (opt-in write tool; requires --enable-writes). mode: 'after_symbol'/'before_symbol' (need anchor_id from read_code_skeleton), 'after_imports' (after the import block), or 'end_of_file'. Adds blank-line separation automatically. dry_run previews the diff. Completes symbol CRUD with patch_symbol (update) and delete_symbol (delete).")]
+    #[tool(
+        description = "Insert code at a structurally correct location (opt-in write tool; requires --enable-writes). mode: 'after_symbol'/'before_symbol' (need anchor_id from read_code_skeleton), 'after_imports' (after the import block), or 'end_of_file'. Adds blank-line separation automatically. dry_run previews the diff. Completes symbol CRUD with patch_symbol (update) and delete_symbol (delete)."
+    )]
     async fn insert_symbol(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -834,7 +967,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Apply find/replace edits across one or more files atomically (opt-in write tool; requires --enable-writes) — write counterpart of batch_read. Each find must match exactly once per file (ambiguous matches report candidate line numbers). If any edit fails, nothing is written. Returns per-edit line + before/after summaries only. dry_run validates and previews without writing.")]
+    #[tool(
+        description = "Apply find/replace edits across one or more files atomically (opt-in write tool; requires --enable-writes) — write counterpart of batch_read. Each find must match exactly once per file (ambiguous matches report candidate line numbers). If any edit fails, nothing is written. Returns per-edit line + before/after summaries only. dry_run validates and previews without writing."
+    )]
     async fn apply_edits(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -852,7 +987,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Set a value at a dot-notation key path in a JSON/YAML/TOML file (opt-in write tool; requires --enable-writes) — write counterpart of read_json_yaml_value. Creates intermediate objects as needed; value may be any JSON type. JSON key order is preserved; YAML/TOML comments are not. dry_run previews the diff. Returns old/new value + diff only.")]
+    #[tool(
+        description = "Set a value at a dot-notation key path in a JSON/YAML/TOML file (opt-in write tool; requires --enable-writes) — write counterpart of read_json_yaml_value. Creates intermediate objects as needed; value may be any JSON type. JSON key order is preserved; YAML/TOML comments are not. dry_run previews the diff. Returns old/new value + diff only."
+    )]
     async fn set_config_value(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -871,7 +1008,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Add or remove import statements (opt-in write tool; requires --enable-writes). Operates on whole import lines (language-agnostic): adds at the import block, removes by trimmed equality, and de-duplicates against existing imports. dry_run previews the diff.")]
+    #[tool(
+        description = "Add or remove import statements (opt-in write tool; requires --enable-writes). Operates on whole import lines (language-agnostic): adds at the import block, removes by trimmed equality, and de-duplicates against existing imports. dry_run previews the diff."
+    )]
     async fn manage_imports(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -890,7 +1029,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Run the language's formatter on a file (opt-in write tool; requires --enable-writes): rustfmt / prettier / black / gofmt by extension. Returns the diff and whether anything changed. dry_run formats a copy and previews without writing. If the formatter is not installed, returns formatter_available:false + an install hint (no error).")]
+    #[tool(
+        description = "Run the language's formatter on a file (opt-in write tool; requires --enable-writes): rustfmt / prettier / black / gofmt by extension. Returns the diff and whether anything changed. dry_run formats a copy and previews without writing. If the formatter is not installed, returns formatter_available:false + an install hint (no error)."
+    )]
     async fn format_code(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -910,7 +1051,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Move a symbol from one file to another by skeleton ID (opt-in write tool; requires --enable-writes). Extracts it from src_path and appends to dest_path (created if missing). Import fixups are best-effort: imports are NOT rewritten, but referencing files are reported in warnings. Pass symbol_name for a stale-line guard + the reference-impact warning. dry_run previews both diffs.")]
+    #[tool(
+        description = "Move a symbol from one file to another by skeleton ID (opt-in write tool; requires --enable-writes). Extracts it from src_path and appends to dest_path (created if missing). Import fixups are best-effort: imports are NOT rewritten, but referencing files are reported in warnings. Pass symbol_name for a stale-line guard + the reference-impact warning. dry_run previews both diffs."
+    )]
     async fn move_symbol(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -932,7 +1075,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Snapshot the working tree before a batch of edits (opt-in write tool; requires --enable-writes) — safety net for autonomous write loops. In a git repo uses `git stash create` (does not touch the tree); otherwise copies gitignore-aware files into .t0k3n/checkpoints/. Returns a checkpoint_id to pass to rollback. Distinct from session_snapshot (which saves tool state, not files).")]
+    #[tool(
+        description = "Snapshot the working tree before a batch of edits (opt-in write tool; requires --enable-writes) — safety net for autonomous write loops. In a git repo uses `git stash create` (does not touch the tree); otherwise copies gitignore-aware files into .t0k3n/checkpoints/. Returns a checkpoint_id to pass to rollback. Distinct from session_snapshot (which saves tool state, not files)."
+    )]
     async fn edit_checkpoint(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -950,7 +1095,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Restore the working tree to a prior edit_checkpoint (opt-in write tool; requires --enable-writes). Pass the checkpoint_id from edit_checkpoint. git checkpoints restore tracked files via `git checkout`; copy checkpoints copy files back. Note: files created after the checkpoint are not removed.")]
+    #[tool(
+        description = "Restore the working tree to a prior edit_checkpoint (opt-in write tool; requires --enable-writes). Pass the checkpoint_id from edit_checkpoint. git checkpoints restore tracked files via `git checkout`; copy checkpoints copy files back. Note: files created after the checkpoint are not removed."
+    )]
     async fn rollback(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -967,7 +1114,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get import/dependency graph for a code file. Returns what it imports and what files import it (imported_by). direction: \"imports\" | \"imported_by\" | \"both\".")]
+    #[tool(
+        description = "Get import/dependency graph for a code file. Returns what it imports and what files import it (imported_by). direction: \"imports\" | \"imported_by\" | \"both\"."
+    )]
     async fn read_code_deps(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -983,7 +1132,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get a unified outline of any file. Auto-detects type: code → skeleton, markdown → TOC, json/yaml → keys. Single entry point — no need to know the file type first.")]
+    #[tool(
+        description = "Get a unified outline of any file. Auto-detects type: code → skeleton, markdown → TOC, json/yaml → keys. Single entry point — no need to know the file type first."
+    )]
     async fn read_file_outline(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -992,14 +1143,19 @@ impl T0k3nServer {
         instrument!(self, "read_file_outline", {
             let key = delta_key("read_file_outline", &params);
             let result = read_file_outline(&root, params).map_err(err)?;
-            self.ok_delta(key, serde_json::json!({
-                "path": result.path, "kind": result.kind, "language": result.language,
-                "outline": result.outline, "token_count": result.token_count,
-            }))
+            self.ok_delta(
+                key,
+                serde_json::json!({
+                    "path": result.path, "kind": result.kind, "language": result.language,
+                    "outline": result.outline, "token_count": result.token_count,
+                }),
+            )
         })
     }
 
-    #[tool(description = "One-call task context collection: ranks workspace files and symbols by relevance to a task description, returns ranked files + relevant signatures + top symbol bodies, greedily filled up to a token budget. Replaces the tree→search→skeleton→body round-trip sequence when starting a task. No subprocess needed (lexical ranking).")]
+    #[tool(
+        description = "One-call task context collection: ranks workspace files and symbols by relevance to a task description, returns ranked files + relevant signatures + top symbol bodies, greedily filled up to a token budget. Replaces the tree→search→skeleton→body round-trip sequence when starting a task. No subprocess needed (lexical ranking)."
+    )]
     async fn read_context_pack(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1026,7 +1182,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Search code semantically using a natural language query. EXPENSIVE AND NOT A GREP SUBSTITUTE: this spawns a separate `claude -p` CLI process, which is a billed model call of its own, adds seconds of latency, and gives non-deterministic results. Requires the `claude` CLI installed and authenticated. Prefer search_file (regex) or read_code_skeleton + read_code_body when you can name what you are looking for; reach for this only when the query is genuinely conceptual.")]
+    #[tool(
+        description = "Search code semantically using a natural language query. EXPENSIVE AND NOT A GREP SUBSTITUTE: this spawns a separate `claude -p` CLI process, which is a billed model call of its own, adds seconds of latency, and gives non-deterministic results. Requires the `claude` CLI installed and authenticated. Prefer search_file (regex) or read_code_skeleton + read_code_body when you can name what you are looking for; reach for this only when the query is genuinely conceptual."
+    )]
     async fn semantic_search(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1038,7 +1196,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get compressed git diff. Defaults to all uncommitted changes vs HEAD. Use stat_only for a quick file-level summary. zoom mirrors read_code_body: 'body' (full diff), 'sketch' (file + hunk headers only), 'skeleton' (per-file × enclosing-symbol +/- line counts, no diff text), or 'auto' (follows the latest check_budget strategy). Apply the structure-first read to change itself: skeleton to map a large diff, then body on the suspicious files.")]
+    #[tool(
+        description = "Get compressed git diff. Defaults to all uncommitted changes vs HEAD. Use stat_only for a quick file-level summary. zoom mirrors read_code_body: 'body' (full diff), 'sketch' (file + hunk headers only), 'skeleton' (per-file × enclosing-symbol +/- line counts, no diff text), or 'auto' (follows the latest check_budget strategy). Apply the structure-first read to change itself: skeleton to map a large diff, then body on the suspicious files."
+    )]
     async fn read_git_diff(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1058,7 +1218,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get structured git commit log with sha, author, date, message, and changed files. Filter by path, author, date range, or limit.")]
+    #[tool(
+        description = "Get structured git commit log with sha, author, date, message, and changed files. Filter by path, author, date range, or limit."
+    )]
     async fn read_git_log(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1066,11 +1228,15 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_log", {
             let result = read_git_log(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({ "entries": result.entries, "token_count": result.token_count }))
+            ok_json(
+                serde_json::json!({ "entries": result.entries, "token_count": result.token_count }),
+            )
         })
     }
 
-    #[tool(description = "Get per-line blame (author + date) for a specific line range in a file. Use start_line/end_line from read_code_skeleton to target a function body.")]
+    #[tool(
+        description = "Get per-line blame (author + date) for a specific line range in a file. Use start_line/end_line from read_code_skeleton to target a function body."
+    )]
     async fn read_git_blame_body(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1078,11 +1244,15 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_git_blame_body", {
             let result = read_git_blame_body(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({ "path": result.path, "lines": result.lines, "token_count": result.token_count }))
+            ok_json(
+                serde_json::json!({ "path": result.path, "lines": result.lines, "token_count": result.token_count }),
+            )
         })
     }
 
-    #[tool(description = "Find all usages of a symbol name (function, struct, class, variable) across the workspace. Returns file path, line number, and context for each match. Max 100 results.")]
+    #[tool(
+        description = "Find all usages of a symbol name (function, struct, class, variable) across the workspace. Returns file path, line number, and context for each match. Max 100 results."
+    )]
     async fn read_symbol_usages(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1098,7 +1268,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Parse an OpenAPI / Swagger spec (JSON or YAML) and return a compact endpoint summary: method, path, operation_id, summary, parameters, request body, and responses.")]
+    #[tool(
+        description = "Parse an OpenAPI / Swagger spec (JSON or YAML) and return a compact endpoint summary: method, path, operation_id, summary, parameters, request body, and responses."
+    )]
     async fn read_openapi(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1114,7 +1286,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Extract environment variable definitions from .env.example / .env.sample / .env.template / docker-compose.yml. Returns key, description (from comments), default value, and required flag. Omit path to auto-scan workspace root.")]
+    #[tool(
+        description = "Extract environment variable definitions from .env.example / .env.sample / .env.template / docker-compose.yml. Returns key, description (from comments), default value, and required flag. Omit path to auto-scan workspace root."
+    )]
     async fn read_env_schema(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1122,7 +1296,9 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_env_schema", {
             let result = read_env_schema(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({ "vars": result.vars, "sources": result.sources, "token_count": result.token_count }))
+            ok_json(
+                serde_json::json!({ "vars": result.vars, "sources": result.sources, "token_count": result.token_count }),
+            )
         })
     }
 
@@ -1130,7 +1306,9 @@ impl T0k3nServer {
     // Web tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Fetch a webpage, convert HTML to Markdown, return TOC only. Call read_webpage_section to read specific sections.")]
+    #[tool(
+        description = "Fetch a webpage, convert HTML to Markdown, return TOC only. Call read_webpage_section to read specific sections."
+    )]
     async fn fetch_webpage(
         &self,
         Parameters(params): Parameters<FetchWebpageParams>,
@@ -1138,11 +1316,15 @@ impl T0k3nServer {
         instrument!(self, "fetch_webpage", {
             let cache = self.web_cache.clone();
             let result = fetch_webpage(params, cache).await.map_err(err)?;
-            ok_json(serde_json::json!({ "toc": result.toc, "token_count": result.token_count, "cached": result.cached }))
+            ok_json(
+                serde_json::json!({ "toc": result.toc, "token_count": result.token_count, "cached": result.cached }),
+            )
         })
     }
 
-    #[tool(description = "Get specific sections from a cached webpage by anchor. Call fetch_webpage first.")]
+    #[tool(
+        description = "Get specific sections from a cached webpage by anchor. Call fetch_webpage first."
+    )]
     async fn read_webpage_section(
         &self,
         Parameters(params): Parameters<ReadWebpageSectionParams>,
@@ -1150,7 +1332,9 @@ impl T0k3nServer {
         instrument!(self, "read_webpage_section", {
             let cache = self.web_cache.clone();
             let result = read_webpage_section(params, cache).map_err(err)?;
-            ok_json(serde_json::json!({ "sections": result.sections, "token_count": result.token_count }))
+            ok_json(
+                serde_json::json!({ "sections": result.sections, "token_count": result.token_count }),
+            )
         })
     }
 
@@ -1158,7 +1342,9 @@ impl T0k3nServer {
     // Document conversion
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Convert a PDF or DOCX to Markdown, return TOC and tmp_path. Use read_markdown_section(tmp_path) to read sections.")]
+    #[tool(
+        description = "Convert a PDF or DOCX to Markdown, return TOC and tmp_path. Use read_markdown_section(tmp_path) to read sections."
+    )]
     async fn convert_document(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1166,7 +1352,9 @@ impl T0k3nServer {
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "convert_document", {
             let result = convert_document(&root, params).map_err(err)?;
-            ok_json(serde_json::json!({ "toc": result.toc, "tmp_path": result.tmp_path, "token_count": result.token_count }))
+            ok_json(
+                serde_json::json!({ "toc": result.toc, "tmp_path": result.tmp_path, "token_count": result.token_count }),
+            )
         })
     }
 
@@ -1174,7 +1362,9 @@ impl T0k3nServer {
     // Text tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Compress text by removing excessive whitespace and noise. Returns compressed text with token stats.")]
+    #[tool(
+        description = "Compress text by removing excessive whitespace and noise. Returns compressed text with token stats."
+    )]
     async fn compress_text(
         &self,
         Parameters(params): Parameters<CompressTextParams>,
@@ -1190,7 +1380,9 @@ impl T0k3nServer {
         instrument!(self, "count_tokens", { ok_json(count_tokens(params)) })
     }
 
-    #[tool(description = "Check token budget and get reading strategy (normal/conservative/aggressive/critical).")]
+    #[tool(
+        description = "Check token budget and get reading strategy (normal/conservative/aggressive/critical)."
+    )]
     async fn check_budget(
         &self,
         Parameters(params): Parameters<CheckBudgetParams>,
@@ -1210,7 +1402,9 @@ impl T0k3nServer {
         &self,
         Parameters(params): Parameters<SummarizeConversationParams>,
     ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "summarize_conversation", { ok_json(summarize_conversation(params)) })
+        instrument!(self, "summarize_conversation", {
+            ok_json(summarize_conversation(params))
+        })
     }
 
     // ─────────────────────────────────────────────
@@ -1267,7 +1461,9 @@ impl T0k3nServer {
     // Task tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Create a task with title, description, status (pending/in_progress/done/cancelled), priority, tags.")]
+    #[tool(
+        description = "Create a task with title, description, status (pending/in_progress/done/cancelled), priority, tags."
+    )]
     async fn task_create(
         &self,
         Parameters(params): Parameters<TaskCreateParams>,
@@ -1328,7 +1524,9 @@ impl T0k3nServer {
     // Session tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Save a snapshot of work state (arbitrary JSON) for restoration in future sessions.")]
+    #[tool(
+        description = "Save a snapshot of work state (arbitrary JSON) for restoration in future sessions."
+    )]
     async fn session_snapshot(
         &self,
         Parameters(params): Parameters<SessionSnapshotParams>,
@@ -1367,7 +1565,9 @@ impl T0k3nServer {
     // Schema / DSL tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Get table/model list from a Prisma or SQL schema file. Returns name, kind, and field count. Call read_db_table for field details of a specific table.")]
+    #[tool(
+        description = "Get table/model list from a Prisma or SQL schema file. Returns name, kind, and field count. Call read_db_table for field details of a specific table."
+    )]
     async fn read_db_schema(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1382,7 +1582,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get full field definitions for a specific table or model from a Prisma or SQL schema. Call read_db_schema first to get the table list.")]
+    #[tool(
+        description = "Get full field definitions for a specific table or model from a Prisma or SQL schema. Call read_db_schema first to get the table list."
+    )]
     async fn read_db_table(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1397,7 +1599,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get CSS/SCSS/Less selector list with property counts. Returns IDs for use with read_css_body.")]
+    #[tool(
+        description = "Get CSS/SCSS/Less selector list with property counts. Returns IDs for use with read_css_body."
+    )]
     async fn read_css_skeleton(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1411,7 +1615,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get full CSS rule content for specific selectors by ID. Call read_css_skeleton first to get selector IDs.")]
+    #[tool(
+        description = "Get full CSS rule content for specific selectors by ID. Call read_css_skeleton first to get selector IDs."
+    )]
     async fn read_css_body(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1423,7 +1629,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get type/input/enum/interface list from a GraphQL schema file. Returns IDs for use with read_graphql_type.")]
+    #[tool(
+        description = "Get type/input/enum/interface list from a GraphQL schema file. Returns IDs for use with read_graphql_type."
+    )]
     async fn read_graphql_schema(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1437,7 +1645,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get full field definitions for a specific GraphQL type. Call read_graphql_schema first to get the type list.")]
+    #[tool(
+        description = "Get full field definitions for a specific GraphQL type. Call read_graphql_schema first to get the type list."
+    )]
     async fn read_graphql_type(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1452,7 +1662,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get message/service/enum list from a .proto (Protocol Buffers) file. Returns IDs for use with read_proto_type.")]
+    #[tool(
+        description = "Get message/service/enum list from a .proto (Protocol Buffers) file. Returns IDs for use with read_proto_type."
+    )]
     async fn read_proto_schema(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1467,7 +1679,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get full field definitions for a specific message, service, or enum in a .proto file. Call read_proto_schema first to get the type list.")]
+    #[tool(
+        description = "Get full field definitions for a specific message, service, or enum in a .proto file. Call read_proto_schema first to get the type list."
+    )]
     async fn read_proto_type(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1486,7 +1700,9 @@ impl T0k3nServer {
     // Notebook tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Get cell list from a Jupyter notebook (.ipynb) with type, preview, and output count. Call before read_notebook_cell to choose which cells to read.")]
+    #[tool(
+        description = "Get cell list from a Jupyter notebook (.ipynb) with type, preview, and output count. Call before read_notebook_cell to choose which cells to read."
+    )]
     async fn read_notebook_cells(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1501,7 +1717,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get full source of a specific cell from a Jupyter notebook (.ipynb). Use the index from read_notebook_cells. Set include_outputs=true to also fetch cell outputs.")]
+    #[tool(
+        description = "Get full source of a specific cell from a Jupyter notebook (.ipynb). Use the index from read_notebook_cells. Set include_outputs=true to also fetch cell outputs."
+    )]
     async fn read_notebook_cell(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1521,7 +1739,9 @@ impl T0k3nServer {
     // Log tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Read the tail of a log file with optional level (ERROR/WARN/INFO/DEBUG) and regex pattern filters. Returns last N lines and level counts across the whole file.")]
+    #[tool(
+        description = "Read the tail of a log file with optional level (ERROR/WARN/INFO/DEBUG) and regex pattern filters. Returns last N lines and level counts across the whole file."
+    )]
     async fn read_log_tail(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1537,7 +1757,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Parse a stack trace and fetch source context around each referenced file:line. Supports Python, Rust, JavaScript/TypeScript, Java, Go, and C#. Returns resolved code snippets from workspace files.")]
+    #[tool(
+        description = "Parse a stack trace and fetch source context around each referenced file:line. Supports Python, Rust, JavaScript/TypeScript, Java, Go, and C#. Returns resolved code snippets from workspace files."
+    )]
     async fn read_stack_trace(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1556,7 +1778,9 @@ impl T0k3nServer {
     // Test tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Get test case list from a test file (Jest/pytest/Rust/#[test]/Go/JUnit/RSpec). Returns IDs usable with read_code_body to get test implementations.")]
+    #[tool(
+        description = "Get test case list from a test file (Jest/pytest/Rust/#[test]/Go/JUnit/RSpec). Returns IDs usable with read_code_body to get test implementations."
+    )]
     async fn read_test_skeleton(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1571,7 +1795,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Parse test runner output (Jest/Vitest/pytest/cargo test/go test) into a structured summary: pass/fail counts per suite and failure details. Accepts raw text or a file path.")]
+    #[tool(
+        description = "Parse test runner output (Jest/Vitest/pytest/cargo test/go test) into a structured summary: pass/fail counts per suite and failure details. Accepts raw text or a file path."
+    )]
     async fn read_test_results(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1587,7 +1813,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Map a coverage report onto code symbols to see which functions are untested (risky to change). Auto-detects lcov (lcov.info / cargo llvm-cov), coverage.py JSON, or cobertura XML. Per-symbol covered/total/pct plus overall_pct. Filter with uncovered_only (pct<100) or threshold. If no report exists, returns report_available:false + a generation hint (safe to call speculatively). Pairs with read_test_results / read_test_skeleton.")]
+    #[tool(
+        description = "Map a coverage report onto code symbols to see which functions are untested (risky to change). Auto-detects lcov (lcov.info / cargo llvm-cov), coverage.py JSON, or cobertura XML. Per-symbol covered/total/pct plus overall_pct. Filter with uncovered_only (pct<100) or threshold. If no report exists, returns report_available:false + a generation hint (safe to call speculatively). Pairs with read_test_results / read_test_skeleton."
+    )]
     async fn read_test_coverage(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1610,7 +1838,9 @@ impl T0k3nServer {
     // Extended code analysis tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Get type definitions (interface/type/enum/struct) with field names from TypeScript, Go, or Rust files. More detailed than read_code_skeleton for type-heavy files.")]
+    #[tool(
+        description = "Get type definitions (interface/type/enum/struct) with field names from TypeScript, Go, or Rust files. More detailed than read_code_skeleton for type-heavy files."
+    )]
     async fn read_type_skeleton(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1619,14 +1849,19 @@ impl T0k3nServer {
         instrument!(self, "read_type_skeleton", {
             let key = delta_key("read_type_skeleton", &params);
             let result = read_type_skeleton(&root, params).map_err(err)?;
-            self.ok_delta(key, serde_json::json!({
-                "path": result.path, "language": result.language,
-                "types": result.types, "token_count": result.token_count,
-            }))
+            self.ok_delta(
+                key,
+                serde_json::json!({
+                    "path": result.path, "language": result.language,
+                    "types": result.types, "token_count": result.token_count,
+                }),
+            )
         })
     }
 
-    #[tool(description = "Get the call graph for a function: what functions it calls, and which functions in the same file call it. Uses function_id from read_code_skeleton.")]
+    #[tool(
+        description = "Get the call graph for a function: what functions it calls, and which functions in the same file call it. Uses function_id from read_code_skeleton."
+    )]
     async fn read_call_graph(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1644,7 +1879,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "List all workspace files sorted by estimated token count (largest first). Use to identify token-heavy files before reading. Supports glob filtering.")]
+    #[tool(
+        description = "List all workspace files sorted by estimated token count (largest first). Use to identify token-heavy files before reading. Supports glob filtering."
+    )]
     async fn read_token_map(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1659,7 +1896,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get per-file change summary (added/deleted lines, status) for the current diff vs a base ref. Step 1 before read_git_diff — get the file list first, then read specific files' diffs.")]
+    #[tool(
+        description = "Get per-file change summary (added/deleted lines, status) for the current diff vs a base ref. Step 1 before read_git_diff — get the file list first, then read specific files' diffs."
+    )]
     async fn read_changed_files(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1679,7 +1918,9 @@ impl T0k3nServer {
     // Phase 4 tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "List stashes and optionally get diff for a specific stash entry. Omit index to list only.")]
+    #[tool(
+        description = "List stashes and optionally get diff for a specific stash entry. Omit index to list only."
+    )]
     async fn read_git_stash(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1693,7 +1934,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Fuse git log + blame into code ownership: per file, churn (commit count), the date it was last touched, and top authors by lines contributed (ownership share). Sorted by churn to surface hotspots. Use to learn who to ask about a file and where the volatile code is. Scope with path, limit with top_n, window with since (e.g. \"3 months ago\").")]
+    #[tool(
+        description = "Fuse git log + blame into code ownership: per file, churn (commit count), the date it was last touched, and top authors by lines contributed (ownership share). Sorted by churn to surface hotspots. Use to learn who to ask about a file and where the volatile code is. Scope with path, limit with top_n, window with since (e.g. \"3 months ago\")."
+    )]
     async fn read_code_ownership(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1707,7 +1950,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Parse package.json / Cargo.toml / go.mod / pyproject.toml / pom.xml / build.gradle into a unified dependency list. Faster than read_json_yaml_value for multi-ecosystem projects.")]
+    #[tool(
+        description = "Parse package.json / Cargo.toml / go.mod / pyproject.toml / pom.xml / build.gradle into a unified dependency list. Faster than read_json_yaml_value for multi-ecosystem projects."
+    )]
     async fn read_package_manifest(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1721,7 +1966,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Parse CI pipeline configs (GitHub Actions / GitLab CI / CircleCI) into structured workflow/job/step summary. Omit path to auto-scan workspace.")]
+    #[tool(
+        description = "Parse CI pipeline configs (GitHub Actions / GitLab CI / CircleCI) into structured workflow/job/step summary. Omit path to auto-scan workspace."
+    )]
     async fn read_ci_pipeline(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1735,7 +1982,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Get codebase-wide statistics: total files/lines/tokens, per-language breakdown with %, and top-10 largest files. Much faster overview than read_token_map.")]
+    #[tool(
+        description = "Get codebase-wide statistics: total files/lines/tokens, per-language breakdown with %, and top-10 largest files. Much faster overview than read_token_map."
+    )]
     async fn read_workspace_stats(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1751,7 +2000,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Find all types that implement a given interface/trait/abstract class across the workspace. Supports TypeScript, Rust, Java, Kotlin, Go, PHP, C#.")]
+    #[tool(
+        description = "Find all types that implement a given interface/trait/abstract class across the workspace. Supports TypeScript, Rust, Java, Kotlin, Go, PHP, C#."
+    )]
     async fn read_interface_conformance(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1767,7 +2018,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Execute multiple read operations in one call (code_skeleton | code_body | markdown_section | json_value | file_outline). Reduces round-trips when you need several files at once. Pass factor:true to collapse near-identical results (migrations, fixtures) into one template + per-file unified diffs.")]
+    #[tool(
+        description = "Execute multiple read operations in one call (code_skeleton | code_body | markdown_section | json_value | file_outline). Reduces round-trips when you need several files at once. Pass factor:true to collapse near-identical results (migrations, fixtures) into one template + per-file unified diffs."
+    )]
     async fn batch_read(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1787,7 +2040,9 @@ impl T0k3nServer {
     // Phase 5 — Differentiating analysis tools
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Compute cyclomatic complexity for every function in a file or directory. Returns functions sorted by complexity with risk level (low/medium/high/critical). Use to identify refactoring targets without running a linter.")]
+    #[tool(
+        description = "Compute cyclomatic complexity for every function in a file or directory. Returns functions sorted by complexity with risk level (low/medium/high/critical). Use to identify refactoring targets without running a linter."
+    )]
     async fn read_complexity_map(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1804,7 +2059,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Find unused symbols (functions, classes, structs) that are defined but never called across the workspace. Works across all tree-sitter supported languages without a compiler or LSP. HEURISTIC name-based matching: trait/interface impls, dynamic dispatch and reflection targets can look unused, so each entry carries a `confidence` — confirm before deleting.")]
+    #[tool(
+        description = "Find unused symbols (functions, classes, structs) that are defined but never called across the workspace. Works across all tree-sitter supported languages without a compiler or LSP. HEURISTIC name-based matching: trait/interface impls, dynamic dispatch and reflection targets can look unused, so each entry carries a `confidence` — confirm before deleting."
+    )]
     async fn read_dead_code(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1820,7 +2077,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Blast-radius analysis for a refactor: given a symbol name, returns all callers, all files that reference it, and all test files that cover it — in one call. Combines call_graph + symbol_usages + test discovery.")]
+    #[tool(
+        description = "Blast-radius analysis for a refactor: given a symbol name, returns all callers, all files that reference it, and all test files that cover it — in one call. Combines call_graph + symbol_usages + test discovery."
+    )]
     async fn read_refactor_impact(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1843,7 +2102,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Static security surface scan: flags potential injection vectors, XSS sinks, hardcoded secrets, unsafe code, and path traversal patterns. HEURISTIC line-pattern matcher, not taint analysis — every finding carries `severity` (impact if real) AND `confidence` (how likely it is real); verify anything below high confidence by reading the code. Test code is skipped unless include_tests:true; pass min_confidence to cut noise. Categories: injection, xss, secrets, unsafe, path_traversal, all.")]
+    #[tool(
+        description = "Static security surface scan: flags potential injection vectors, XSS sinks, hardcoded secrets, unsafe code, and path traversal patterns. HEURISTIC line-pattern matcher, not taint analysis — every finding carries `severity` (impact if real) AND `confidence` (how likely it is real); verify anything below high confidence by reading the code. Test code is skipped unless include_tests:true; pass min_confidence to cut noise. Categories: injection, xss, secrets, unsafe, path_traversal, all."
+    )]
     async fn read_security_surface(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1863,7 +2124,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Scan dependencies for known vulnerabilities — the dependency-side counterpart to read_security_surface. Auto-detects the ecosystem (Cargo.toml→cargo audit, package.json→npm audit, pyproject/requirements→pip-audit, go.mod→osv-scanner) and normalizes results to {package, severity, id, affected, patched, title}, sorted by severity. Filter with severity (minimum level) / max_items. If the scanner is not installed, returns scanner_available:false + an install hint (safe to call speculatively).")]
+    #[tool(
+        description = "Scan dependencies for known vulnerabilities — the dependency-side counterpart to read_security_surface. Auto-detects the ecosystem (Cargo.toml→cargo audit, package.json→npm audit, pyproject/requirements→pip-audit, go.mod→osv-scanner) and normalizes results to {package, severity, id, affected, patched, title}, sorted by severity. Filter with severity (minimum level) / max_items. If the scanner is not installed, returns scanner_available:false + an install hint (safe to call speculatively)."
+    )]
     async fn read_dependency_audit(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1881,7 +2144,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Extract only a codebase's public API surface: Rust pub items, TS/JS exports, Python __all__ / non-underscore top-level defs, Go capitalized identifiers. Signatures only (no bodies). Use to understand a library's external boundary or to detect breaking changes (pair with diff_schemas). Scope with path; include_crate_visible:true also lists Rust pub(crate)/pub(super).")]
+    #[tool(
+        description = "Extract only a codebase's public API surface: Rust pub items, TS/JS exports, Python __all__ / non-underscore top-level defs, Go capitalized identifiers. Signatures only (no bodies). Use to understand a library's external boundary or to detect breaking changes (pair with diff_schemas). Scope with path; include_crate_visible:true also lists Rust pub(crate)/pub(super)."
+    )]
     async fn read_api_surface(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1896,7 +2161,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Diff a schema file (OpenAPI, Prisma/SQL, TypeScript types) between two git refs. Returns added/removed/modified endpoints, tables, or types. Auto-detects schema type from file extension.")]
+    #[tool(
+        description = "Diff a schema file (OpenAPI, Prisma/SQL, TypeScript types) between two git refs. Returns added/removed/modified endpoints, tables, or types. Auto-detects schema type from file extension."
+    )]
     async fn diff_schemas(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1918,7 +2185,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Load full PR context in one call: changed files with skeletons, diff stats, related test files, and commit list. Pass branch + base to get everything needed for a code review without multiple round-trips.")]
+    #[tool(
+        description = "Load full PR context in one call: changed files with skeletons, diff stats, related test files, and commit list. Pass branch + base to get everything needed for a code review without multiple round-trips."
+    )]
     async fn read_pr_context(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1940,7 +2209,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Static type diagnostics (LSP-equivalent) without running a language server. OPT-IN: this tool is only registered when the server is started with --enable-diagnostics (or T0K3N_ENABLE_DIAGNOSTICS=1), because it spawns the language toolchain. Drives the language's own check-only engine — cargo check (Rust), tsc --noEmit (TypeScript), pyright/mypy (Python), go vet (Go) — and returns a compact, deduplicated list of {file, line, col, severity, code, message}. Auto-detects the language from the manifest/extension; pass `language` to force it, `path` to scope to a file/dir, `severity` (error|warning|hint) as a floor, and `max_items` to cap. If the checker is not installed it returns checker_available:false with an install hint instead of erroring.")]
+    #[tool(
+        description = "Static type diagnostics (LSP-equivalent) without running a language server. OPT-IN: this tool is only registered when the server is started with --enable-diagnostics (or T0K3N_ENABLE_DIAGNOSTICS=1), because it spawns the language toolchain. Drives the language's own check-only engine — cargo check (Rust), tsc --noEmit (TypeScript), pyright/mypy (Python), go vet (Go) — and returns a compact, deduplicated list of {file, line, col, severity, code, message}. Auto-detects the language from the manifest/extension; pass `language` to force it, `path` to scope to a file/dir, `severity` (error|warning|hint) as a floor, and `max_items` to cap. If the checker is not installed it returns checker_available:false with an install hint instead of erroring."
+    )]
     async fn read_type_diagnostics(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1966,7 +2237,9 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Warm-start project digest: a cached ~2k-token architecture summary (git HEAD, language stats, entry-point files with their top symbols, shallow directory tree) returned in one call. Replaces the repeated tree → stats → skeleton exploration at session start. The cache (.t0k3n/digest.json) auto-invalidates when git HEAD changes; pass refresh:true to rebuild. `dirty` flags an uncommitted working tree (digest may be stale).")]
+    #[tool(
+        description = "Warm-start project digest: a cached ~2k-token architecture summary (git HEAD, language stats, entry-point files with their top symbols, shallow directory tree) returned in one call. Replaces the repeated tree → stats → skeleton exploration at session start. The cache (.t0k3n/digest.json) auto-invalidates when git HEAD changes; pass refresh:true to rebuild. `dirty` flags an uncommitted working tree (digest may be stale)."
+    )]
     async fn project_digest(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1987,7 +2260,9 @@ impl T0k3nServer {
     // Debug tool
     // ─────────────────────────────────────────────
 
-    #[tool(description = "Execute a shell command and return token-efficient output. On success: last ~30 lines (final summary). On failure: extracted error lines + warning lines + last ~20 lines for context. Use for build tools (cargo, npm, go, make, mvn), test runners (cargo test, pytest, jest), linters (clippy, eslint, flake8), and type checkers (tsc, mypy). Repeat runs of the same command return only the delta: new/resolved/unchanged error and warning counts plus the new lines — unchanged lines equal what you already received. Call delta_reset and rerun for full output.")]
+    #[tool(
+        description = "Execute a shell command and return token-efficient output. On success: last ~30 lines (final summary). On failure: extracted error lines + warning lines + last ~20 lines for context. Use for build tools (cargo, npm, go, make, mvn), test runners (cargo test, pytest, jest), linters (clippy, eslint, flake8), and type checkers (tsc, mypy). Repeat runs of the same command return only the delta: new/resolved/unchanged error and warning counts plus the new lines — unchanged lines equal what you already received. Call delta_reset and rerun for full output."
+    )]
     async fn run_command(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1996,7 +2271,11 @@ impl T0k3nServer {
         instrument!(self, "run_command", {
             let key = CmdLedger::key(&params.command, params.cwd.as_deref());
             let result = run_command(&root, params).map_err(err)?;
-            let delta = self.cmd_ledger.lock().unwrap().check_and_update(&key, &result);
+            let delta = self
+                .cmd_ledger
+                .lock()
+                .unwrap()
+                .check_and_update(&key, &result);
             match delta {
                 None => ok_json(serde_json::json!({
                     "command":     result.command,
@@ -2040,20 +2319,32 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Reset the delta ledgers (delta reads, run_command deltas, AND the cross-tool content ledger). After this, read tools return full content and run_command returns full output again instead of 'unchanged'/diff/delta/'already sent' stubs. Call when you no longer have earlier tool output in context (e.g. after conversation compaction). Optional pattern narrows the reset to matching keys (e.g. a file path or command substring).")]
+    #[tool(
+        description = "Reset the delta ledgers (delta reads, run_command deltas, AND the cross-tool content ledger). After this, read tools return full content and run_command returns full output again instead of 'unchanged'/diff/delta/'already sent' stubs. Call when you no longer have earlier tool output in context (e.g. after conversation compaction). Optional pattern narrows the reset to matching keys (e.g. a file path or command substring)."
+    )]
     async fn delta_reset(
         &self,
         Parameters(params): Parameters<DeltaResetParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "delta_reset", {
             let cleared = self.ledger.lock().unwrap().clear(params.pattern.as_deref())
-                + self.cmd_ledger.lock().unwrap().clear(params.pattern.as_deref())
-                + self.content_ledger.lock().unwrap().clear(params.pattern.as_deref());
+                + self
+                    .cmd_ledger
+                    .lock()
+                    .unwrap()
+                    .clear(params.pattern.as_deref())
+                + self
+                    .content_ledger
+                    .lock()
+                    .unwrap()
+                    .clear(params.pattern.as_deref());
             ok_json(serde_json::json!({ "cleared_entries": cleared, "token_count": 10 }))
         })
     }
 
-    #[tool(description = "Discover t0k3n-mcp tools. No args: category names only. With category: tool names + one-line descriptions. Pass \"all\" for the full catalog. Categories: file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug.")]
+    #[tool(
+        description = "Discover t0k3n-mcp tools. No args: category names only. With category: tool names + one-line descriptions. Pass \"all\" for the full catalog. Categories: file/git/schema/web/notebook/test/log/text/memory/task/session/analysis/cmd/debug."
+    )]
     async fn help(
         &self,
         Parameters(params): Parameters<HelpParams>,
@@ -2061,7 +2352,9 @@ impl T0k3nServer {
         instrument!(self, "help", { ok_json(help(params)) })
     }
 
-    #[tool(description = "Returns server diagnostics: version, root path, DB status, and the full list of registered tools. Call this to confirm t0k3n-mcp is active and all tools are registered correctly.")]
+    #[tool(
+        description = "Returns server diagnostics: version, root path, DB status, and the full list of registered tools. Call this to confirm t0k3n-mcp is active and all tools are registered correctly."
+    )]
     async fn debug_info(&self) -> Result<CallToolResult, McpError> {
         instrument!(self, "debug_info", {
             let db_status = match self.db.lock() {
@@ -2320,7 +2613,10 @@ mod tests {
         let expected = REGISTERED_TOOLS.len();
         for (file, heading) in [
             ("README.md", format!("## Tools ({expected} tools)")),
-            ("README.ja.md", format!("## ツール一覧（{expected} ツール）")),
+            (
+                "README.ja.md",
+                format!("## ツール一覧（{expected} ツール）"),
+            ),
         ] {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(file);
             let text = std::fs::read_to_string(&path)
@@ -2443,7 +2739,10 @@ mod tests {
     fn effective_root_falls_back_when_unconfigured_and_no_override_given() {
         let configured = PathBuf::from("/configured/root");
         let mut args: Option<JsonObject> = Some(
-            serde_json::json!({ "path": "a.rs" }).as_object().unwrap().clone(),
+            serde_json::json!({ "path": "a.rs" })
+                .as_object()
+                .unwrap()
+                .clone(),
         );
         let resolved = resolve_effective_root(false, &configured, &mut args);
         assert_eq!(resolved, configured);

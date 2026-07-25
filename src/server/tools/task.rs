@@ -140,13 +140,15 @@ pub fn task_list(db: &Database, params: TaskListParams) -> Result<Vec<TaskEntry>
         .filter_map(|r| r.ok())
         .filter(|t| {
             if let Some(s) = &params.status
-                && &t.status != s {
-                    return false;
-                }
+                && &t.status != s
+            {
+                return false;
+            }
             if let Some(tag) = &params.tag
-                && !t.tags.contains(tag) {
-                    return false;
-                }
+                && !t.tags.contains(tag)
+            {
+                return false;
+            }
             true
         })
         .collect();
@@ -161,7 +163,9 @@ pub struct TaskDeleteParams {
 }
 
 pub fn task_delete(db: &Database, params: TaskDeleteParams) -> Result<String> {
-    let n = db.conn.execute("DELETE FROM tasks WHERE id = ?1", params![params.id])?;
+    let n = db
+        .conn
+        .execute("DELETE FROM tasks WHERE id = ?1", params![params.id])?;
     if n > 0 {
         Ok(format!("Task {} deleted.", params.id))
     } else {

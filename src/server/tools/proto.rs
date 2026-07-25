@@ -4,8 +4,8 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
+use crate::security::{rel_display, safe_path};
 
 // ─── read_proto_schema ────────────────────────────────────────────────────────
 
@@ -34,7 +34,10 @@ pub struct ReadProtoSchemaResult {
     pub token_count: usize,
 }
 
-pub fn read_proto_schema(root: &Path, params: ReadProtoSchemaParams) -> anyhow::Result<ReadProtoSchemaResult> {
+pub fn read_proto_schema(
+    root: &Path,
+    params: ReadProtoSchemaParams,
+) -> anyhow::Result<ReadProtoSchemaResult> {
     let file_path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
@@ -48,7 +51,13 @@ pub fn read_proto_schema(root: &Path, params: ReadProtoSchemaParams) -> anyhow::
     let json = serde_json::to_string(&types).unwrap_or_default();
     let token_count = estimate_tokens(&json);
 
-    Ok(ReadProtoSchemaResult { path: rel, syntax, package, types, token_count })
+    Ok(ReadProtoSchemaResult {
+        path: rel,
+        syntax,
+        package,
+        types,
+        token_count,
+    })
 }
 
 fn extract_proto_meta(content: &str, pattern: &str) -> Option<String> {
@@ -89,19 +98,31 @@ pub fn parse_proto_schema(content: &str) -> Vec<ProtoTypeEntry> {
                 let closes = l.chars().filter(|&c| c == '}').count() as i32;
                 depth += opens - closes;
 
-                if depth == 1 && j > i && !l.is_empty() && !l.starts_with("//")
+                if depth == 1
+                    && j > i
+                    && !l.is_empty()
+                    && !l.starts_with("//")
                     && (l.contains('=') || l.starts_with("rpc "))
                 {
                     field_count += 1;
                 }
 
-                if depth <= 0 && (opens > 0 || closes > 0) { break; }
+                if depth <= 0 && (opens > 0 || closes > 0) {
+                    break;
+                }
                 j += 1;
             }
 
             let end_line = (j + 1).min(lines.len());
             let id = format!("{}:{}-{}", kind, start_line, end_line);
-            items.push(ProtoTypeEntry { id, name, kind, field_count, start_line, end_line });
+            items.push(ProtoTypeEntry {
+                id,
+                name,
+                kind,
+                field_count,
+                start_line,
+                end_line,
+            });
             i = j + 1;
             continue;
         }
@@ -138,13 +159,17 @@ pub struct ReadProtoTypeResult {
     pub token_count: usize,
 }
 
-pub fn read_proto_type(root: &Path, params: ReadProtoTypeParams) -> anyhow::Result<ReadProtoTypeResult> {
+pub fn read_proto_type(
+    root: &Path,
+    params: ReadProtoTypeParams,
+) -> anyhow::Result<ReadProtoTypeResult> {
     let file_path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
 
     let types = parse_proto_schema(&content);
-    let entry = types.iter()
+    let entry = types
+        .iter()
         .find(|t| t.name == params.type_name)
         .ok_or_else(|| anyhow::anyhow!("'{}' が見つかりません", params.type_name))?
         .clone();
@@ -157,59 +182,75 @@ pub fn read_proto_type(root: &Path, params: ReadProtoTypeParams) -> anyhow::Resu
     let fields = match entry.kind.as_str() {
         "message" => parse_message_fields(body_lines),
         "service" => parse_service_rpcs(body_lines),
-        "enum"    => parse_enum_values(body_lines),
-        _         => vec![],
+        "enum" => parse_enum_values(body_lines),
+        _ => vec![],
     };
 
     let json = serde_json::to_string(&fields).unwrap_or_default();
     let token_count = estimate_tokens(&json);
 
-    Ok(ReadProtoTypeResult { name: params.type_name, kind: entry.kind, fields, token_count })
+    Ok(ReadProtoTypeResult {
+        name: params.type_name,
+        kind: entry.kind,
+        fields,
+        token_count,
+    })
 }
 
 fn parse_message_fields(lines: &[&str]) -> Vec<ProtoFieldEntry> {
-    let re = Regex::new(
-        r"^\s*(optional|repeated|required)?\s*([\w.]+)\s+(\w+)\s*=\s*(\d+)"
-    ).unwrap();
+    let re =
+        Regex::new(r"^\s*(optional|repeated|required)?\s*([\w.]+)\s+(\w+)\s*=\s*(\d+)").unwrap();
 
-    lines.iter().filter_map(|line| {
-        let t = line.trim();
-        if t.starts_with("//") || t.contains('{') || t.contains('}') { return None; }
-        re.captures(t).map(|cap| ProtoFieldEntry {
-            label: cap.get(1).map(|m| m.as_str().to_string()),
-            field_type: cap[2].to_string(),
-            name: cap[3].to_string(),
-            number: cap[4].parse().ok(),
+    lines
+        .iter()
+        .filter_map(|line| {
+            let t = line.trim();
+            if t.starts_with("//") || t.contains('{') || t.contains('}') {
+                return None;
+            }
+            re.captures(t).map(|cap| ProtoFieldEntry {
+                label: cap.get(1).map(|m| m.as_str().to_string()),
+                field_type: cap[2].to_string(),
+                name: cap[3].to_string(),
+                number: cap[4].parse().ok(),
+            })
         })
-    }).collect()
+        .collect()
 }
 
 fn parse_service_rpcs(lines: &[&str]) -> Vec<ProtoFieldEntry> {
-    let re = Regex::new(
-        r"^\s*rpc\s+(\w+)\s*\(\s*([\w.]+)\s*\)\s*returns\s*\(\s*([\w.]+)\s*\)"
-    ).unwrap();
+    let re =
+        Regex::new(r"^\s*rpc\s+(\w+)\s*\(\s*([\w.]+)\s*\)\s*returns\s*\(\s*([\w.]+)\s*\)").unwrap();
 
-    lines.iter().filter_map(|line| {
-        re.captures(line.trim()).map(|cap| ProtoFieldEntry {
-            name: cap[1].to_string(),
-            field_type: format!("({}) → ({})", &cap[2], &cap[3]),
-            number: None,
-            label: None,
+    lines
+        .iter()
+        .filter_map(|line| {
+            re.captures(line.trim()).map(|cap| ProtoFieldEntry {
+                name: cap[1].to_string(),
+                field_type: format!("({}) → ({})", &cap[2], &cap[3]),
+                number: None,
+                label: None,
+            })
         })
-    }).collect()
+        .collect()
 }
 
 fn parse_enum_values(lines: &[&str]) -> Vec<ProtoFieldEntry> {
     let re = Regex::new(r"^\s*(\w+)\s*=\s*(\d+)").unwrap();
 
-    lines.iter().filter_map(|line| {
-        let t = line.trim();
-        if t.starts_with("//") || t.contains('{') || t.contains('}') { return None; }
-        re.captures(t).map(|cap| ProtoFieldEntry {
-            name: cap[1].to_string(),
-            field_type: "enum_value".to_string(),
-            number: cap[2].parse().ok(),
-            label: None,
+    lines
+        .iter()
+        .filter_map(|line| {
+            let t = line.trim();
+            if t.starts_with("//") || t.contains('{') || t.contains('}') {
+                return None;
+            }
+            re.captures(t).map(|cap| ProtoFieldEntry {
+                name: cap[1].to_string(),
+                field_type: "enum_value".to_string(),
+                number: cap[2].parse().ok(),
+                label: None,
+            })
         })
-    }).collect()
+        .collect()
 }

@@ -13,11 +13,15 @@ use super::fs::estimate_tokens;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadCodeOwnershipParams {
-    #[schemars(description = "Restrict to this file or directory (root-relative). Omit for the whole repo.")]
+    #[schemars(
+        description = "Restrict to this file or directory (root-relative). Omit for the whole repo."
+    )]
     pub path: Option<String>,
     #[schemars(description = "Number of hotspot files to return, sorted by churn (default 20).")]
     pub top_n: Option<usize>,
-    #[schemars(description = "Only consider history since this point, e.g. \"3 months ago\" or \"2025-01-01\".")]
+    #[schemars(
+        description = "Only consider history since this point, e.g. \"3 months ago\" or \"2025-01-01\"."
+    )]
     pub since: Option<String>,
 }
 
@@ -76,7 +80,9 @@ pub fn read_code_ownership(
         cmd.arg("--").arg(p);
     }
 
-    let output = cmd.output().map_err(|e| format!("git コマンド実行失敗: {e}"))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("git コマンド実行失敗: {e}"))?;
     if !output.status.success() {
         return Err(format!(
             "git log 失敗: {}",
@@ -93,7 +99,10 @@ pub fn read_code_ownership(
     let token_count = estimate_tokens(&json);
     // hotspots is owned; return it.
     hotspots.shrink_to_fit();
-    Ok(ReadCodeOwnershipResult { hotspots, token_count })
+    Ok(ReadCodeOwnershipResult {
+        hotspots,
+        token_count,
+    })
 }
 
 /// Parse `git log --numstat` output into per-file stats.
@@ -116,8 +125,7 @@ fn aggregate(text: &str) -> HashMap<String, FileStat> {
         }
         // numstat line: <added>\t<deleted>\t<path>  (added/deleted may be "-" for binary)
         let mut parts = line.splitn(3, '\t');
-        let (Some(added), Some(_deleted), Some(path)) =
-            (parts.next(), parts.next(), parts.next())
+        let (Some(added), Some(_deleted), Some(path)) = (parts.next(), parts.next(), parts.next())
         else {
             continue;
         };
@@ -162,10 +170,7 @@ fn rank(stats: HashMap<String, FileStat>, top_n: usize) -> Vec<Hotspot> {
                     .unwrap_or(std::cmp::Ordering::Equal)
                     .then(a.author.cmp(&b.author))
             });
-            let primary_owner = owners
-                .first()
-                .map(|o| o.author.clone())
-                .unwrap_or_default();
+            let primary_owner = owners.first().map(|o| o.author.clone()).unwrap_or_default();
             owners.truncate(5);
             Hotspot {
                 path,
@@ -199,7 +204,11 @@ mod tests {
         // a.rs has more churn than b.rs → first.
         assert_eq!(hotspots[0].path, "src/a.rs");
         assert_eq!(hotspots[0].primary_owner, "Alice");
-        let alice = hotspots[0].owners.iter().find(|o| o.author == "Alice").unwrap();
+        let alice = hotspots[0]
+            .owners
+            .iter()
+            .find(|o| o.author == "Alice")
+            .unwrap();
         assert!((alice.pct - 83.3).abs() < 0.5); // 10/12
     }
 

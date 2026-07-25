@@ -4,12 +4,14 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
+use crate::security::{rel_display, safe_path};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadCiPipelineParams {
-    #[schemars(description = "Path to a specific CI YAML file, or omit to auto-scan workspace root.")]
+    #[schemars(
+        description = "Path to a specific CI YAML file, or omit to auto-scan workspace root."
+    )]
     pub path: Option<String>,
 }
 
@@ -45,7 +47,10 @@ pub struct ReadCiPipelineResult {
     pub token_count: usize,
 }
 
-pub fn read_ci_pipeline(root: &Path, params: ReadCiPipelineParams) -> anyhow::Result<ReadCiPipelineResult> {
+pub fn read_ci_pipeline(
+    root: &Path,
+    params: ReadCiPipelineParams,
+) -> anyhow::Result<ReadCiPipelineResult> {
     let mut pipelines = Vec::new();
 
     if let Some(ref p) = params.path {
@@ -66,7 +71,9 @@ pub fn read_ci_pipeline(root: &Path, params: ReadCiPipelineParams) -> anyhow::Re
             for entry in entries {
                 let path = entry.path();
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                if ext != "yml" && ext != "yaml" { continue; }
+                if ext != "yml" && ext != "yaml" {
+                    continue;
+                }
                 let rel = rel_display(root, &path);
                 if let Some(pipeline) = parse_ci_file(&path, &rel) {
                     pipelines.push(pipeline);
@@ -77,30 +84,41 @@ pub fn read_ci_pipeline(root: &Path, params: ReadCiPipelineParams) -> anyhow::Re
         for name in &[".gitlab-ci.yml", ".gitlab-ci.yaml"] {
             let p = root.join(name);
             if p.exists()
-                && let Some(pipeline) = parse_ci_file(&p, name) {
-                    pipelines.push(pipeline);
-                }
+                && let Some(pipeline) = parse_ci_file(&p, name)
+            {
+                pipelines.push(pipeline);
+            }
         }
         // CircleCI
         for name in &[".circleci/config.yml", ".circleci/config.yaml"] {
             let p = root.join(name);
             if p.exists()
-                && let Some(pipeline) = parse_ci_file(&p, name) {
-                    pipelines.push(pipeline);
-                }
+                && let Some(pipeline) = parse_ci_file(&p, name)
+            {
+                pipelines.push(pipeline);
+            }
         }
     }
 
     let json = serde_json::to_string(&pipelines).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadCiPipelineResult { pipelines, token_count })
+    Ok(ReadCiPipelineResult {
+        pipelines,
+        token_count,
+    })
 }
 
 fn detect_ci_format(path: &Path) -> Option<&'static str> {
     let s = path.to_string_lossy().replace('\\', "/");
-    if s.contains(".github/workflows/") { return Some("github-actions"); }
-    if s.ends_with(".gitlab-ci.yml") || s.ends_with(".gitlab-ci.yaml") { return Some("gitlab-ci"); }
-    if s.contains(".circleci/config.yml") || s.contains(".circleci/config.yaml") { return Some("circleci"); }
+    if s.contains(".github/workflows/") {
+        return Some("github-actions");
+    }
+    if s.ends_with(".gitlab-ci.yml") || s.ends_with(".gitlab-ci.yaml") {
+        return Some("gitlab-ci");
+    }
+    if s.contains(".circleci/config.yml") || s.contains(".circleci/config.yaml") {
+        return Some("circleci");
+    }
     None
 }
 
@@ -137,12 +155,16 @@ fn parse_github_actions(doc: &serde_yaml::Value) -> Vec<CiWorkflow> {
         match on_val {
             serde_yaml::Value::Sequence(seq) => {
                 for item in seq {
-                    if let Some(s) = item.as_str() { triggers.push(s.to_string()); }
+                    if let Some(s) = item.as_str() {
+                        triggers.push(s.to_string());
+                    }
                 }
             }
             serde_yaml::Value::Mapping(map) => {
                 for (k, _) in map {
-                    if let Some(s) = k.as_str() { triggers.push(s.to_string()); }
+                    if let Some(s) = k.as_str() {
+                        triggers.push(s.to_string());
+                    }
                 }
             }
             serde_yaml::Value::String(s) => triggers.push(s.clone()),
@@ -150,7 +172,8 @@ fn parse_github_actions(doc: &serde_yaml::Value) -> Vec<CiWorkflow> {
         }
     }
 
-    let workflow_name = doc.get("name")
+    let workflow_name = doc
+        .get("name")
         .and_then(|n| n.as_str())
         .unwrap_or("workflow")
         .to_string();
@@ -159,16 +182,21 @@ fn parse_github_actions(doc: &serde_yaml::Value) -> Vec<CiWorkflow> {
     if let Some(jobs_map) = doc.get("jobs").and_then(|j| j.as_mapping()) {
         for (job_key, job_val) in jobs_map {
             let job_name = job_key.as_str().unwrap_or("unknown").to_string();
-            let runs_on = job_val.get("runs-on")
+            let runs_on = job_val
+                .get("runs-on")
                 .and_then(|r| r.as_str())
                 .map(|s| s.to_string());
-            let needs = job_val.get("needs").map(|n| match n {
-                serde_yaml::Value::String(s) => vec![s.clone()],
-                serde_yaml::Value::Sequence(seq) => seq.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect(),
-                _ => vec![],
-            }).unwrap_or_default();
+            let needs = job_val
+                .get("needs")
+                .map(|n| match n {
+                    serde_yaml::Value::String(s) => vec![s.clone()],
+                    serde_yaml::Value::Sequence(seq) => seq
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect(),
+                    _ => vec![],
+                })
+                .unwrap_or_default();
 
             let mut steps = Vec::new();
             if let Some(steps_seq) = job_val.get("steps").and_then(|s| s.as_sequence()) {
@@ -185,50 +213,86 @@ fn parse_github_actions(doc: &serde_yaml::Value) -> Vec<CiWorkflow> {
             }
 
             let env_vars = collect_env_var_refs(job_val);
-            jobs.push(CiJob { name: job_name, runs_on, needs, steps, env_vars });
+            jobs.push(CiJob {
+                name: job_name,
+                runs_on,
+                needs,
+                steps,
+                env_vars,
+            });
         }
     }
 
-    vec![CiWorkflow { name: workflow_name, triggers, jobs }]
+    vec![CiWorkflow {
+        name: workflow_name,
+        triggers,
+        jobs,
+    }]
 }
 
 fn parse_gitlab_ci(doc: &serde_yaml::Value) -> Vec<CiWorkflow> {
     const SPECIAL_KEYS: &[&str] = &[
-        "stages", "variables", "image", "services", "before_script",
-        "after_script", "cache", "include", "workflow", "default",
+        "stages",
+        "variables",
+        "image",
+        "services",
+        "before_script",
+        "after_script",
+        "cache",
+        "include",
+        "workflow",
+        "default",
     ];
 
     let mut triggers = Vec::new();
     if let Some(workflow) = doc.get("workflow")
-        && let Some(rules) = workflow.get("rules").and_then(|r| r.as_sequence()) {
-            for rule in rules {
-                if let Some(cond) = rule.get("if").and_then(|r| r.as_str()) {
-                    triggers.push(cond.to_string());
-                }
+        && let Some(rules) = workflow.get("rules").and_then(|r| r.as_sequence())
+    {
+        for rule in rules {
+            if let Some(cond) = rule.get("if").and_then(|r| r.as_str()) {
+                triggers.push(cond.to_string());
             }
         }
-    if triggers.is_empty() { triggers.push("push".to_string()); }
+    }
+    if triggers.is_empty() {
+        triggers.push("push".to_string());
+    }
 
     let mut jobs = Vec::new();
     if let Some(map) = doc.as_mapping() {
         for (k, v) in map {
-            let name = match k.as_str() { Some(s) => s, None => continue };
-            if SPECIAL_KEYS.contains(&name) { continue; }
+            let name = match k.as_str() {
+                Some(s) => s,
+                None => continue,
+            };
+            if SPECIAL_KEYS.contains(&name) {
+                continue;
+            }
 
             let mut steps = Vec::new();
             if let Some(script) = v.get("script").and_then(|s| s.as_sequence()) {
                 for line in script {
-                    if let Some(s) = line.as_str() { steps.push(s.to_string()); }
+                    if let Some(s) = line.as_str() {
+                        steps.push(s.to_string());
+                    }
                 }
             }
-            let env_vars = v.get("variables")
+            let env_vars = v
+                .get("variables")
                 .and_then(|vars| vars.as_mapping())
-                .map(|m| m.iter().filter_map(|(k, _)| k.as_str().map(|s| s.to_string())).collect())
+                .map(|m| {
+                    m.iter()
+                        .filter_map(|(k, _)| k.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
                 .unwrap_or_default();
 
             jobs.push(CiJob {
                 name: name.to_string(),
-                runs_on: v.get("image").and_then(|i| i.as_str()).map(|s| s.to_string()),
+                runs_on: v
+                    .get("image")
+                    .and_then(|i| i.as_str())
+                    .map(|s| s.to_string()),
                 needs: vec![],
                 steps,
                 env_vars,
@@ -236,7 +300,11 @@ fn parse_gitlab_ci(doc: &serde_yaml::Value) -> Vec<CiWorkflow> {
         }
     }
 
-    vec![CiWorkflow { name: "pipeline".to_string(), triggers, jobs }]
+    vec![CiWorkflow {
+        name: "pipeline".to_string(),
+        triggers,
+        jobs,
+    }]
 }
 
 fn parse_circleci(doc: &serde_yaml::Value) -> Vec<CiWorkflow> {
@@ -245,22 +313,33 @@ fn parse_circleci(doc: &serde_yaml::Value) -> Vec<CiWorkflow> {
     if let Some(workflows_map) = doc.get("workflows").and_then(|w| w.as_mapping()) {
         for (wf_name, wf_val) in workflows_map {
             let name = wf_name.as_str().unwrap_or("workflow").to_string();
-            if name == "version" { continue; }
+            if name == "version" {
+                continue;
+            }
 
-            let job_names: Vec<String> = wf_val.get("jobs")
+            let job_names: Vec<String> = wf_val
+                .get("jobs")
                 .and_then(|j| j.as_sequence())
-                .map(|seq| seq.iter().filter_map(|j| match j {
-                    serde_yaml::Value::String(s) => Some(s.clone()),
-                    serde_yaml::Value::Mapping(m) => m.keys().next()
-                        .and_then(|k| k.as_str().map(|s| s.to_string())),
-                    _ => None,
-                }).collect())
+                .map(|seq| {
+                    seq.iter()
+                        .filter_map(|j| match j {
+                            serde_yaml::Value::String(s) => Some(s.clone()),
+                            serde_yaml::Value::Mapping(m) => m
+                                .keys()
+                                .next()
+                                .and_then(|k| k.as_str().map(|s| s.to_string())),
+                            _ => None,
+                        })
+                        .collect()
+                })
                 .unwrap_or_default();
 
             let mut jobs = Vec::new();
             if let Some(jobs_map) = doc.get("jobs").and_then(|j| j.as_mapping()) {
                 for job_name in &job_names {
-                    let Some(job_val) = jobs_map.get(job_name.as_str()) else { continue };
+                    let Some(job_val) = jobs_map.get(job_name.as_str()) else {
+                        continue;
+                    };
 
                     let mut steps = Vec::new();
                     if let Some(steps_seq) = job_val.get("steps").and_then(|s| s.as_sequence()) {
@@ -277,18 +356,29 @@ fn parse_circleci(doc: &serde_yaml::Value) -> Vec<CiWorkflow> {
                         }
                     }
 
-                    let runs_on = job_val.get("docker")
+                    let runs_on = job_val
+                        .get("docker")
                         .and_then(|d| d.as_sequence())
                         .and_then(|s| s.first())
                         .and_then(|f| f.get("image"))
                         .and_then(|i| i.as_str())
                         .map(|s| s.to_string());
 
-                    jobs.push(CiJob { name: job_name.clone(), runs_on, needs: vec![], steps, env_vars: vec![] });
+                    jobs.push(CiJob {
+                        name: job_name.clone(),
+                        runs_on,
+                        needs: vec![],
+                        steps,
+                        env_vars: vec![],
+                    });
                 }
             }
 
-            all_workflows.push(CiWorkflow { name, triggers: vec!["workflow".to_string()], jobs });
+            all_workflows.push(CiWorkflow {
+                name,
+                triggers: vec!["workflow".to_string()],
+                jobs,
+            });
         }
     }
 

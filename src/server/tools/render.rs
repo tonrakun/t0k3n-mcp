@@ -33,7 +33,11 @@ pub fn to_compact_text(v: &Value) -> String {
         _ => write_value(&mut out, v, 0),
     }
     let trimmed = out.trim_end().to_string();
-    if trimmed.is_empty() { "(empty)".to_string() } else { trimmed }
+    if trimmed.is_empty() {
+        "(empty)".to_string()
+    } else {
+        trimmed
+    }
 }
 
 fn indent(out: &mut String, depth: usize) {

@@ -9,7 +9,9 @@ use crate::security::{rel_display, scoped_root};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadSecuritySurfaceParams {
-    #[schemars(description = "Root-relative file or directory to scan. Omit to scan entire workspace.")]
+    #[schemars(
+        description = "Root-relative file or directory to scan. Omit to scan entire workspace."
+    )]
     pub path: Option<String>,
     #[schemars(
         description = "Categories to scan. Options: \"injection\", \"xss\", \"secrets\", \"unsafe\", \"path_traversal\", \"all\" (default: \"all\")"
@@ -81,61 +83,355 @@ const RULES: &[Rule] = &[
     // --- Command injection ---
     // Spawning a process is not itself a vulnerability; only unsanitized input is.
     // These stay low/medium confidence so the agent verifies before reporting.
-    rule!("injection", "high", "low", ".exec(", "Potential command injection via .exec()"),
-    rule!("injection", "high", "medium", "shell_exec(", "Shell command execution"),
-    rule!("injection", "high", "low", "system(", "Direct system() call"),
-    rule!("injection", "high", "medium", "popen(", "popen() shell execution"),
-    rule!("injection", "high", "low", "subprocess.call(", "subprocess.call() execution"),
-    rule!("injection", "high", "low", "subprocess.Popen(", "subprocess.Popen() execution"),
-    rule!("injection", "medium", "low", "Command::new(", "Rust Command::new — verify input is sanitized"),
-    rule!("injection", "high", "low", "child_process.exec(", "Node.js child_process.exec()"),
-    rule!("injection", "high", "low", "child_process.spawn(", "Node.js child_process.spawn()"),
-    rule!("injection", "high", "medium", "Runtime.getRuntime().exec(", "Java Runtime.exec()"),
+    rule!(
+        "injection",
+        "high",
+        "low",
+        ".exec(",
+        "Potential command injection via .exec()"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "medium",
+        "shell_exec(",
+        "Shell command execution"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "low",
+        "system(",
+        "Direct system() call"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "medium",
+        "popen(",
+        "popen() shell execution"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "low",
+        "subprocess.call(",
+        "subprocess.call() execution"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "low",
+        "subprocess.Popen(",
+        "subprocess.Popen() execution"
+    ),
+    rule!(
+        "injection",
+        "medium",
+        "low",
+        "Command::new(",
+        "Rust Command::new — verify input is sanitized"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "low",
+        "child_process.exec(",
+        "Node.js child_process.exec()"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "low",
+        "child_process.spawn(",
+        "Node.js child_process.spawn()"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "medium",
+        "Runtime.getRuntime().exec(",
+        "Java Runtime.exec()"
+    ),
     // SQL injection — building a query by interpolation is a strong signal.
-    rule!("injection", "high", "high", "format!(\"SELECT", "SQL query built with format! macro (possible injection)"),
-    rule!("injection", "high", "high", "format!(\"INSERT", "SQL INSERT built with format! macro"),
-    rule!("injection", "high", "high", "format!(\"UPDATE", "SQL UPDATE built with format! macro"),
-    rule!("injection", "high", "high", "format!(\"DELETE", "SQL DELETE built with format! macro"),
-    rule!("injection", "high", "high", "f\"SELECT", "Python f-string SQL query (possible injection)"),
-    rule!("injection", "high", "high", "f\"INSERT", "Python f-string SQL INSERT"),
-    rule!("injection", "high", "medium", "\" + req.", "String concatenation with request data (possible injection)"),
-    rule!("injection", "high", "medium", "\" + params.", "String concatenation with params (possible injection)"),
-    rule!("injection", "medium", "medium", "raw_query(", "Raw SQL query — verify parameterization"),
+    rule!(
+        "injection",
+        "high",
+        "high",
+        "format!(\"SELECT",
+        "SQL query built with format! macro (possible injection)"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "high",
+        "format!(\"INSERT",
+        "SQL INSERT built with format! macro"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "high",
+        "format!(\"UPDATE",
+        "SQL UPDATE built with format! macro"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "high",
+        "format!(\"DELETE",
+        "SQL DELETE built with format! macro"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "high",
+        "f\"SELECT",
+        "Python f-string SQL query (possible injection)"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "high",
+        "f\"INSERT",
+        "Python f-string SQL INSERT"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "medium",
+        "\" + req.",
+        "String concatenation with request data (possible injection)"
+    ),
+    rule!(
+        "injection",
+        "high",
+        "medium",
+        "\" + params.",
+        "String concatenation with params (possible injection)"
+    ),
+    rule!(
+        "injection",
+        "medium",
+        "medium",
+        "raw_query(",
+        "Raw SQL query — verify parameterization"
+    ),
     // A literal SQL string is the *safe* shape (no interpolation), hence low.
-    rule!("injection", "medium", "low", ".execute(\"", "Direct SQL execute with string literal"),
+    rule!(
+        "injection",
+        "medium",
+        "low",
+        ".execute(\"",
+        "Direct SQL execute with string literal"
+    ),
     // --- XSS ---
-    rule!("xss", "high", "high", "innerHTML =", "Direct innerHTML assignment (XSS risk)"),
-    rule!("xss", "high", "high", "innerHTML+=", "innerHTML append (XSS risk)"),
-    rule!("xss", "high", "high", "dangerouslySetInnerHTML", "React dangerouslySetInnerHTML"),
-    rule!("xss", "high", "high", "document.write(", "document.write() XSS vector"),
-    rule!("xss", "high", "medium", "eval(", "eval() execution of arbitrary code"),
-    rule!("xss", "medium", "high", "outerHTML =", "outerHTML assignment (XSS risk)"),
-    rule!("xss", "medium", "medium", "insertAdjacentHTML(", "insertAdjacentHTML (verify escaping)"),
-    rule!("xss", "high", "high", "__html:", "React __html key (dangerouslySetInnerHTML)"),
+    rule!(
+        "xss",
+        "high",
+        "high",
+        "innerHTML =",
+        "Direct innerHTML assignment (XSS risk)"
+    ),
+    rule!(
+        "xss",
+        "high",
+        "high",
+        "innerHTML+=",
+        "innerHTML append (XSS risk)"
+    ),
+    rule!(
+        "xss",
+        "high",
+        "high",
+        "dangerouslySetInnerHTML",
+        "React dangerouslySetInnerHTML"
+    ),
+    rule!(
+        "xss",
+        "high",
+        "high",
+        "document.write(",
+        "document.write() XSS vector"
+    ),
+    rule!(
+        "xss",
+        "high",
+        "medium",
+        "eval(",
+        "eval() execution of arbitrary code"
+    ),
+    rule!(
+        "xss",
+        "medium",
+        "high",
+        "outerHTML =",
+        "outerHTML assignment (XSS risk)"
+    ),
+    rule!(
+        "xss",
+        "medium",
+        "medium",
+        "insertAdjacentHTML(",
+        "insertAdjacentHTML (verify escaping)"
+    ),
+    rule!(
+        "xss",
+        "high",
+        "high",
+        "__html:",
+        "React __html key (dangerouslySetInnerHTML)"
+    ),
     // --- Hardcoded secrets ---
-    rule!("secrets", "critical", "high", "password = \"", "Hardcoded password string"),
-    rule!("secrets", "critical", "high", "password=\"", "Hardcoded password string"),
-    rule!("secrets", "critical", "high", "api_key = \"", "Hardcoded API key"),
-    rule!("secrets", "critical", "high", "api_key=\"", "Hardcoded API key"),
-    rule!("secrets", "critical", "high", "secret = \"", "Hardcoded secret value"),
-    rule!("secrets", "critical", "high", "secret=\"", "Hardcoded secret value"),
-    rule!("secrets", "critical", "high", "token = \"", "Hardcoded token"),
-    rule!("secrets", "high", "high", "private_key = \"", "Hardcoded private key"),
-    rule!("secrets", "high", "low", "aws_secret", "AWS secret reference — verify not hardcoded"),
-    rule!("secrets", "high", "high", "-----BEGIN", "PEM certificate or private key in source"),
+    rule!(
+        "secrets",
+        "critical",
+        "high",
+        "password = \"",
+        "Hardcoded password string"
+    ),
+    rule!(
+        "secrets",
+        "critical",
+        "high",
+        "password=\"",
+        "Hardcoded password string"
+    ),
+    rule!(
+        "secrets",
+        "critical",
+        "high",
+        "api_key = \"",
+        "Hardcoded API key"
+    ),
+    rule!(
+        "secrets",
+        "critical",
+        "high",
+        "api_key=\"",
+        "Hardcoded API key"
+    ),
+    rule!(
+        "secrets",
+        "critical",
+        "high",
+        "secret = \"",
+        "Hardcoded secret value"
+    ),
+    rule!(
+        "secrets",
+        "critical",
+        "high",
+        "secret=\"",
+        "Hardcoded secret value"
+    ),
+    rule!(
+        "secrets",
+        "critical",
+        "high",
+        "token = \"",
+        "Hardcoded token"
+    ),
+    rule!(
+        "secrets",
+        "high",
+        "high",
+        "private_key = \"",
+        "Hardcoded private key"
+    ),
+    rule!(
+        "secrets",
+        "high",
+        "low",
+        "aws_secret",
+        "AWS secret reference — verify not hardcoded"
+    ),
+    rule!(
+        "secrets",
+        "high",
+        "high",
+        "-----BEGIN",
+        "PEM certificate or private key in source"
+    ),
     // --- Unsafe code ---
-    rule!("unsafe", "medium", "medium", "unsafe {", "Rust unsafe block"),
-    rule!("unsafe", "medium", "medium", "unsafe fn ", "Rust unsafe function"),
-    rule!("unsafe", "high", "low", "from_raw(", "Raw pointer from_raw — verify ownership"),
-    rule!("unsafe", "high", "medium", "transmute(", "mem::transmute — type safety bypass"),
-    rule!("unsafe", "high", "low", "ctypes.", "Python ctypes usage — native memory access"),
-    rule!("unsafe", "medium", "medium", "@SuppressWarnings(\"unchecked\")", "Java unchecked cast suppression"),
+    rule!(
+        "unsafe",
+        "medium",
+        "medium",
+        "unsafe {",
+        "Rust unsafe block"
+    ),
+    rule!(
+        "unsafe",
+        "medium",
+        "medium",
+        "unsafe fn ",
+        "Rust unsafe function"
+    ),
+    rule!(
+        "unsafe",
+        "high",
+        "low",
+        "from_raw(",
+        "Raw pointer from_raw — verify ownership"
+    ),
+    rule!(
+        "unsafe",
+        "high",
+        "medium",
+        "transmute(",
+        "mem::transmute — type safety bypass"
+    ),
+    rule!(
+        "unsafe",
+        "high",
+        "low",
+        "ctypes.",
+        "Python ctypes usage — native memory access"
+    ),
+    rule!(
+        "unsafe",
+        "medium",
+        "medium",
+        "@SuppressWarnings(\"unchecked\")",
+        "Java unchecked cast suppression"
+    ),
     // --- Path traversal ---
-    rule!("path_traversal", "high", "low", "../", "Path traversal sequence in string literal"),
-    rule!("path_traversal", "medium", "high", "Path::new(req.", "File path from request (verify sanitization)"),
-    rule!("path_traversal", "medium", "high", "open(request.", "File open with request data"),
-    rule!("path_traversal", "medium", "low", "File::open(", "Rust File::open — verify path is sanitized"),
-    rule!("path_traversal", "medium", "low", "os.path.join(", "Python path join — verify no user traversal"),
+    rule!(
+        "path_traversal",
+        "high",
+        "low",
+        "../",
+        "Path traversal sequence in string literal"
+    ),
+    rule!(
+        "path_traversal",
+        "medium",
+        "high",
+        "Path::new(req.",
+        "File path from request (verify sanitization)"
+    ),
+    rule!(
+        "path_traversal",
+        "medium",
+        "high",
+        "open(request.",
+        "File open with request data"
+    ),
+    rule!(
+        "path_traversal",
+        "medium",
+        "low",
+        "File::open(",
+        "Rust File::open — verify path is sanitized"
+    ),
+    rule!(
+        "path_traversal",
+        "medium",
+        "low",
+        "os.path.join(",
+        "Python path join — verify no user traversal"
+    ),
 ];
 
 const NOTE: &str = "Heuristic line-pattern scan, not taint analysis. `severity` is impact if real; \
@@ -198,7 +494,8 @@ fn only_matches_inside_string_literal(line: &str, pattern: &str) -> bool {
 }
 
 const CODE_EXTS: &[&str] = &[
-    "rs", "py", "js", "jsx", "ts", "tsx", "go", "java", "rb", "cs", "php", "kt", "swift", "c", "cpp",
+    "rs", "py", "js", "jsx", "ts", "tsx", "go", "java", "rb", "cs", "php", "kt", "swift", "c",
+    "cpp",
 ];
 
 pub fn read_security_surface(
@@ -320,8 +617,10 @@ pub fn read_security_surface(
 
     let total = findings.len();
 
-    let mut by_category: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    let mut by_severity: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut by_category: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut by_severity: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
     let mut by_confidence: std::collections::HashMap<String, usize> =
         std::collections::HashMap::new();
     for f in &findings {
@@ -378,10 +677,14 @@ mod tests {
     #[test]
     fn code_patterns_quoted_in_a_rule_table_are_suppressed() {
         // The scanner's own rule table must not report itself.
-        let line = r#"    rule!("injection", "high", "low", ".exec(", "Potential command injection"),"#;
+        let line =
+            r#"    rule!("injection", "high", "low", ".exec(", "Potential command injection"),"#;
         assert!(only_matches_inside_string_literal(line, ".exec("));
         // A real call site is not suppressed.
-        assert!(!only_matches_inside_string_literal("child.exec(cmd)", ".exec("));
+        assert!(!only_matches_inside_string_literal(
+            "child.exec(cmd)",
+            ".exec("
+        ));
     }
 
     #[test]
@@ -468,8 +771,18 @@ mod tests {
             include_tests,
             min_confidence: None,
         };
-        assert_eq!(read_security_surface(dir.path(), params(None)).unwrap().total, 0);
-        assert!(read_security_surface(dir.path(), params(Some(true))).unwrap().total > 0);
+        assert_eq!(
+            read_security_surface(dir.path(), params(None))
+                .unwrap()
+                .total,
+            0
+        );
+        assert!(
+            read_security_surface(dir.path(), params(Some(true)))
+                .unwrap()
+                .total
+                > 0
+        );
     }
 
     #[test]
@@ -491,6 +804,9 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(result.total, 0, "findings inside #[cfg(test)] must be skipped");
+        assert_eq!(
+            result.total, 0,
+            "findings inside #[cfg(test)] must be skipped"
+        );
     }
 }

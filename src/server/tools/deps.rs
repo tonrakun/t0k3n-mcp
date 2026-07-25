@@ -5,14 +5,16 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
+use crate::security::{rel_display, safe_path};
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadCodeDepsParams {
     #[schemars(description = "Root-relative path to the code file")]
     pub path: String,
-    #[schemars(description = "Direction: \"imports\" | \"imported_by\" | \"both\" (default: \"both\")")]
+    #[schemars(
+        description = "Direction: \"imports\" | \"imported_by\" | \"both\" (default: \"both\")"
+    )]
     pub direction: Option<String>,
 }
 
@@ -33,7 +35,10 @@ pub struct ReadCodeDepsResult {
     pub token_count: usize,
 }
 
-pub fn read_code_deps(root: &Path, params: ReadCodeDepsParams) -> anyhow::Result<ReadCodeDepsResult> {
+pub fn read_code_deps(
+    root: &Path,
+    params: ReadCodeDepsParams,
+) -> anyhow::Result<ReadCodeDepsResult> {
     let abs_path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&abs_path)?;
     let ext = abs_path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -56,7 +61,13 @@ pub fn read_code_deps(root: &Path, params: ReadCodeDepsParams) -> anyhow::Result
     let json = serde_json::json!({ "imports": imports, "imported_by": imported_by });
     let token_count = estimate_tokens(&json.to_string());
 
-    Ok(ReadCodeDepsResult { path: params.path, language, imports, imported_by, token_count })
+    Ok(ReadCodeDepsResult {
+        path: params.path,
+        language,
+        imports,
+        imported_by,
+        token_count,
+    })
 }
 
 fn lang_from_ext(ext: &str) -> &'static str {
@@ -90,7 +101,11 @@ fn extract_rust_imports(content: &str) -> Vec<DepImport> {
         if let Some(cap) = re.captures(trimmed) {
             let raw = cap[1].trim().to_string();
             let symbols = rust_symbols_from_path(&raw);
-            imports.push(DepImport { raw, resolved: None, symbols });
+            imports.push(DepImport {
+                raw,
+                resolved: None,
+                symbols,
+            });
         }
     }
     imports
@@ -136,7 +151,11 @@ fn extract_python_imports(content: &str) -> Vec<DepImport> {
             });
         } else if let Some(cap) = import_re.captures(trimmed) {
             let module = cap[1].trim().to_string();
-            imports.push(DepImport { raw: module.clone(), resolved: None, symbols: vec![module] });
+            imports.push(DepImport {
+                raw: module.clone(),
+                resolved: None,
+                symbols: vec![module],
+            });
         }
     }
     imports
@@ -149,9 +168,10 @@ fn extract_js_imports(content: &str, file_path: &Path, root: &Path) -> Vec<DepIm
     )
     .unwrap();
     // CommonJS: const { A } = require('./foo')
-    let require_re =
-        Regex::new(r#"(?:const|let|var)\s+(?:\{([^}]*)\}|(\w+))\s*=\s*require\(['"]([^'"]+)['"]\)"#)
-            .unwrap();
+    let require_re = Regex::new(
+        r#"(?:const|let|var)\s+(?:\{([^}]*)\}|(\w+))\s*=\s*require\(['"]([^'"]+)['"]\)"#,
+    )
+    .unwrap();
 
     let dir = file_path.parent().unwrap_or(root);
     let mut imports = Vec::new();
@@ -168,13 +188,21 @@ fn extract_js_imports(content: &str, file_path: &Path, root: &Path) -> Vec<DepIm
                     .filter(|s| !s.is_empty())
                     .collect()
             })
-            .unwrap_or_else(|| cap.get(2).map(|m| vec![m.as_str().to_string()]).unwrap_or_default());
+            .unwrap_or_else(|| {
+                cap.get(2)
+                    .map(|m| vec![m.as_str().to_string()])
+                    .unwrap_or_default()
+            });
         let resolved = if src.starts_with('.') {
             resolve_js_path(dir, &src, root)
         } else {
             None
         };
-        imports.push(DepImport { raw: src, resolved, symbols });
+        imports.push(DepImport {
+            raw: src,
+            resolved,
+            symbols,
+        });
     }
 
     for cap in require_re.captures_iter(content) {
@@ -188,13 +216,21 @@ fn extract_js_imports(content: &str, file_path: &Path, root: &Path) -> Vec<DepIm
                     .filter(|s| !s.is_empty())
                     .collect()
             })
-            .unwrap_or_else(|| cap.get(2).map(|m| vec![m.as_str().to_string()]).unwrap_or_default());
+            .unwrap_or_else(|| {
+                cap.get(2)
+                    .map(|m| vec![m.as_str().to_string()])
+                    .unwrap_or_default()
+            });
         let resolved = if src.starts_with('.') {
             resolve_js_path(dir, &src, root)
         } else {
             None
         };
-        imports.push(DepImport { raw: src, resolved, symbols });
+        imports.push(DepImport {
+            raw: src,
+            resolved,
+            symbols,
+        });
     }
 
     imports
@@ -242,12 +278,20 @@ fn extract_go_imports(content: &str) -> Vec<DepImport> {
             if let Some(cap) = block_path_re.captures(trimmed) {
                 let path = cap[1].to_string();
                 let name = path.split('/').next_back().unwrap_or(&path).to_string();
-                imports.push(DepImport { raw: path, resolved: None, symbols: vec![name] });
+                imports.push(DepImport {
+                    raw: path,
+                    resolved: None,
+                    symbols: vec![name],
+                });
             }
         } else if let Some(cap) = single_re.captures(trimmed) {
             let path = cap[1].to_string();
             let name = path.split('/').next_back().unwrap_or(&path).to_string();
-            imports.push(DepImport { raw: path, resolved: None, symbols: vec![name] });
+            imports.push(DepImport {
+                raw: path,
+                resolved: None,
+                symbols: vec![name],
+            });
         }
     }
     imports
@@ -283,7 +327,9 @@ fn scan_imported_by(root: &Path, target: &Path, target_ext: &str) -> Vec<String>
         if !search_exts.contains(&ext) {
             continue;
         }
-        let Ok(content) = std::fs::read_to_string(path) else { continue };
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
         if content.contains(stem.as_str()) && references_target(&content, &stem, ext) {
             results.push(rel);
         }
@@ -305,9 +351,9 @@ fn references_target(content: &str, stem: &str, ext: &str) -> bool {
             let l = l.trim();
             (l.starts_with("import ") || l.starts_with("from ")) && l.contains(stem)
         }),
-        "js" | "jsx" | "ts" | "tsx" => content.lines().any(|l| {
-            (l.contains("import ") || l.contains("require(")) && l.contains(stem)
-        }),
+        "js" | "jsx" | "ts" | "tsx" => content
+            .lines()
+            .any(|l| (l.contains("import ") || l.contains("require(")) && l.contains(stem)),
         "go" => content.lines().any(|l| l.contains('"') && l.contains(stem)),
         _ => false,
     }

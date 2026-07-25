@@ -16,9 +16,13 @@ use crate::security::{rel_display, scoped_root};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadApiSurfaceParams {
-    #[schemars(description = "Restrict to this file or directory (root-relative). Omit for the whole workspace.")]
+    #[schemars(
+        description = "Restrict to this file or directory (root-relative). Omit for the whole workspace."
+    )]
     pub path: Option<String>,
-    #[schemars(description = "Include semi-public items too (Rust pub(crate)/pub(super)). Default false = only fully public API.")]
+    #[schemars(
+        description = "Include semi-public items too (Rust pub(crate)/pub(super)). Default false = only fully public API."
+    )]
     pub include_crate_visible: Option<bool>,
 }
 
@@ -118,7 +122,11 @@ fn extract_rust(content: &str) -> Vec<ApiItem> {
                 "public"
             };
             let raw_kind = cap.get(2).map(|m| m.as_str()).unwrap_or("");
-            let kind = if raw_kind == "fn" { "function" } else { raw_kind };
+            let kind = if raw_kind == "fn" {
+                "function"
+            } else {
+                raw_kind
+            };
             let name = cap.get(3).map(|m| m.as_str()).unwrap_or("").to_string();
             items.push(ApiItem {
                 kind: kind.to_string(),
@@ -158,8 +166,10 @@ fn extract_ts(content: &str) -> Vec<ApiItem> {
     items
 }
 
-static PY_DEF: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(def|class|async def)\s+(\w+)").unwrap());
-static PY_ALL_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"['"]([A-Za-z_]\w*)['"]"#).unwrap());
+static PY_DEF: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(def|class|async def)\s+(\w+)").unwrap());
+static PY_ALL_NAME: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"['"]([A-Za-z_]\w*)['"]"#).unwrap());
 
 fn extract_python(content: &str) -> Vec<ApiItem> {
     let mut items = Vec::new();
@@ -173,7 +183,9 @@ fn extract_python(content: &str) -> Vec<ApiItem> {
                 continue;
             }
             items.push(ApiItem {
-                kind: kind.replace("async def", "function").replace("def", "function"),
+                kind: kind
+                    .replace("async def", "function")
+                    .replace("def", "function"),
                 name,
                 signature: line.trim().trim_end_matches(':').trim().to_string(),
                 visibility: "public".to_string(),
@@ -204,7 +216,11 @@ fn extract_all_block(content: &str) -> Option<String> {
     let start = content.find("__all__")?;
     let rest = &content[start..];
     let open = rest.find(['[', '('])?;
-    let close_char = if rest.as_bytes()[open] == b'[' { ']' } else { ')' };
+    let close_char = if rest.as_bytes()[open] == b'[' {
+        ']'
+    } else {
+        ')'
+    };
     let close = rest[open..].find(close_char)? + open;
     Some(rest[open..=close].to_string())
 }
@@ -220,7 +236,11 @@ fn extract_go(content: &str) -> Vec<ApiItem> {
     let mut items = Vec::new();
     for line in content.lines() {
         if let Some(cap) = GO_FUNC.captures(line) {
-            let kind = if cap.get(1).is_some() { "method" } else { "function" };
+            let kind = if cap.get(1).is_some() {
+                "method"
+            } else {
+                "function"
+            };
             let name = cap.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
             items.push(ApiItem {
                 kind: kind.to_string(),
@@ -256,10 +276,19 @@ mod tests {
 
     #[test]
     fn rust_pub_vs_crate() {
-        let src = "pub fn open() {}\npub(crate) fn helper() {}\nfn private() {}\npub struct Cfg {\n}\n";
+        let src =
+            "pub fn open() {}\npub(crate) fn helper() {}\nfn private() {}\npub struct Cfg {\n}\n";
         let items = extract_rust(src);
-        assert!(items.iter().any(|i| i.name == "open" && i.visibility == "public" && i.kind == "function"));
-        assert!(items.iter().any(|i| i.name == "helper" && i.visibility == "crate"));
+        assert!(
+            items
+                .iter()
+                .any(|i| i.name == "open" && i.visibility == "public" && i.kind == "function")
+        );
+        assert!(
+            items
+                .iter()
+                .any(|i| i.name == "helper" && i.visibility == "crate")
+        );
         assert!(items.iter().any(|i| i.name == "Cfg" && i.kind == "struct"));
         assert!(!items.iter().any(|i| i.name == "private"));
     }
@@ -305,13 +334,35 @@ mod tests {
     #[test]
     fn end_to_end_filters_crate_visible() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("lib.rs"), "pub fn a() {}\npub(crate) fn b() {}\n").unwrap();
+        std::fs::write(
+            dir.path().join("lib.rs"),
+            "pub fn a() {}\npub(crate) fn b() {}\n",
+        )
+        .unwrap();
 
-        let public_only = read_api_surface(dir.path(), ReadApiSurfaceParams { path: None, include_crate_visible: None }).unwrap();
-        let names: Vec<&str> = public_only.api[0].items.iter().map(|i| i.name.as_str()).collect();
+        let public_only = read_api_surface(
+            dir.path(),
+            ReadApiSurfaceParams {
+                path: None,
+                include_crate_visible: None,
+            },
+        )
+        .unwrap();
+        let names: Vec<&str> = public_only.api[0]
+            .items
+            .iter()
+            .map(|i| i.name.as_str())
+            .collect();
         assert_eq!(names, vec!["a"]);
 
-        let with_crate = read_api_surface(dir.path(), ReadApiSurfaceParams { path: None, include_crate_visible: Some(true) }).unwrap();
+        let with_crate = read_api_surface(
+            dir.path(),
+            ReadApiSurfaceParams {
+                path: None,
+                include_crate_visible: Some(true),
+            },
+        )
+        .unwrap();
         assert_eq!(with_crate.api[0].items.len(), 2);
     }
 }

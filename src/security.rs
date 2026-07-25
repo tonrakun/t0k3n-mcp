@@ -8,9 +8,7 @@ pub enum SecurityError {
     PathTraversal(String),
     #[error("Symlink '{0}' points outside the workspace root")]
     SymlinkEscape(String),
-    #[error(
-        "Absolute path '{0}' is neither inside the workspace root nor a t0k3n temporary file"
-    )]
+    #[error("Absolute path '{0}' is neither inside the workspace root nor a t0k3n temporary file")]
     AbsoluteNotAllowed(String),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

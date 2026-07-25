@@ -18,9 +18,13 @@ use crate::security::safe_path;
 pub struct SetConfigValueParams {
     #[schemars(description = "Root-relative path to a JSON, YAML, or TOML file")]
     pub path: String,
-    #[schemars(description = "Dot-notation key path, e.g. 'scripts.build' or 'items[0].name'. Intermediate objects are created if missing.")]
+    #[schemars(
+        description = "Dot-notation key path, e.g. 'scripts.build' or 'items[0].name'. Intermediate objects are created if missing."
+    )]
     pub key_path: String,
-    #[schemars(description = "New value (any JSON type: string, number, bool, object, array, null)")]
+    #[schemars(
+        description = "New value (any JSON type: string, number, bool, object, array, null)"
+    )]
     pub value: Value,
     #[schemars(description = "true = return the would-be diff without writing (default false)")]
     pub dry_run: Option<bool>,
@@ -46,9 +50,9 @@ fn set_at_path(cur: &mut Value, segs: &[PathSegment], new: Value) -> anyhow::Res
                 if cur.is_null() {
                     *cur = Value::Object(Map::new());
                 }
-                let obj = cur
-                    .as_object_mut()
-                    .ok_or_else(|| anyhow::anyhow!("cannot set key '{k}': parent is not an object"))?;
+                let obj = cur.as_object_mut().ok_or_else(|| {
+                    anyhow::anyhow!("cannot set key '{k}': parent is not an object")
+                })?;
                 Ok(obj.insert(k.clone(), new).unwrap_or(Value::Null))
             }
             PathSegment::Index(i) => {
@@ -156,7 +160,10 @@ mod tests {
 
     #[test]
     fn sets_existing_json_key_preserving_order() {
-        let dir = setup("p.json", "{\n  \"name\": \"x\",\n  \"version\": \"1.0.0\"\n}\n");
+        let dir = setup(
+            "p.json",
+            "{\n  \"name\": \"x\",\n  \"version\": \"1.0.0\"\n}\n",
+        );
         let r = set_config_value(
             dir.path(),
             SetConfigValueParams {
@@ -210,7 +217,10 @@ mod tests {
         )
         .unwrap();
         assert!(!r.written);
-        assert_eq!(std::fs::read_to_string(dir.path().join("p.json")).unwrap(), "{\"a\":1}\n");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("p.json")).unwrap(),
+            "{\"a\":1}\n"
+        );
         assert!(r.diff.contains("2"));
     }
 

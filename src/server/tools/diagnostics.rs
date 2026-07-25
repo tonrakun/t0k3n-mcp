@@ -119,7 +119,13 @@ pub fn read_type_diagnostics(
             checker_available: false,
             note: Some(note),
             diagnostics: vec![],
-            summary: DiagnosticsSummary { errors: 0, warnings: 0, hints: 0, shown: 0, total: 0 },
+            summary: DiagnosticsSummary {
+                errors: 0,
+                warnings: 0,
+                hints: 0,
+                shown: 0,
+                total: 0,
+            },
             token_count: 40,
         });
     }
@@ -134,7 +140,9 @@ pub fn read_type_diagnostics(
         })
         .filter(|d| severity_rank(&d.severity) >= min_sev)
         .filter(|d| match &scope_prefix {
-            Some(prefix) if !prefix.is_empty() && prefix != "." => d.file.starts_with(prefix.as_str()),
+            Some(prefix) if !prefix.is_empty() && prefix != "." => {
+                d.file.starts_with(prefix.as_str())
+            }
             _ => true,
         })
         .collect();
@@ -162,7 +170,12 @@ pub fn read_type_diagnostics(
 
     let repr = diags
         .iter()
-        .map(|d| format!("{}:{}:{} {} {}", d.file, d.line, d.col, d.severity, d.message))
+        .map(|d| {
+            format!(
+                "{}:{}:{} {} {}",
+                d.file, d.line, d.col, d.severity, d.message
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n");
     let token_count = estimate_tokens(&repr).max(20);
@@ -173,16 +186,18 @@ pub fn read_type_diagnostics(
         checker_available: true,
         note: None,
         diagnostics: diags,
-        summary: DiagnosticsSummary { errors, warnings, hints, shown, total },
+        summary: DiagnosticsSummary {
+            errors,
+            warnings,
+            hints,
+            shown,
+            total,
+        },
         token_count,
     })
 }
 
-fn detect_language(
-    root: &Path,
-    path: Option<&Path>,
-    forced: Option<&str>,
-) -> Option<&'static str> {
+fn detect_language(root: &Path, path: Option<&Path>, forced: Option<&str>) -> Option<&'static str> {
     if let Some(f) = forced {
         return match f.trim().to_lowercase().as_str() {
             "rust" | "rs" | "cargo" => Some("rust"),
@@ -227,8 +242,12 @@ fn detect_language(
 fn unavailable_hint(lang: &str, checker: &str) -> String {
     let install = match lang {
         "rust" => "rustup component add などで Rust ツールチェインを導入してください",
-        "typescript" => "プロジェクトに typescript を devDependency として追加してください（npm i -D typescript）",
-        "python" => "pip install pyright もしくは pip install mypy で型チェッカーを導入してください",
+        "typescript" => {
+            "プロジェクトに typescript を devDependency として追加してください（npm i -D typescript）"
+        }
+        "python" => {
+            "pip install pyright もしくは pip install mypy で型チェッカーを導入してください"
+        }
         "go" => "Go ツールチェインを導入してください（go.dev/dl）",
         _ => "対応する型チェッカーを導入してください",
     };
@@ -323,7 +342,11 @@ fn check_typescript(cwd: &Path, timeout: Duration) -> (String, bool, Vec<Diagnos
     ("tsc".into(), true, parse_tsc(&combined))
 }
 
-fn check_python(cwd: &Path, path: Option<&Path>, timeout: Duration) -> (String, bool, Vec<Diagnostic>) {
+fn check_python(
+    cwd: &Path,
+    path: Option<&Path>,
+    timeout: Duration,
+) -> (String, bool, Vec<Diagnostic>) {
     let target = path
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| ".".into());
@@ -402,12 +425,19 @@ fn parse_cargo_json(stdout: &str) -> Vec<Diagnostic> {
             .map(|s| s.to_string());
         let span = msg.get("spans").and_then(|s| s.as_array()).and_then(|arr| {
             arr.iter()
-                .find(|s| s.get("is_primary").and_then(|b| b.as_bool()).unwrap_or(false))
+                .find(|s| {
+                    s.get("is_primary")
+                        .and_then(|b| b.as_bool())
+                        .unwrap_or(false)
+                })
                 .or_else(|| arr.first())
         });
         let (file, line, col) = match span {
             Some(s) => (
-                s.get("file_name").and_then(|f| f.as_str()).unwrap_or("").to_string(),
+                s.get("file_name")
+                    .and_then(|f| f.as_str())
+                    .unwrap_or("")
+                    .to_string(),
                 s.get("line_start").and_then(|l| l.as_u64()).unwrap_or(0) as u32,
                 s.get("column_start").and_then(|c| c.as_u64()).unwrap_or(0) as u32,
             ),
@@ -416,7 +446,14 @@ fn parse_cargo_json(stdout: &str) -> Vec<Diagnostic> {
         if file.is_empty() {
             continue;
         }
-        out.push(Diagnostic { file, line, col, severity: severity.into(), code, message });
+        out.push(Diagnostic {
+            file,
+            line,
+            col,
+            severity: severity.into(),
+            code,
+            message,
+        });
     }
     out
 }
@@ -433,7 +470,12 @@ fn parse_tsc(output: &str) -> Vec<Diagnostic> {
                 file: c[1].to_string(),
                 line: c[2].parse().ok()?,
                 col: c[3].parse().ok()?,
-                severity: if &c[4] == "warning" { "warning" } else { "error" }.into(),
+                severity: if &c[4] == "warning" {
+                    "warning"
+                } else {
+                    "error"
+                }
+                .into(),
                 code: Some(c[5].to_string()),
                 message: c[6].trim().to_string(),
             })
@@ -454,22 +496,44 @@ fn parse_pyright_json(output: &str) -> Vec<Diagnostic> {
     arr.iter()
         .filter_map(|d| {
             let file = d.get("file").and_then(|f| f.as_str())?.to_string();
-            let severity = match d.get("severity").and_then(|s| s.as_str()).unwrap_or("error") {
+            let severity = match d
+                .get("severity")
+                .and_then(|s| s.as_str())
+                .unwrap_or("error")
+            {
                 "error" => "error",
                 "warning" => "warning",
                 _ => "hint",
             };
             let start = d.get("range").and_then(|r| r.get("start"));
             // pyright positions are 0-based.
-            let line = start.and_then(|s| s.get("line")).and_then(|l| l.as_u64()).unwrap_or(0) as u32 + 1;
-            let col = start.and_then(|s| s.get("character")).and_then(|c| c.as_u64()).unwrap_or(0) as u32 + 1;
+            let line = start
+                .and_then(|s| s.get("line"))
+                .and_then(|l| l.as_u64())
+                .unwrap_or(0) as u32
+                + 1;
+            let col = start
+                .and_then(|s| s.get("character"))
+                .and_then(|c| c.as_u64())
+                .unwrap_or(0) as u32
+                + 1;
             let message = d
                 .get("message")
                 .and_then(|m| m.as_str())
                 .unwrap_or("")
                 .replace('\n', " ");
-            let code = d.get("rule").and_then(|r| r.as_str()).map(|s| s.to_string());
-            Some(Diagnostic { file, line, col, severity: severity.into(), code, message })
+            let code = d
+                .get("rule")
+                .and_then(|r| r.as_str())
+                .map(|s| s.to_string());
+            Some(Diagnostic {
+                file,
+                line,
+                col,
+                severity: severity.into(),
+                code,
+                message,
+            })
         })
         .collect()
 }
@@ -489,9 +553,7 @@ fn parse_mypy(output: &str) -> Vec<Diagnostic> {
                 _ => "error",
             };
             let mut message = c[5].trim().to_string();
-            let code = code_re
-                .captures(&message)
-                .map(|m| m[1].to_string());
+            let code = code_re.captures(&message).map(|m| m[1].to_string());
             if code.is_some() {
                 message = code_re.replace(&message, "").trim().to_string();
             }
@@ -568,7 +630,8 @@ mod tests {
 
     #[test]
     fn tsc_parses_error_line() {
-        let out = "src/app.ts(12,3): error TS2322: Type 'string' is not assignable to type 'number'.";
+        let out =
+            "src/app.ts(12,3): error TS2322: Type 'string' is not assignable to type 'number'.";
         let diags = parse_tsc(out);
         assert_eq!(diags.len(), 1);
         let d = &diags[0];
@@ -645,7 +708,10 @@ mod tests {
             detect_language(&tmp, Some(Path::new("a.ts")), None),
             Some("typescript")
         );
-        assert_eq!(detect_language(&tmp, Some(Path::new("a.rs")), None), Some("rust"));
+        assert_eq!(
+            detect_language(&tmp, Some(Path::new("a.rs")), None),
+            Some("rust")
+        );
         assert_eq!(detect_language(&tmp, None, Some("go")), Some("go"));
         assert_eq!(detect_language(&tmp, None, Some("bogus")), None);
     }

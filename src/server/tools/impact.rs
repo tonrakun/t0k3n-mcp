@@ -6,8 +6,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::code::{
-    ReadCallGraphParams, ReadSymbolUsagesParams, ReadSymbolUsagesResult,
-    read_call_graph, read_symbol_usages,
+    ReadCallGraphParams, ReadSymbolUsagesParams, ReadSymbolUsagesResult, read_call_graph,
+    read_symbol_usages,
 };
 use super::fs::estimate_tokens;
 use crate::security::{rel_display, scoped_root};
@@ -16,7 +16,9 @@ use crate::security::{rel_display, scoped_root};
 pub struct ReadRefactorImpactParams {
     #[schemars(description = "Symbol name (function, class, type, etc.) to analyze")]
     pub symbol: String,
-    #[schemars(description = "Root-relative path of the file that defines the symbol. Omit to search entire workspace.")]
+    #[schemars(
+        description = "Root-relative path of the file that defines the symbol. Omit to search entire workspace."
+    )]
     pub path: Option<String>,
     #[schemars(description = "Include test files that reference the symbol (default: true)")]
     pub include_tests: Option<bool>,
@@ -63,8 +65,8 @@ pub fn read_refactor_impact(
         symbol: symbol.clone(),
         path: None,
     };
-    let usages = read_symbol_usages(root, usages_params)
-        .unwrap_or_else(|_| ReadSymbolUsagesResult {
+    let usages =
+        read_symbol_usages(root, usages_params).unwrap_or_else(|_| ReadSymbolUsagesResult {
             symbol: symbol.clone(),
             usages: vec![],
             total: 0,
@@ -180,7 +182,11 @@ fn find_definition(
             continue;
         }
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if !["rs", "py", "js", "jsx", "ts", "tsx", "go", "java", "rb", "cs", "php", "kt", "swift"].contains(&ext) {
+        if ![
+            "rs", "py", "js", "jsx", "ts", "tsx", "go", "java", "rb", "cs", "php", "kt", "swift",
+        ]
+        .contains(&ext)
+        {
             continue;
         }
         let Ok(content) = std::fs::read_to_string(path) else {

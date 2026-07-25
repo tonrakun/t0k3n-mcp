@@ -20,7 +20,10 @@ pub struct DirectoryTreeResult {
     pub token_count: usize,
 }
 
-pub fn read_directory_tree(root: &Path, params: ReadDirectoryTreeParams) -> anyhow::Result<DirectoryTreeResult> {
+pub fn read_directory_tree(
+    root: &Path,
+    params: ReadDirectoryTreeParams,
+) -> anyhow::Result<DirectoryTreeResult> {
     let start = scoped_root(root, params.path.as_deref())?;
     let depth = params.depth.unwrap_or(3).min(10);
 
@@ -54,7 +57,10 @@ pub fn read_directory_tree(root: &Path, params: ReadDirectoryTreeParams) -> anyh
     }
 
     let token_count = estimate_tokens(&out);
-    Ok(DirectoryTreeResult { tree: out, token_count })
+    Ok(DirectoryTreeResult {
+        tree: out,
+        token_count,
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -111,7 +117,10 @@ pub fn search_file(root: &Path, params: SearchFileParams) -> anyhow::Result<Sear
 
     let json = serde_json::to_string(&matches).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(SearchFileResult { matches, token_count })
+    Ok(SearchFileResult {
+        matches,
+        token_count,
+    })
 }
 
 // ─── read_token_map ───────────────────────────────────────────────────────────
@@ -120,9 +129,13 @@ pub fn search_file(root: &Path, params: SearchFileParams) -> anyhow::Result<Sear
 pub struct ReadTokenMapParams {
     #[schemars(description = "Root-relative subdirectory to scan. Omit for entire workspace.")]
     pub path: Option<String>,
-    #[schemars(description = "Maximum number of files to return (default: 50, max: 200). Results are sorted by token count descending.")]
+    #[schemars(
+        description = "Maximum number of files to return (default: 50, max: 200). Results are sorted by token count descending."
+    )]
     pub limit: Option<usize>,
-    #[schemars(description = "Only include files matching this glob pattern (e.g. '*.ts', '*.rs'). Omit for all files.")]
+    #[schemars(
+        description = "Only include files matching this glob pattern (e.g. '*.ts', '*.rs'). Omit for all files."
+    )]
     pub glob: Option<String>,
 }
 
@@ -141,7 +154,10 @@ pub struct ReadTokenMapResult {
     pub token_count: usize,
 }
 
-pub fn read_token_map(root: &Path, params: ReadTokenMapParams) -> anyhow::Result<ReadTokenMapResult> {
+pub fn read_token_map(
+    root: &Path,
+    params: ReadTokenMapParams,
+) -> anyhow::Result<ReadTokenMapResult> {
     let start = scoped_root(root, params.path.as_deref())?;
 
     let limit = params.limit.unwrap_or(50).min(200);
@@ -166,29 +182,62 @@ pub fn read_token_map(root: &Path, params: ReadTokenMapParams) -> anyhow::Result
         .flatten()
     {
         let path = entry.path().to_path_buf();
-        if path.is_dir() { continue; }
+        if path.is_dir() {
+            continue;
+        }
 
         let rel = rel_display(root, &path);
 
         // Apply glob filter
         if let Some(ref re) = glob_re {
             let file_name = path.file_name().unwrap_or_default().to_string_lossy();
-            if !re.is_match(&file_name) && !re.is_match(&rel) { continue; }
+            if !re.is_match(&file_name) && !re.is_match(&rel) {
+                continue;
+            }
         }
 
         // Skip obviously binary files by extension
         if let Some(ext) = path.extension().and_then(|e| e.to_str())
-            && matches!(ext, "png" | "jpg" | "jpeg" | "gif" | "ico" | "svg" | "woff" | "woff2"
-                | "ttf" | "eot" | "mp4" | "webm" | "mp3" | "zip" | "tar" | "gz"
-                | "exe" | "dll" | "so" | "dylib" | "bin" | "db" | "sqlite" | "lock") {
-                continue;
-            }
+            && matches!(
+                ext,
+                "png"
+                    | "jpg"
+                    | "jpeg"
+                    | "gif"
+                    | "ico"
+                    | "svg"
+                    | "woff"
+                    | "woff2"
+                    | "ttf"
+                    | "eot"
+                    | "mp4"
+                    | "webm"
+                    | "mp3"
+                    | "zip"
+                    | "tar"
+                    | "gz"
+                    | "exe"
+                    | "dll"
+                    | "so"
+                    | "dylib"
+                    | "bin"
+                    | "db"
+                    | "sqlite"
+                    | "lock"
+            )
+        {
+            continue;
+        }
 
         let size_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
         // Estimate tokens cheaply: read first 64KB, extrapolate
         let tokens = estimate_file_tokens(&path, size_bytes);
         total_tokens += tokens;
-        entries.push(TokenMapEntry { path: rel, estimated_tokens: tokens, size_bytes });
+        entries.push(TokenMapEntry {
+            path: rel,
+            estimated_tokens: tokens,
+            size_bytes,
+        });
     }
 
     let file_count = entries.len();
@@ -197,22 +246,35 @@ pub fn read_token_map(root: &Path, params: ReadTokenMapParams) -> anyhow::Result
 
     let json = serde_json::to_string(&entries).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadTokenMapResult { files: entries, total_tokens, file_count, token_count })
+    Ok(ReadTokenMapResult {
+        files: entries,
+        total_tokens,
+        file_count,
+        token_count,
+    })
 }
 
 fn estimate_file_tokens(path: &std::path::Path, size_bytes: u64) -> usize {
     // Read up to 32KB to compute average, then extrapolate for larger files
     const SAMPLE: u64 = 32768;
-    if size_bytes == 0 { return 0; }
+    if size_bytes == 0 {
+        return 0;
+    }
 
     use std::io::Read;
-    let Ok(mut f) = std::fs::File::open(path) else { return size_bytes as usize / 4 };
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return size_bytes as usize / 4;
+    };
     let sample_len = size_bytes.min(SAMPLE) as usize;
     let mut buf = vec![0u8; sample_len];
-    let Ok(read) = f.read(&mut buf) else { return size_bytes as usize / 4 };
+    let Ok(read) = f.read(&mut buf) else {
+        return size_bytes as usize / 4;
+    };
     buf.truncate(read);
 
-    let Ok(text) = std::str::from_utf8(&buf) else { return 0 }; // binary
+    let Ok(text) = std::str::from_utf8(&buf) else {
+        return 0;
+    }; // binary
     let sample_tokens = estimate_tokens(text);
     if read as u64 >= size_bytes {
         sample_tokens

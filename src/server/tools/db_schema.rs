@@ -5,14 +5,16 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
+use crate::security::{rel_display, safe_path};
 
 // ─── read_db_schema ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadDbSchemaParams {
-    #[schemars(description = "Root-relative path to a .prisma or .sql file. Omit to auto-detect (searches *.prisma, then *.sql under workspace root, depth ≤ 4).")]
+    #[schemars(
+        description = "Root-relative path to a .prisma or .sql file. Omit to auto-detect (searches *.prisma, then *.sql under workspace root, depth ≤ 4)."
+    )]
     pub path: Option<String>,
 }
 
@@ -31,7 +33,10 @@ pub struct ReadDbSchemaResult {
     pub token_count: usize,
 }
 
-pub fn read_db_schema(root: &Path, params: ReadDbSchemaParams) -> anyhow::Result<ReadDbSchemaResult> {
+pub fn read_db_schema(
+    root: &Path,
+    params: ReadDbSchemaParams,
+) -> anyhow::Result<ReadDbSchemaResult> {
     let file_path = if let Some(ref p) = params.path {
         safe_path(root, p)?
     } else {
@@ -51,7 +56,12 @@ pub fn read_db_schema(root: &Path, params: ReadDbSchemaParams) -> anyhow::Result
 
     let json = serde_json::to_string(&tables).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadDbSchemaResult { path: rel, format, tables, token_count })
+    Ok(ReadDbSchemaResult {
+        path: rel,
+        format,
+        tables,
+        token_count,
+    })
 }
 
 fn auto_detect_db_file(root: &Path) -> anyhow::Result<PathBuf> {
@@ -67,10 +77,14 @@ fn auto_detect_db_file(root: &Path) -> anyhow::Result<PathBuf> {
         .flatten()
     {
         let path = entry.path().to_path_buf();
-        if !path.is_file() { continue; }
+        if !path.is_file() {
+            continue;
+        }
         match path.extension().and_then(|e| e.to_str()) {
             Some("prisma") => return Ok(path),
-            Some("sql") if sql_candidate.is_none() => { sql_candidate = Some(path); }
+            Some("sql") if sql_candidate.is_none() => {
+                sql_candidate = Some(path);
+            }
             _ => {}
         }
     }
@@ -88,38 +102,54 @@ fn parse_prisma_schema(content: &str) -> Vec<DbTableEntry> {
         let kind = cap[1].to_string();
         let name = cap[2].to_string();
         let body = &cap[3];
-        let field_count = body.lines()
+        let field_count = body
+            .lines()
             .filter(|l| {
                 let t = l.trim();
                 !t.is_empty() && !t.starts_with("//") && !t.starts_with("@@")
             })
             .count();
-        tables.push(DbTableEntry { name, kind, field_count });
+        tables.push(DbTableEntry {
+            name,
+            kind,
+            field_count,
+        });
     }
     tables
 }
 
 fn parse_sql_schema(content: &str) -> Vec<DbTableEntry> {
     let re = Regex::new(
-        r#"(?ims)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"\[]?(\w+)[`"\]]?\s*\(([^;]*?)\)\s*;"#
-    ).unwrap();
+        r#"(?ims)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"\[]?(\w+)[`"\]]?\s*\(([^;]*?)\)\s*;"#,
+    )
+    .unwrap();
     let mut tables = Vec::new();
 
     for cap in re.captures_iter(content) {
         let name = cap[1].to_string();
         let body = &cap[2];
-        let field_count = body.lines()
+        let field_count = body
+            .lines()
             .filter(|l| {
                 let t = l.trim();
-                if t.is_empty() || t.starts_with("--") { return false; }
+                if t.is_empty() || t.starts_with("--") {
+                    return false;
+                }
                 let u = t.to_uppercase();
-                !u.starts_with("PRIMARY KEY") && !u.starts_with("UNIQUE")
-                    && !u.starts_with("FOREIGN KEY") && !u.starts_with("INDEX")
-                    && !u.starts_with("KEY ") && !u.starts_with("CONSTRAINT")
+                !u.starts_with("PRIMARY KEY")
+                    && !u.starts_with("UNIQUE")
+                    && !u.starts_with("FOREIGN KEY")
+                    && !u.starts_with("INDEX")
+                    && !u.starts_with("KEY ")
+                    && !u.starts_with("CONSTRAINT")
                     && !u.starts_with("CHECK")
             })
             .count();
-        tables.push(DbTableEntry { name, kind: "table".to_string(), field_count });
+        tables.push(DbTableEntry {
+            name,
+            kind: "table".to_string(),
+            field_count,
+        });
     }
     tables
 }
@@ -128,7 +158,9 @@ fn parse_sql_schema(content: &str) -> Vec<DbTableEntry> {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadDbTableParams {
-    #[schemars(description = "Root-relative path to the .prisma or .sql file (from read_db_schema result).")]
+    #[schemars(
+        description = "Root-relative path to the .prisma or .sql file (from read_db_schema result)."
+    )]
     pub path: String,
     #[schemars(description = "Table or model name to retrieve (from read_db_schema tables list).")]
     pub table: String,
@@ -169,7 +201,8 @@ fn parse_prisma_table(content: &str, table: &str) -> anyhow::Result<ReadDbTableR
     );
     let re = Regex::new(&pattern).unwrap();
 
-    let cap = re.captures(content)
+    let cap = re
+        .captures(content)
         .ok_or_else(|| anyhow::anyhow!("テーブル/モデル '{}' が見つかりません", table))?;
 
     let kind = cap[1].to_string();
@@ -178,20 +211,31 @@ fn parse_prisma_table(content: &str, table: &str) -> anyhow::Result<ReadDbTableR
 
     for line in body.lines() {
         let t = line.trim();
-        if t.is_empty() || t.starts_with("//") || t.starts_with("@@") { continue; }
+        if t.is_empty() || t.starts_with("//") || t.starts_with("@@") {
+            continue;
+        }
 
         let parts: Vec<&str> = t.splitn(3, char::is_whitespace).collect();
         if parts.len() >= 2 {
             let name = parts[0].to_string();
             let field_type = parts[1].to_string();
             let attributes = parts.get(2).unwrap_or(&"").trim().to_string();
-            fields.push(DbFieldEntry { name, field_type, attributes });
+            fields.push(DbFieldEntry {
+                name,
+                field_type,
+                attributes,
+            });
         }
     }
 
     let json = serde_json::to_string(&fields).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadDbTableResult { name: table.to_string(), kind, fields, token_count })
+    Ok(ReadDbTableResult {
+        name: table.to_string(),
+        kind,
+        fields,
+        token_count,
+    })
 }
 
 fn parse_sql_table(content: &str, table: &str) -> anyhow::Result<ReadDbTableResult> {
@@ -201,7 +245,8 @@ fn parse_sql_table(content: &str, table: &str) -> anyhow::Result<ReadDbTableResu
     );
     let re = Regex::new(&pattern).unwrap();
 
-    let cap = re.captures(content)
+    let cap = re
+        .captures(content)
         .ok_or_else(|| anyhow::anyhow!("テーブル '{}' が見つかりません", table))?;
 
     let body = &cap[1];
@@ -209,22 +254,42 @@ fn parse_sql_table(content: &str, table: &str) -> anyhow::Result<ReadDbTableResu
 
     for line in body.lines() {
         let t = line.trim().trim_end_matches(',').trim();
-        if t.is_empty() || t.starts_with("--") { continue; }
+        if t.is_empty() || t.starts_with("--") {
+            continue;
+        }
         let u = t.to_uppercase();
-        if u.starts_with("PRIMARY KEY") || u.starts_with("UNIQUE") || u.starts_with("FOREIGN KEY")
-            || u.starts_with("INDEX") || u.starts_with("KEY ") || u.starts_with("CONSTRAINT")
-            || u.starts_with("CHECK") { continue; }
+        if u.starts_with("PRIMARY KEY")
+            || u.starts_with("UNIQUE")
+            || u.starts_with("FOREIGN KEY")
+            || u.starts_with("INDEX")
+            || u.starts_with("KEY ")
+            || u.starts_with("CONSTRAINT")
+            || u.starts_with("CHECK")
+        {
+            continue;
+        }
 
         let parts: Vec<&str> = t.splitn(3, char::is_whitespace).collect();
         if parts.len() >= 2 {
-            let name = parts[0].trim_matches(|c| matches!(c, '`' | '"' | '[' | ']')).to_string();
+            let name = parts[0]
+                .trim_matches(|c| matches!(c, '`' | '"' | '[' | ']'))
+                .to_string();
             let field_type = parts[1].to_string();
             let attributes = parts.get(2).unwrap_or(&"").trim().to_string();
-            fields.push(DbFieldEntry { name, field_type, attributes });
+            fields.push(DbFieldEntry {
+                name,
+                field_type,
+                attributes,
+            });
         }
     }
 
     let json = serde_json::to_string(&fields).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadDbTableResult { name: table.to_string(), kind: "table".to_string(), fields, token_count })
+    Ok(ReadDbTableResult {
+        name: table.to_string(),
+        kind: "table".to_string(),
+        fields,
+        token_count,
+    })
 }

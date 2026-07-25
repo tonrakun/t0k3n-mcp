@@ -59,7 +59,10 @@ fn is_valid_identifier(s: &str) -> bool {
     chars.all(|c| c.is_alphanumeric() || c == '_')
 }
 
-pub fn rename_symbol(root: &Path, params: RenameSymbolParams) -> anyhow::Result<RenameSymbolResult> {
+pub fn rename_symbol(
+    root: &Path,
+    params: RenameSymbolParams,
+) -> anyhow::Result<RenameSymbolResult> {
     if params.symbol.is_empty() {
         anyhow::bail!("symbol は空にできません");
     }
@@ -67,7 +70,10 @@ pub fn rename_symbol(root: &Path, params: RenameSymbolParams) -> anyhow::Result<
         anyhow::bail!("new_name は空にできません");
     }
     if !is_valid_identifier(&params.new_name) {
-        anyhow::bail!("new_name '{}' は有効な識別子ではありません", params.new_name);
+        anyhow::bail!(
+            "new_name '{}' は有効な識別子ではありません",
+            params.new_name
+        );
     }
     if params.symbol == params.new_name {
         anyhow::bail!("symbol と new_name が同一です");

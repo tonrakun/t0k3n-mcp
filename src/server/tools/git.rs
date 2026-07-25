@@ -9,9 +9,13 @@ use chrono::{TimeZone, Utc};
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadGitDiffParams {
-    #[schemars(description = "Base ref to diff against (default: HEAD). Examples: HEAD, main, abc1234")]
+    #[schemars(
+        description = "Base ref to diff against (default: HEAD). Examples: HEAD, main, abc1234"
+    )]
     pub base: Option<String>,
-    #[schemars(description = "Limit diff to this file path (relative to workspace root). Omit for all changes.")]
+    #[schemars(
+        description = "Limit diff to this file path (relative to workspace root). Omit for all changes."
+    )]
     pub path: Option<String>,
     #[schemars(description = "Return only --stat summary instead of full diff (default: false)")]
     pub stat_only: Option<bool>,
@@ -175,11 +179,11 @@ fn parse_structural_diff(raw: &str) -> Vec<GitDiffFileChange> {
             flush(&mut files, &mut cur_path, &mut status, &mut symbols);
             cur_ctx = None;
             // "a/<path> b/<path>" — take the b-side path.
-            cur_path = rest
-                .split(" b/")
-                .nth(1)
-                .map(|s| s.to_string())
-                .or_else(|| rest.split_whitespace().last().map(|s| s.trim_start_matches("b/").to_string()));
+            cur_path = rest.split(" b/").nth(1).map(|s| s.to_string()).or_else(|| {
+                rest.split_whitespace()
+                    .last()
+                    .map(|s| s.trim_start_matches("b/").to_string())
+            });
         } else if line.starts_with("new file mode") {
             status = "added";
         } else if line.starts_with("deleted file mode") {
@@ -249,11 +253,15 @@ fn sketch_diff(raw: &str) -> String {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadGitLogParams {
-    #[schemars(description = "Limit log to this file or directory path (root-relative). Omit for all commits.")]
+    #[schemars(
+        description = "Limit log to this file or directory path (root-relative). Omit for all commits."
+    )]
     pub path: Option<String>,
     #[schemars(description = "Filter by author name or email (substring match)")]
     pub author: Option<String>,
-    #[schemars(description = "Show commits newer than this date, e.g. '2024-01-01' or '2 weeks ago'")]
+    #[schemars(
+        description = "Show commits newer than this date, e.g. '2024-01-01' or '2 weeks ago'"
+    )]
     pub since: Option<String>,
     #[schemars(description = "Show commits older than this date")]
     pub until: Option<String>,
@@ -282,16 +290,35 @@ pub fn read_git_log(root: &Path, params: ReadGitLogParams) -> Result<ReadGitLogR
 
     let mut cmd = Command::new("git");
     cmd.current_dir(root);
-    cmd.args(["log", "--format=COMMIT:%H|%ae|%ad|%s", "--date=short", "--name-only", &format!("-n{}", limit)]);
+    cmd.args([
+        "log",
+        "--format=COMMIT:%H|%ae|%ad|%s",
+        "--date=short",
+        "--name-only",
+        &format!("-n{}", limit),
+    ]);
 
-    if let Some(ref a) = params.author { cmd.arg(format!("--author={a}")); }
-    if let Some(ref s) = params.since  { cmd.arg(format!("--since={s}")); }
-    if let Some(ref u) = params.until  { cmd.arg(format!("--until={u}")); }
-    if let Some(ref p) = params.path   { cmd.arg("--").arg(p); }
+    if let Some(ref a) = params.author {
+        cmd.arg(format!("--author={a}"));
+    }
+    if let Some(ref s) = params.since {
+        cmd.arg(format!("--since={s}"));
+    }
+    if let Some(ref u) = params.until {
+        cmd.arg(format!("--until={u}"));
+    }
+    if let Some(ref p) = params.path {
+        cmd.arg("--").arg(p);
+    }
 
-    let output = cmd.output().map_err(|e| format!("git コマンド実行失敗: {e}"))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("git コマンド実行失敗: {e}"))?;
     if !output.status.success() {
-        return Err(format!("git log 失敗: {}", String::from_utf8_lossy(&output.stderr)));
+        return Err(format!(
+            "git log 失敗: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
@@ -304,13 +331,21 @@ pub fn read_git_log(root: &Path, params: ReadGitLogParams) -> Result<ReadGitLogR
             if let Some((sha, author, date, msg)) = cur_header.take() {
                 entries.push(GitLogEntry {
                     sha_short: sha[..sha.len().min(7)].to_string(),
-                    sha, author, date, message: msg,
+                    sha,
+                    author,
+                    date,
+                    message: msg,
                     files: std::mem::take(&mut cur_files),
                 });
             }
             let p: Vec<&str> = rest.splitn(4, '|').collect();
             if p.len() == 4 {
-                cur_header = Some((p[0].to_string(), p[1].to_string(), p[2].to_string(), p[3].to_string()));
+                cur_header = Some((
+                    p[0].to_string(),
+                    p[1].to_string(),
+                    p[2].to_string(),
+                    p[3].to_string(),
+                ));
             }
         } else if !line.trim().is_empty() {
             cur_files.push(line.to_string());
@@ -319,13 +354,20 @@ pub fn read_git_log(root: &Path, params: ReadGitLogParams) -> Result<ReadGitLogR
     if let Some((sha, author, date, msg)) = cur_header {
         entries.push(GitLogEntry {
             sha_short: sha[..sha.len().min(7)].to_string(),
-            sha, author, date, message: msg, files: cur_files,
+            sha,
+            author,
+            date,
+            message: msg,
+            files: cur_files,
         });
     }
 
     let json = serde_json::to_string(&entries).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadGitLogResult { entries, token_count })
+    Ok(ReadGitLogResult {
+        entries,
+        token_count,
+    })
 }
 
 // ─── read_git_blame_body ─────────────────────────────────────────────────────
@@ -334,7 +376,9 @@ pub fn read_git_log(root: &Path, params: ReadGitLogParams) -> Result<ReadGitLogR
 pub struct ReadGitBlameBodyParams {
     #[schemars(description = "Root-relative path to the code file")]
     pub path: String,
-    #[schemars(description = "Start line number (1-based, use start_line from read_code_skeleton)")]
+    #[schemars(
+        description = "Start line number (1-based, use start_line from read_code_skeleton)"
+    )]
     pub start_line: u32,
     #[schemars(description = "End line number (1-based, use end_line from read_code_skeleton)")]
     pub end_line: u32,
@@ -356,21 +400,39 @@ pub struct ReadGitBlameBodyResult {
     pub token_count: usize,
 }
 
-pub fn read_git_blame_body(root: &Path, params: ReadGitBlameBodyParams) -> Result<ReadGitBlameBodyResult, String> {
+pub fn read_git_blame_body(
+    root: &Path,
+    params: ReadGitBlameBodyParams,
+) -> Result<ReadGitBlameBodyResult, String> {
     let mut cmd = Command::new("git");
     cmd.current_dir(root);
-    cmd.args(["blame", &format!("-L{},{}", params.start_line, params.end_line), "--porcelain", "--", &params.path]);
+    cmd.args([
+        "blame",
+        &format!("-L{},{}", params.start_line, params.end_line),
+        "--porcelain",
+        "--",
+        &params.path,
+    ]);
 
-    let output = cmd.output().map_err(|e| format!("git コマンド実行失敗: {e}"))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("git コマンド実行失敗: {e}"))?;
     if !output.status.success() {
-        return Err(format!("git blame 失敗: {}", String::from_utf8_lossy(&output.stderr)));
+        return Err(format!(
+            "git blame 失敗: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
 
     let text = String::from_utf8_lossy(&output.stdout);
     let lines = parse_porcelain_blame(&text);
     let json = serde_json::to_string(&lines).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadGitBlameBodyResult { path: params.path, lines, token_count })
+    Ok(ReadGitBlameBodyResult {
+        path: params.path,
+        lines,
+        token_count,
+    })
 }
 
 fn parse_porcelain_blame(output: &str) -> Vec<BlameLineEntry> {
@@ -385,13 +447,15 @@ fn parse_porcelain_blame(output: &str) -> Vec<BlameLineEntry> {
 
     for line in output.lines() {
         if let Some(content) = line.strip_prefix('\t') {
-            let (author, date) = sha_cache.get(&cur_sha)
+            let (author, date) = sha_cache
+                .get(&cur_sha)
                 .cloned()
                 .unwrap_or_else(|| (pending_author.clone(), format_unix_date(pending_time)));
             entries.push(BlameLineEntry {
                 line_no: cur_line_no,
                 sha_short: cur_sha[..cur_sha.len().min(7)].to_string(),
-                author, date,
+                author,
+                date,
                 content: content.to_string(),
             });
         } else if line.starts_with("author ") && !line.starts_with("author-") {
@@ -399,18 +463,24 @@ fn parse_porcelain_blame(output: &str) -> Vec<BlameLineEntry> {
         } else if let Some(rest) = line.strip_prefix("author-time ") {
             if let Ok(ts) = rest.parse::<i64>() {
                 pending_time = ts;
-                sha_cache.insert(cur_sha.clone(), (pending_author.clone(), format_unix_date(ts)));
+                sha_cache.insert(
+                    cur_sha.clone(),
+                    (pending_author.clone(), format_unix_date(ts)),
+                );
             }
         } else {
             let mut iter = line.splitn(4, ' ');
-            if let (Some(sha), Some(_orig), Some(final_line)) = (iter.next(), iter.next(), iter.next())
-                && sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit()) {
-                    cur_sha = sha.to_string();
-                    cur_line_no = final_line.parse().unwrap_or(0);
-                    if let Some((a, _)) = sha_cache.get(&cur_sha) {
-                        pending_author = a.clone();
-                    }
+            if let (Some(sha), Some(_orig), Some(final_line)) =
+                (iter.next(), iter.next(), iter.next())
+                && sha.len() == 40
+                && sha.chars().all(|c| c.is_ascii_hexdigit())
+            {
+                cur_sha = sha.to_string();
+                cur_line_no = final_line.parse().unwrap_or(0);
+                if let Some((a, _)) = sha_cache.get(&cur_sha) {
+                    pending_author = a.clone();
                 }
+            }
         }
     }
     entries
@@ -427,16 +497,20 @@ fn format_unix_date(ts: i64) -> String {
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadChangedFilesParams {
-    #[schemars(description = "Base ref to diff against (default: HEAD). Examples: HEAD, main, abc1234.")]
+    #[schemars(
+        description = "Base ref to diff against (default: HEAD). Examples: HEAD, main, abc1234."
+    )]
     pub base: Option<String>,
-    #[schemars(description = "Include untracked files in addition to modified/staged files (default: false).")]
+    #[schemars(
+        description = "Include untracked files in addition to modified/staged files (default: false)."
+    )]
     pub include_untracked: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ChangedFileEntry {
     pub path: String,
-    pub status: String,  // "modified" | "added" | "deleted" | "renamed" | "untracked"
+    pub status: String, // "modified" | "added" | "deleted" | "renamed" | "untracked"
     pub added: usize,
     pub deleted: usize,
 }
@@ -451,7 +525,10 @@ pub struct ReadChangedFilesResult {
     pub token_count: usize,
 }
 
-pub fn read_changed_files(root: &Path, params: ReadChangedFilesParams) -> Result<ReadChangedFilesResult, String> {
+pub fn read_changed_files(
+    root: &Path,
+    params: ReadChangedFilesParams,
+) -> Result<ReadChangedFilesResult, String> {
     let base = params.base.as_deref().unwrap_or("HEAD").to_string();
     let include_untracked = params.include_untracked.unwrap_or(false);
 
@@ -459,9 +536,14 @@ pub fn read_changed_files(root: &Path, params: ReadChangedFilesParams) -> Result
     let mut cmd = Command::new("git");
     cmd.current_dir(root);
     cmd.args(["diff", "--numstat", &base]);
-    let output = cmd.output().map_err(|e| format!("git コマンド実行失敗: {e}"))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("git コマンド実行失敗: {e}"))?;
     if !output.status.success() {
-        return Err(format!("git diff 失敗: {}", String::from_utf8_lossy(&output.stderr)));
+        return Err(format!(
+            "git diff 失敗: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
     let diff_text = String::from_utf8_lossy(&output.stdout);
 
@@ -469,11 +551,14 @@ pub fn read_changed_files(root: &Path, params: ReadChangedFilesParams) -> Result
     let mut cmd2 = Command::new("git");
     cmd2.current_dir(root);
     cmd2.args(["diff", "--name-status", &base]);
-    let output2 = cmd2.output().map_err(|e| format!("git コマンド実行失敗: {e}"))?;
+    let output2 = cmd2
+        .output()
+        .map_err(|e| format!("git コマンド実行失敗: {e}"))?;
     let status_text = String::from_utf8_lossy(&output2.stdout);
 
     // Build status map: path → status
-    let mut status_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut status_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for line in status_text.lines() {
         let parts: Vec<&str> = line.splitn(2, '\t').collect();
         if parts.len() == 2 {
@@ -501,13 +586,21 @@ pub fn read_changed_files(root: &Path, params: ReadChangedFilesParams) -> Result
     for line in diff_text.lines() {
         let parts: Vec<&str> = line.splitn(3, '\t').collect();
         if parts.len() == 3 {
-            let added: usize   = parts[0].parse().unwrap_or(0);
+            let added: usize = parts[0].parse().unwrap_or(0);
             let deleted: usize = parts[1].parse().unwrap_or(0);
             let path = parts[2].to_string();
-            let status = status_map.get(&path).cloned().unwrap_or_else(|| "modified".to_string());
+            let status = status_map
+                .get(&path)
+                .cloned()
+                .unwrap_or_else(|| "modified".to_string());
             total_added += added;
             total_deleted += deleted;
-            files.push(ChangedFileEntry { path, status, added, deleted });
+            files.push(ChangedFileEntry {
+                path,
+                status,
+                added,
+                deleted,
+            });
         }
     }
 
@@ -541,14 +634,23 @@ pub fn read_changed_files(root: &Path, params: ReadChangedFilesParams) -> Result
     let json = serde_json::to_string(&files).unwrap_or_default();
     let token_count = estimate_tokens(&json);
 
-    Ok(ReadChangedFilesResult { base, files, total_added, total_deleted, file_count, token_count })
+    Ok(ReadChangedFilesResult {
+        base,
+        files,
+        total_added,
+        total_deleted,
+        file_count,
+        token_count,
+    })
 }
 
 // ─── read_git_stash ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadGitStashParams {
-    #[schemars(description = "Stash index to show diff for (e.g. 0 for stash@{0}). Omit to list only.")]
+    #[schemars(
+        description = "Stash index to show diff for (e.g. 0 for stash@{0}). Omit to list only."
+    )]
     pub index: Option<usize>,
     #[schemars(description = "Return only diff statistics instead of full patch (default: false)")]
     pub stat_only: Option<bool>,
@@ -571,14 +673,22 @@ pub struct ReadGitStashResult {
     pub token_count: usize,
 }
 
-pub fn read_git_stash(root: &Path, params: ReadGitStashParams) -> Result<ReadGitStashResult, String> {
+pub fn read_git_stash(
+    root: &Path,
+    params: ReadGitStashParams,
+) -> Result<ReadGitStashResult, String> {
     // List stashes
     let mut list_cmd = Command::new("git");
     list_cmd.current_dir(root);
     list_cmd.args(["stash", "list", "--format=%gd|%ai|%gs|%s"]);
-    let list_out = list_cmd.output().map_err(|e| format!("git コマンド実行失敗: {e}"))?;
+    let list_out = list_cmd
+        .output()
+        .map_err(|e| format!("git コマンド実行失敗: {e}"))?;
     if !list_out.status.success() {
-        return Err(format!("git stash list 失敗: {}", String::from_utf8_lossy(&list_out.stderr)));
+        return Err(format!(
+            "git stash list 失敗: {}",
+            String::from_utf8_lossy(&list_out.stderr)
+        ));
     }
 
     let list_text = String::from_utf8_lossy(&list_out.stdout);
@@ -586,13 +696,18 @@ pub fn read_git_stash(root: &Path, params: ReadGitStashParams) -> Result<ReadGit
 
     for line in list_text.lines() {
         let parts: Vec<&str> = line.splitn(4, '|').collect();
-        if parts.len() < 4 { continue; }
+        if parts.len() < 4 {
+            continue;
+        }
         let name = parts[0].trim().to_string();
         let date = parts[1].trim().chars().take(10).collect::<String>();
         let subject = parts[3].trim().to_string();
 
         // Extract branch from subject: "On main: message" or "WIP on main: message"
-        let (branch, message) = if let Some(rest) = subject.strip_prefix("WIP on ").or(subject.strip_prefix("On ")) {
+        let (branch, message) = if let Some(rest) = subject
+            .strip_prefix("WIP on ")
+            .or(subject.strip_prefix("On "))
+        {
             if let Some(colon) = rest.find(": ") {
                 (rest[..colon].to_string(), rest[colon + 2..].to_string())
             } else {
@@ -603,12 +718,19 @@ pub fn read_git_stash(root: &Path, params: ReadGitStashParams) -> Result<ReadGit
         };
 
         // Parse index from "stash@{N}"
-        let index = name.trim_start_matches("stash@{")
+        let index = name
+            .trim_start_matches("stash@{")
             .trim_end_matches('}')
             .parse::<usize>()
             .unwrap_or(stashes.len());
 
-        stashes.push(StashEntry { index, name, message, date, branch });
+        stashes.push(StashEntry {
+            index,
+            name,
+            message,
+            date,
+            branch,
+        });
     }
 
     // Optionally get diff for specific stash
@@ -625,7 +747,9 @@ pub fn read_git_stash(root: &Path, params: ReadGitStashParams) -> Result<ReadGit
             cmd.args(["--unified=2"]);
         }
         cmd.arg(&stash_ref);
-        let out = cmd.output().map_err(|e| format!("git コマンド実行失敗: {e}"))?;
+        let out = cmd
+            .output()
+            .map_err(|e| format!("git コマンド実行失敗: {e}"))?;
         if out.status.success() {
             Some(String::from_utf8_lossy(&out.stdout).into_owned())
         } else {
@@ -638,7 +762,11 @@ pub fn read_git_stash(root: &Path, params: ReadGitStashParams) -> Result<ReadGit
     let json_for_count = serde_json::json!({ "stashes": stashes, "diff": diff });
     let token_count = estimate_tokens(&json_for_count.to_string());
 
-    Ok(ReadGitStashResult { stashes, diff, token_count })
+    Ok(ReadGitStashResult {
+        stashes,
+        diff,
+        token_count,
+    })
 }
 
 #[cfg(test)]
@@ -669,7 +797,10 @@ index 0000000..3333333
 
     #[test]
     fn hunk_context_extracts_symbol_and_defaults_top_level() {
-        assert_eq!(hunk_context("@@ -10,2 +10,3 @@ fn alpha() {"), "fn alpha() {");
+        assert_eq!(
+            hunk_context("@@ -10,2 +10,3 @@ fn alpha() {"),
+            "fn alpha() {"
+        );
         assert_eq!(hunk_context("@@ -0,0 +1,2 @@"), "(top-level)");
     }
 
@@ -684,9 +815,17 @@ index 0000000..3333333
         assert_eq!(foo.added, 3);
         assert_eq!(foo.deleted, 2);
         assert_eq!(foo.symbols.len(), 2);
-        let alpha = foo.symbols.iter().find(|s| s.symbol == "fn alpha() {").unwrap();
+        let alpha = foo
+            .symbols
+            .iter()
+            .find(|s| s.symbol == "fn alpha() {")
+            .unwrap();
         assert_eq!((alpha.added, alpha.deleted, alpha.hunks), (2, 1, 1));
-        let beta = foo.symbols.iter().find(|s| s.symbol == "fn beta() {").unwrap();
+        let beta = foo
+            .symbols
+            .iter()
+            .find(|s| s.symbol == "fn beta() {")
+            .unwrap();
         assert_eq!((beta.added, beta.deleted, beta.hunks), (1, 1, 1));
 
         let new = &files[1];

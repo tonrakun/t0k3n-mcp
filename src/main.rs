@@ -51,12 +51,17 @@ async fn main() -> Result<()> {
         .init();
 
     // Parse CLI flags
-    let root_arg = args.windows(2).find(|w| w[0] == "--root").map(|w| w[1].clone());
+    let root_arg = args
+        .windows(2)
+        .find(|w| w[0] == "--root")
+        .map(|w| w[1].clone());
     // root_configured tracks whether --root / T0K3N_ROOT was explicitly given. When false,
     // the server falls back to "." (the process cwd, often not the intended project) and
     // lets each tool call override the root via a `root` argument instead.
-    let root_configured =
-        root_arg.is_some() || std::env::var("T0K3N_ROOT").map(|v| !v.is_empty()).unwrap_or(false);
+    let root_configured = root_arg.is_some()
+        || std::env::var("T0K3N_ROOT")
+            .map(|v| !v.is_empty())
+            .unwrap_or(false);
     let root = root_arg
         .or_else(|| std::env::var("T0K3N_ROOT").ok())
         .unwrap_or_else(|| ".".to_string());
@@ -133,12 +138,19 @@ async fn main() -> Result<()> {
 
     if let Some(cats) = &tool_categories {
         let known = server::known_tool_categories();
-        let unknown: Vec<&String> = cats.iter().filter(|c| !known.contains(&c.as_str())).collect();
+        let unknown: Vec<&String> = cats
+            .iter()
+            .filter(|c| !known.contains(&c.as_str()))
+            .collect();
         if !unknown.is_empty() {
             eprintln!(
                 "Unknown --tools categor{}: {}\nAvailable: {}",
                 if unknown.len() == 1 { "y" } else { "ies" },
-                unknown.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "),
+                unknown
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 known.join(", ")
             );
             std::process::exit(2);

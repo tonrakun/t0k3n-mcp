@@ -26,20 +26,29 @@ pub struct SemanticSearchResult {
     pub token_count: usize,
 }
 
-pub fn semantic_search(root: &Path, params: SemanticSearchParams) -> Result<SemanticSearchResult, String> {
+pub fn semantic_search(
+    root: &Path,
+    params: SemanticSearchParams,
+) -> Result<SemanticSearchResult, String> {
     // Step 1: skeleton取得
-    let skeleton_result = read_code_skeleton(root, ReadCodeSkeletonParams {
-        path: params.path.clone(),
-        include_blocks: Some(false),
-    })
+    let skeleton_result = read_code_skeleton(
+        root,
+        ReadCodeSkeletonParams {
+            path: params.path.clone(),
+            include_blocks: Some(false),
+        },
+    )
     .map_err(|e| format!("スケルトン取得失敗: {e}"))?;
 
     if skeleton_result.skeleton.is_empty() {
-        return Ok(SemanticSearchResult { items: vec![], token_count: 1 });
+        return Ok(SemanticSearchResult {
+            items: vec![],
+            token_count: 1,
+        });
     }
 
-    let skeleton_json = serde_json::to_string_pretty(&skeleton_result.skeleton)
-        .map_err(|e| e.to_string())?;
+    let skeleton_json =
+        serde_json::to_string_pretty(&skeleton_result.skeleton).map_err(|e| e.to_string())?;
 
     // Step 2: claude CLIサブプロセスで関連IDを特定
     let prompt = format!(
@@ -73,21 +82,30 @@ pub fn semantic_search(root: &Path, params: SemanticSearchParams) -> Result<Sema
     // Step 3: レスポンスからIDリストを抽出
     let ids = extract_ids(&response);
     if ids.is_empty() {
-        return Ok(SemanticSearchResult { items: vec![], token_count: 1 });
+        return Ok(SemanticSearchResult {
+            items: vec![],
+            token_count: 1,
+        });
     }
 
     // Step 4: 該当IDの本文を返却
-    let body_result = read_code_body(root, ReadCodeBodyParams {
-        path: params.path,
-        ids,
-        zoom: None,
-    })
+    let body_result = read_code_body(
+        root,
+        ReadCodeBodyParams {
+            path: params.path,
+            ids,
+            zoom: None,
+        },
+    )
     .map_err(|e| format!("本文取得失敗: {e}"))?;
 
     let items = body_result
         .items
         .into_iter()
-        .map(|item| SemanticSearchItem { id: item.id, content: item.content })
+        .map(|item| SemanticSearchItem {
+            id: item.id,
+            content: item.content,
+        })
         .collect();
 
     Ok(SemanticSearchResult {
@@ -101,9 +119,10 @@ fn extract_ids(response: &str) -> Vec<String> {
     let start = response.find('[');
     let end = response.rfind(']');
     if let (Some(s), Some(e)) = (start, end)
-        && let Ok(ids) = serde_json::from_str::<Vec<String>>(&response[s..=e]) {
-            return ids;
-        }
+        && let Ok(ids) = serde_json::from_str::<Vec<String>>(&response[s..=e])
+    {
+        return ids;
+    }
     vec![]
 }
 

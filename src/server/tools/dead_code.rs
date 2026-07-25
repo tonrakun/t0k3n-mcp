@@ -4,15 +4,21 @@ use ignore::WalkBuilder;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::code::{ReadCodeSkeletonParams, ReadSymbolUsagesParams, read_code_skeleton, read_symbol_usages};
+use super::code::{
+    ReadCodeSkeletonParams, ReadSymbolUsagesParams, read_code_skeleton, read_symbol_usages,
+};
 use super::fs::estimate_tokens;
 use crate::security::{rel_display, scoped_root};
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadDeadCodeParams {
-    #[schemars(description = "Root-relative file or directory to scan. Omit to scan entire workspace.")]
+    #[schemars(
+        description = "Root-relative file or directory to scan. Omit to scan entire workspace."
+    )]
     pub path: Option<String>,
-    #[schemars(description = "Also report public/exported symbols with no external callers (default: false)")]
+    #[schemars(
+        description = "Also report public/exported symbols with no external callers (default: false)"
+    )]
     pub include_exported: Option<bool>,
     #[schemars(description = "Maximum symbols to return (default: 50)")]
     pub limit: Option<usize>,
@@ -38,15 +44,37 @@ pub struct ReadDeadCodeResult {
 
 /// Symbols that are legitimately unreferenced by name.
 const EXEMPT_NAMES: &[&str] = &[
-    "main", "new", "default", "init", "setup", "teardown", "drop",
-    "fmt", "clone", "debug", "display", "from", "into", "deref", "deref_mut",
-    "index", "index_mut", "add", "sub", "mul", "div", "eq", "partial_eq",
-    "hash", "serialize", "deserialize",
+    "main",
+    "new",
+    "default",
+    "init",
+    "setup",
+    "teardown",
+    "drop",
+    "fmt",
+    "clone",
+    "debug",
+    "display",
+    "from",
+    "into",
+    "deref",
+    "deref_mut",
+    "index",
+    "index_mut",
+    "add",
+    "sub",
+    "mul",
+    "div",
+    "eq",
+    "partial_eq",
+    "hash",
+    "serialize",
+    "deserialize",
 ];
 
 const CODE_EXTS: &[&str] = &[
-    "rs", "py", "js", "jsx", "ts", "tsx", "go", "cpp", "cc", "cxx", "c",
-    "java", "rb", "cs", "php", "kt", "swift",
+    "rs", "py", "js", "jsx", "ts", "tsx", "go", "cpp", "cc", "cxx", "c", "java", "rb", "cs", "php",
+    "kt", "swift",
 ];
 
 pub fn read_dead_code(
@@ -94,7 +122,10 @@ pub fn read_dead_code(
         };
 
         for item in &skeleton.skeleton {
-            if !matches!(item.kind.as_str(), "function" | "method" | "class" | "struct" | "enum" | "trait") {
+            if !matches!(
+                item.kind.as_str(),
+                "function" | "method" | "class" | "struct" | "enum" | "trait"
+            ) {
                 continue;
             }
             total_symbols_checked += 1;
@@ -142,8 +173,7 @@ pub fn read_dead_code(
                 .usages
                 .iter()
                 .filter(|u| {
-                    u.path == *rel_path
-                        && (u.line < item.start_line || u.line > item.end_line)
+                    u.path == *rel_path && (u.line < item.start_line || u.line > item.end_line)
                 })
                 .count();
 
@@ -201,6 +231,9 @@ mod tests {
             limit: None,
         };
         let result = read_dead_code(std::path::Path::new("."), params).unwrap();
-        assert!(result.total_symbols_checked > 0, "scoped scan must check symbols");
+        assert!(
+            result.total_symbols_checked > 0,
+            "scoped scan must check symbols"
+        );
     }
 }

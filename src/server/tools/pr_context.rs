@@ -23,7 +23,7 @@ pub struct ReadPrContextParams {
 #[derive(Debug, Serialize)]
 pub struct ChangedFileSummary {
     pub path: String,
-    pub status: String,  // "M" | "A" | "D" | "R"
+    pub status: String, // "M" | "A" | "D" | "R"
     pub added_lines: i64,
     pub deleted_lines: i64,
     pub skeleton: Option<Vec<SkeletonSummary>>,
@@ -64,7 +64,10 @@ pub struct ReadPrContextResult {
     pub token_count: usize,
 }
 
-pub fn read_pr_context(root: &Path, params: ReadPrContextParams) -> anyhow::Result<ReadPrContextResult> {
+pub fn read_pr_context(
+    root: &Path,
+    params: ReadPrContextParams,
+) -> anyhow::Result<ReadPrContextResult> {
     let base = params.base.as_deref().unwrap_or("main").to_string();
     let max_files = params.max_files.unwrap_or(10);
     let include_skeletons = params.include_skeletons.unwrap_or(true);
@@ -89,11 +92,14 @@ pub fn read_pr_context(root: &Path, params: ReadPrContextParams) -> anyhow::Resu
     let status_str = status_str_owned.as_str();
 
     // Parse status map: path -> status
-    let mut status_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut status_map: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     for line in status_str.lines() {
         let parts: Vec<&str> = line.splitn(2, '\t').collect();
         if parts.len() == 2 {
-            let status = parts[0].trim_end_matches(|c: char| c.is_ascii_digit()).to_string();
+            let status = parts[0]
+                .trim_end_matches(|c: char| c.is_ascii_digit())
+                .to_string();
             let path = parts[1].trim().replace('\\', "/");
             status_map.insert(path, status);
         }
@@ -124,22 +130,28 @@ pub fn read_pr_context(root: &Path, params: ReadPrContextParams) -> anyhow::Resu
     let mut related_test_set: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for (path, added, deleted) in files_for_skeleton {
-        let status = status_map.get(path).cloned().unwrap_or_else(|| "M".to_string());
+        let status = status_map
+            .get(path)
+            .cloned()
+            .unwrap_or_else(|| "M".to_string());
 
         let skeleton = if include_skeletons && status != "D" {
             let sk_params = ReadCodeSkeletonParams {
                 path: path.clone(),
                 include_blocks: Some(false),
             };
-            read_code_skeleton(root, sk_params)
-                .ok()
-                .map(|r| r.skeleton.into_iter().map(|s| SkeletonSummary {
-                    id: s.id,
-                    name: s.name,
-                    kind: s.kind,
-                    start_line: s.start_line,
-                    end_line: s.end_line,
-                }).collect())
+            read_code_skeleton(root, sk_params).ok().map(|r| {
+                r.skeleton
+                    .into_iter()
+                    .map(|s| SkeletonSummary {
+                        id: s.id,
+                        name: s.name,
+                        kind: s.kind,
+                        start_line: s.start_line,
+                        end_line: s.end_line,
+                    })
+                    .collect()
+            })
         } else {
             None
         };
@@ -166,12 +178,7 @@ pub fn read_pr_context(root: &Path, params: ReadPrContextParams) -> anyhow::Resu
 
     // 2. Get commits on branch not in base
     let log_str_owned = Command::new("git")
-        .args([
-            "log",
-            "--oneline",
-            "--format=%h\t%an\t%s",
-            &diff_range,
-        ])
+        .args(["log", "--oneline", "--format=%h\t%an\t%s", &diff_range])
         .current_dir(root)
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
@@ -197,7 +204,10 @@ pub fn read_pr_context(root: &Path, params: ReadPrContextParams) -> anyhow::Resu
 
     let related_tests: Vec<RelatedTestFile> = related_test_set
         .into_iter()
-        .map(|path| RelatedTestFile { path: path.clone(), reason: "filename match".to_string() })
+        .map(|path| RelatedTestFile {
+            path: path.clone(),
+            reason: "filename match".to_string(),
+        })
         .collect();
 
     let json = serde_json::json!({
@@ -263,9 +273,13 @@ fn find_related_tests(
             .unwrap_or("")
             .to_lowercase();
 
-        let in_test_dir = test_dirs.iter().any(|d| rel.contains(&format!("/{}/", d)) || rel.starts_with(&format!("{}/", d)));
+        let in_test_dir = test_dirs
+            .iter()
+            .any(|d| rel.contains(&format!("/{}/", d)) || rel.starts_with(&format!("{}/", d)));
 
-        let matches_pattern = test_patterns.iter().any(|p| file_name.contains(p.to_lowercase().as_str()));
+        let matches_pattern = test_patterns
+            .iter()
+            .any(|p| file_name.contains(p.to_lowercase().as_str()));
 
         if matches_pattern || in_test_dir && file_name.contains(&stem.to_lowercase()) {
             found.insert(rel);

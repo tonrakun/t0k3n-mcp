@@ -67,9 +67,10 @@ pub fn detect_languages(root: &Path, max_languages: usize) -> Vec<DetectedLangua
             continue;
         }
         if let Some(ext) = path.extension().and_then(|e| e.to_str())
-            && let Some(lang) = ext_to_lang(&ext.to_lowercase()) {
-                *counts.entry(lang).or_insert(0) += 1;
-            }
+            && let Some(lang) = ext_to_lang(&ext.to_lowercase())
+        {
+            *counts.entry(lang).or_insert(0) += 1;
+        }
     }
 
     // Also check manifest files for additional context

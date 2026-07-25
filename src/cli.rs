@@ -116,7 +116,9 @@ pub async fn upgrade() -> Result<()> {
         .text()
         .await?;
     let expected = expected_sha256(&manifest, &artifact).with_context(|| {
-        format!("SHA256SUMS.txt does not list {artifact} — refusing to install an unverified binary")
+        format!(
+            "SHA256SUMS.txt does not list {artifact} — refusing to install an unverified binary"
+        )
     })?;
 
     println!("Downloading {url}");

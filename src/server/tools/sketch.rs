@@ -121,7 +121,10 @@ fn sketch_block(lines: &[&str], comment: &str, kw_re: &Regex, call_re: &Regex) -
                 i += 1;
             }
             let count = i - from;
-            let indent: String = lines[from].chars().take_while(|c| c.is_whitespace()).collect();
+            let indent: String = lines[from]
+                .chars()
+                .take_while(|c| c.is_whitespace())
+                .collect();
             let plural = if count == 1 { "" } else { "s" };
             out.push(format!("{indent}{comment} … {count} line{plural} …"));
         }

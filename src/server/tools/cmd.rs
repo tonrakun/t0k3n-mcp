@@ -7,14 +7,16 @@ use std::time::{Duration, Instant};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::safe_path;
 use super::fs::estimate_tokens;
+use crate::security::safe_path;
 
 // ─── run_command ─────────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct RunCommandParams {
-    #[schemars(description = "Shell command to execute (e.g. 'cargo build --release', 'npm test', 'go build ./...'). Executed via sh -c on Unix / cmd /C on Windows.")]
+    #[schemars(
+        description = "Shell command to execute (e.g. 'cargo build --release', 'npm test', 'go build ./...'). Executed via sh -c on Unix / cmd /C on Windows."
+    )]
     pub command: String,
     #[schemars(description = "Working directory relative to project root. Omit to use root.")]
     pub cwd: Option<String>,
@@ -145,9 +147,7 @@ fn kill_process_tree(pid: u32) {
 fn kill_process_tree(pid: u32) {
     // sh -c runs the command as a direct child of `pid`; killing it is enough
     // for the common case. Grandchildren that double-fork are not chased.
-    let _ = Command::new("kill")
-        .args(["-9", &pid.to_string()])
-        .output();
+    let _ = Command::new("kill").args(["-9", &pid.to_string()]).output();
 }
 
 // ─── Output classification ────────────────────────────────────────────────────
@@ -202,7 +202,9 @@ fn diff_lines(prev: &[String], curr: &[String]) -> (Vec<String>, usize, usize) {
 
 impl CmdLedger {
     pub fn new() -> Self {
-        Self { entries: HashMap::new() }
+        Self {
+            entries: HashMap::new(),
+        }
     }
 
     /// Ledger key: trimmed command + working directory.
@@ -212,7 +214,11 @@ impl CmdLedger {
 
     /// Record the current result. Returns None on the first run of a command
     /// (send full output) and the delta report on repeats.
-    pub fn check_and_update(&mut self, key: &str, result: &RunCommandResult) -> Option<CmdDeltaReport> {
+    pub fn check_and_update(
+        &mut self,
+        key: &str,
+        result: &RunCommandResult,
+    ) -> Option<CmdDeltaReport> {
         if self.entries.len() >= MAX_CMD_ENTRIES && !self.entries.contains_key(key) {
             self.entries.clear();
         }
@@ -224,8 +230,10 @@ impl CmdLedger {
         };
         let prev = self.entries.insert(key.to_string(), record)?;
 
-        let (new_errors, resolved_errors, unchanged_errors) = diff_lines(&prev.errors, &result.errors);
-        let (new_warnings, resolved_warnings, unchanged_warnings) = diff_lines(&prev.warnings, &result.warnings);
+        let (new_errors, resolved_errors, unchanged_errors) =
+            diff_lines(&prev.errors, &result.errors);
+        let (new_warnings, resolved_warnings, unchanged_warnings) =
+            diff_lines(&prev.warnings, &result.warnings);
         let success_changed = prev.success != result.success;
         let summary = if success_changed || (result.success && prev.summary != result.summary) {
             Some(result.summary.clone())
@@ -270,7 +278,9 @@ fn extract_errors(lines: &[&str]) -> Vec<String> {
                 let prev = lines[i - 1];
                 if !prev.trim().is_empty()
                     && !is_noise_line(prev)
-                    && result.last().is_none_or(|l: &String| l.trim() != prev.trim())
+                    && result
+                        .last()
+                        .is_none_or(|l: &String| l.trim() != prev.trim())
                 {
                     result.push(format!("  {prev}"));
                 }
@@ -330,65 +340,124 @@ fn is_error_line(line: &str) -> bool {
     let lower = t.to_lowercase();
 
     // ── Rust / Cargo ──────────────────────────────────────────────────────────
-    if t.starts_with("error[") { return true; }
-    if t.starts_with("error: ") || t == "error" { return true; }
-    if lower.contains("could not compile") || lower.contains("failed to compile") { return true; }
-    if lower.contains("build failed") { return true; }
+    if t.starts_with("error[") {
+        return true;
+    }
+    if t.starts_with("error: ") || t == "error" {
+        return true;
+    }
+    if lower.contains("could not compile") || lower.contains("failed to compile") {
+        return true;
+    }
+    if lower.contains("build failed") {
+        return true;
+    }
     // aborting due to N previous error(s)
-    if lower.starts_with("aborting due to") && lower.contains("error") { return true; }
+    if lower.starts_with("aborting due to") && lower.contains("error") {
+        return true;
+    }
 
     // ── TypeScript / tsc ──────────────────────────────────────────────────────
     // src/foo.ts(10,5): error TS2304: Cannot find name 'foo'.
-    if line.contains("error TS") { return true; }
+    if line.contains("error TS") {
+        return true;
+    }
     // Found N error(s) — summary line
-    if lower.starts_with("found ") && lower.contains("error") { return true; }
+    if lower.starts_with("found ") && lower.contains("error") {
+        return true;
+    }
 
     // ── npm / Node ────────────────────────────────────────────────────────────
-    if lower.starts_with("npm err!") { return true; }
+    if lower.starts_with("npm err!") {
+        return true;
+    }
     // Unhandled/uncaught exceptions
-    if t.contains("Error: ") && (lower.contains("unhandled") || lower.contains("uncaught") || t.starts_with("Error: ")) { return true; }
+    if t.contains("Error: ")
+        && (lower.contains("unhandled") || lower.contains("uncaught") || t.starts_with("Error: "))
+    {
+        return true;
+    }
 
     // ── Python ────────────────────────────────────────────────────────────────
     // Exception class names at start of line: SyntaxError: ...
     const PY_EXCEPTIONS: &[&str] = &[
-        "SyntaxError:", "TypeError:", "NameError:", "ValueError:",
-        "ImportError:", "ModuleNotFoundError:", "AttributeError:",
-        "RuntimeError:", "FileNotFoundError:", "OSError:", "KeyError:",
-        "IndexError:", "ZeroDivisionError:", "AssertionError:",
-        "IndentationError:", "UnicodeDecodeError:",
+        "SyntaxError:",
+        "TypeError:",
+        "NameError:",
+        "ValueError:",
+        "ImportError:",
+        "ModuleNotFoundError:",
+        "AttributeError:",
+        "RuntimeError:",
+        "FileNotFoundError:",
+        "OSError:",
+        "KeyError:",
+        "IndexError:",
+        "ZeroDivisionError:",
+        "AssertionError:",
+        "IndentationError:",
+        "UnicodeDecodeError:",
     ];
     for exc in PY_EXCEPTIONS {
-        if t.starts_with(exc) { return true; }
+        if t.starts_with(exc) {
+            return true;
+        }
     }
-    if t == "Traceback (most recent call last):" { return true; }
+    if t == "Traceback (most recent call last):" {
+        return true;
+    }
 
     // ── Go ────────────────────────────────────────────────────────────────────
     // ./pkg/foo.go:12:5: undefined: Bar
-    if is_go_error(line) { return true; }
+    if is_go_error(line) {
+        return true;
+    }
 
     // ── Make / CMake ──────────────────────────────────────────────────────────
-    if lower.contains("*** error") || lower.starts_with("make: ***") { return true; }
-    if lower.starts_with("cmake error") || lower.contains("cmake error:") { return true; }
+    if lower.contains("*** error") || lower.starts_with("make: ***") {
+        return true;
+    }
+    if lower.starts_with("cmake error") || lower.contains("cmake error:") {
+        return true;
+    }
 
     // ── Maven / Gradle ────────────────────────────────────────────────────────
-    if lower.contains("build failure") { return true; }
-    if lower.contains("[error]") { return true; }
-    if lower.contains("compilation error") { return true; }
+    if lower.contains("build failure") {
+        return true;
+    }
+    if lower.contains("[error]") {
+        return true;
+    }
+    if lower.contains("compilation error") {
+        return true;
+    }
 
     // ── Test runners (cargo test, pytest, Jest) ───────────────────────────────
     // "FAILED tests/foo.py::bar" or "FAILED" standalone
-    if t == "FAILED" || lower == "failed" { return true; }
-    if t.starts_with("FAILED ") { return true; }
+    if t == "FAILED" || lower == "failed" {
+        return true;
+    }
+    if t.starts_with("FAILED ") {
+        return true;
+    }
     // "failures:" section header in cargo test output
-    if lower.trim_start().starts_with("failures:") { return true; }
+    if lower.trim_start().starts_with("failures:") {
+        return true;
+    }
     // Jest failure marker
-    if lower.starts_with("● ") { return true; }
+    if lower.starts_with("● ") {
+        return true;
+    }
     // "X failed" — summary lines
-    if lower.contains(" failed") && (lower.contains(" passed") || lower.contains(" error")) { return true; }
+    if lower.contains(" failed") && (lower.contains(" passed") || lower.contains(" error")) {
+        return true;
+    }
 
     // ── Generic ───────────────────────────────────────────────────────────────
     // "error:" prefix after optional file path prefix (e.g. "src/lib.rs: error:")
-    if lower.contains(": error:") || lower.contains(": error ") { return true; }
+    if lower.contains(": error:") || lower.contains(": error ") {
+        return true;
+    }
 
     false
 }
@@ -398,21 +467,35 @@ fn is_warning_line(line: &str) -> bool {
     let lower = t.to_lowercase();
 
     // ── Rust / Cargo ──────────────────────────────────────────────────────────
-    if t.starts_with("warning[") { return true; }
-    if t.starts_with("warning: ") { return true; }
+    if t.starts_with("warning[") {
+        return true;
+    }
+    if t.starts_with("warning: ") {
+        return true;
+    }
 
     // ── TypeScript ────────────────────────────────────────────────────────────
-    if line.contains("warning TS") { return true; }
+    if line.contains("warning TS") {
+        return true;
+    }
 
     // ── npm ───────────────────────────────────────────────────────────────────
-    if lower.starts_with("npm warn ") { return true; }
+    if lower.starts_with("npm warn ") {
+        return true;
+    }
 
     // ── Generic warn / warning prefix ─────────────────────────────────────────
-    if lower.starts_with("warn: ") || lower.starts_with("warning: ") { return true; }
-    if lower.contains(": warning:") { return true; }
+    if lower.starts_with("warn: ") || lower.starts_with("warning: ") {
+        return true;
+    }
+    if lower.contains(": warning:") {
+        return true;
+    }
 
     // ── Deprecation ───────────────────────────────────────────────────────────
-    if lower.contains("deprecated") && lower.contains("warning") { return true; }
+    if lower.contains("deprecated") && lower.contains("warning") {
+        return true;
+    }
 
     false
 }
@@ -433,7 +516,9 @@ fn is_noise_line(line: &str) -> bool {
 }
 
 fn is_go_error(line: &str) -> bool {
-    if !line.contains(".go:") { return false; }
+    if !line.contains(".go:") {
+        return false;
+    }
     let lower = line.to_lowercase();
     lower.contains("undefined")
         || lower.contains("cannot")
@@ -451,7 +536,12 @@ fn is_go_error(line: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn result(success: bool, summary: &str, errors: &[&str], warnings: &[&str]) -> RunCommandResult {
+    fn result(
+        success: bool,
+        summary: &str,
+        errors: &[&str],
+        warnings: &[&str],
+    ) -> RunCommandResult {
         RunCommandResult {
             command: "cargo build".into(),
             exit_code: if success { 0 } else { 1 },
@@ -468,16 +558,36 @@ mod tests {
     fn first_run_returns_none() {
         let mut ledger = CmdLedger::new();
         let key = CmdLedger::key("cargo build", None);
-        assert!(ledger.check_and_update(&key, &result(false, "failed", &["error[E0001]: a"], &[])).is_none());
+        assert!(
+            ledger
+                .check_and_update(&key, &result(false, "failed", &["error[E0001]: a"], &[]))
+                .is_none()
+        );
     }
 
     #[test]
     fn repeat_reports_new_resolved_unchanged() {
         let mut ledger = CmdLedger::new();
         let key = CmdLedger::key("cargo build", None);
-        ledger.check_and_update(&key, &result(false, "failed", &["error[E0001]: a", "error[E0002]: b"], &[]));
+        ledger.check_and_update(
+            &key,
+            &result(
+                false,
+                "failed",
+                &["error[E0001]: a", "error[E0002]: b"],
+                &[],
+            ),
+        );
         let d = ledger
-            .check_and_update(&key, &result(false, "failed", &["error[E0002]: b", "error[E0003]: c"], &[]))
+            .check_and_update(
+                &key,
+                &result(
+                    false,
+                    "failed",
+                    &["error[E0002]: b", "error[E0003]: c"],
+                    &[],
+                ),
+            )
             .unwrap();
         assert_eq!(d.new_errors, vec!["error[E0003]: c".to_string()]);
         assert_eq!(d.resolved_errors, 1);
@@ -492,7 +602,9 @@ mod tests {
         let mut ledger = CmdLedger::new();
         let key = CmdLedger::key("cargo test", None);
         ledger.check_and_update(&key, &result(false, "failed", &["error: x"], &[]));
-        let d = ledger.check_and_update(&key, &result(true, "test result: ok", &[], &[])).unwrap();
+        let d = ledger
+            .check_and_update(&key, &result(true, "test result: ok", &[], &[]))
+            .unwrap();
         assert!(d.success_changed);
         assert_eq!(d.summary.as_deref(), Some("test result: ok"));
         assert_eq!(d.resolved_errors, 1);
@@ -503,7 +615,9 @@ mod tests {
         let mut ledger = CmdLedger::new();
         let key = CmdLedger::key("git push", None);
         ledger.check_and_update(&key, &result(true, "pushed abc123", &[], &[]));
-        let d = ledger.check_and_update(&key, &result(true, "pushed def456", &[], &[])).unwrap();
+        let d = ledger
+            .check_and_update(&key, &result(true, "pushed def456", &[], &[]))
+            .unwrap();
         assert_eq!(d.summary.as_deref(), Some("pushed def456"));
     }
 
@@ -511,8 +625,16 @@ mod tests {
     fn identical_repeat_is_a_stub() {
         let mut ledger = CmdLedger::new();
         let key = CmdLedger::key("cargo build", None);
-        ledger.check_and_update(&key, &result(false, "failed", &["error: x"], &["warning: y"]));
-        let d = ledger.check_and_update(&key, &result(false, "failed", &["error: x"], &["warning: y"])).unwrap();
+        ledger.check_and_update(
+            &key,
+            &result(false, "failed", &["error: x"], &["warning: y"]),
+        );
+        let d = ledger
+            .check_and_update(
+                &key,
+                &result(false, "failed", &["error: x"], &["warning: y"]),
+            )
+            .unwrap();
         assert!(d.new_errors.is_empty() && d.new_warnings.is_empty());
         assert!(d.summary.is_none());
         assert_eq!(d.unchanged_errors, 1);
@@ -526,14 +648,24 @@ mod tests {
         let k2 = CmdLedger::key("npm test", Some("packages/app"));
         assert_ne!(k1, k2);
         ledger.check_and_update(&k1, &result(true, "ok", &[], &[]));
-        assert!(ledger.check_and_update(&k2, &result(true, "ok", &[], &[])).is_none());
+        assert!(
+            ledger
+                .check_and_update(&k2, &result(true, "ok", &[], &[]))
+                .is_none()
+        );
     }
 
     #[test]
     fn clear_by_pattern() {
         let mut ledger = CmdLedger::new();
-        ledger.check_and_update(&CmdLedger::key("cargo build", None), &result(true, "ok", &[], &[]));
-        ledger.check_and_update(&CmdLedger::key("npm test", None), &result(true, "ok", &[], &[]));
+        ledger.check_and_update(
+            &CmdLedger::key("cargo build", None),
+            &result(true, "ok", &[], &[]),
+        );
+        ledger.check_and_update(
+            &CmdLedger::key("npm test", None),
+            &result(true, "ok", &[], &[]),
+        );
         assert_eq!(ledger.clear(Some("cargo")), 1);
         assert_eq!(ledger.clear(None), 1);
     }

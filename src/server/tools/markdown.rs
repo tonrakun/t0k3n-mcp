@@ -3,12 +3,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::security::safe_path_or_absolute;
 use super::fs::estimate_tokens;
+use crate::security::safe_path_or_absolute;
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadMarkdownTocParams {
-    #[schemars(description = "Root-relative or absolute path to the Markdown file (absolute allowed for convert_document tmp files)")]
+    #[schemars(
+        description = "Root-relative or absolute path to the Markdown file (absolute allowed for convert_document tmp files)"
+    )]
     pub path: String,
 }
 
@@ -24,7 +26,10 @@ pub struct ReadMarkdownTocResult {
     pub token_count: usize,
 }
 
-pub fn read_markdown_toc(root: &Path, params: ReadMarkdownTocParams) -> anyhow::Result<ReadMarkdownTocResult> {
+pub fn read_markdown_toc(
+    root: &Path,
+    params: ReadMarkdownTocParams,
+) -> anyhow::Result<ReadMarkdownTocResult> {
     let path = safe_path_or_absolute(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let toc = extract_toc(&content);
@@ -48,19 +53,21 @@ pub fn extract_toc(content: &str) -> Vec<TocEntry> {
                 current_level = Some(heading_level_to_u8(level));
                 current_text.clear();
             }
-            Event::Text(t)
-                if current_level.is_some() => {
-                    current_text.push_str(&t);
-                }
-            Event::Code(t)
-                if current_level.is_some() => {
-                    current_text.push_str(&t);
-                }
+            Event::Text(t) if current_level.is_some() => {
+                current_text.push_str(&t);
+            }
+            Event::Code(t) if current_level.is_some() => {
+                current_text.push_str(&t);
+            }
             Event::End(TagEnd::Heading(_)) => {
                 if let Some(level) = current_level.take() {
                     let title = current_text.trim().to_string();
                     let anchor = make_anchor(&title);
-                    toc.push(TocEntry { level, title, anchor });
+                    toc.push(TocEntry {
+                        level,
+                        title,
+                        anchor,
+                    });
                 }
                 current_text.clear();
             }
@@ -85,7 +92,15 @@ pub fn make_anchor(title: &str) -> String {
     title
         .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else if c == ' ' { '-' } else { '\0' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else if c == ' ' {
+                '-'
+            } else {
+                '\0'
+            }
+        })
         .filter(|&c| c != '\0')
         .collect()
 }
@@ -110,13 +125,19 @@ pub struct SectionContent {
     pub content: String,
 }
 
-pub fn read_markdown_section(root: &Path, params: ReadMarkdownSectionParams) -> anyhow::Result<ReadMarkdownSectionResult> {
+pub fn read_markdown_section(
+    root: &Path,
+    params: ReadMarkdownSectionParams,
+) -> anyhow::Result<ReadMarkdownSectionResult> {
     let path = safe_path_or_absolute(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let sections = extract_sections(&content, &params.anchors);
     let json = serde_json::to_string(&sections).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadMarkdownSectionResult { sections, token_count })
+    Ok(ReadMarkdownSectionResult {
+        sections,
+        token_count,
+    })
 }
 
 pub(crate) struct HeadingLine {
@@ -138,7 +159,11 @@ pub(crate) fn scan_headings(lines: &[&str]) -> Vec<HeadingLine> {
         let trimmed = line.trim_start();
         if !in_fence && (trimmed.starts_with("```") || trimmed.starts_with("~~~")) {
             in_fence = true;
-            fence_marker = if trimmed.starts_with("```") { "```" } else { "~~~" };
+            fence_marker = if trimmed.starts_with("```") {
+                "```"
+            } else {
+                "~~~"
+            };
             continue;
         }
         if in_fence {
@@ -161,12 +186,19 @@ pub(crate) fn scan_headings(lines: &[&str]) -> Vec<HeadingLine> {
         let mut title = rest.trim();
         // strip optional ATX closing sequence ("## Title ##")
         let without_closing = title.trim_end_matches('#');
-        if without_closing.len() != title.len() && (without_closing.is_empty() || without_closing.ends_with(' ')) {
+        if without_closing.len() != title.len()
+            && (without_closing.is_empty() || without_closing.ends_with(' '))
+        {
             title = without_closing.trim_end();
         }
         let title = title.replace('`', "").replace("**", "");
         let anchor = make_anchor(&title);
-        out.push(HeadingLine { line_idx: i, level, title, anchor });
+        out.push(HeadingLine {
+            line_idx: i,
+            level,
+            title,
+            anchor,
+        });
     }
     out
 }
@@ -215,7 +247,12 @@ mod tests {
     #[test]
     fn section_with_inline_code_heading_matches() {
         let toc = extract_toc(DOC);
-        let anchor = toc.iter().find(|e| e.title.contains("with_code")).unwrap().anchor.clone();
+        let anchor = toc
+            .iter()
+            .find(|e| e.title.contains("with_code"))
+            .unwrap()
+            .anchor
+            .clone();
         let sections = extract_sections(DOC, &[anchor]);
         assert_eq!(sections.len(), 1);
         assert!(sections[0].content.contains("body3"));

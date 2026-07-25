@@ -5,12 +5,14 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::safe_path;
 use super::fs::estimate_tokens;
+use crate::security::safe_path;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadPackageManifestParams {
-    #[schemars(description = "Path to a specific manifest file, or omit to auto-scan workspace root.")]
+    #[schemars(
+        description = "Path to a specific manifest file, or omit to auto-scan workspace root."
+    )]
     pub path: Option<String>,
 }
 
@@ -51,7 +53,10 @@ const MANIFEST_FILES: &[&str] = &[
     "build.gradle.kts",
 ];
 
-pub fn read_package_manifest(root: &Path, params: ReadPackageManifestParams) -> anyhow::Result<ReadPackageManifestResult> {
+pub fn read_package_manifest(
+    root: &Path,
+    params: ReadPackageManifestParams,
+) -> anyhow::Result<ReadPackageManifestResult> {
     let mut manifests = Vec::new();
 
     if let Some(ref p) = params.path {
@@ -62,7 +67,9 @@ pub fn read_package_manifest(root: &Path, params: ReadPackageManifestParams) -> 
     } else {
         for name in MANIFEST_FILES {
             let candidate = root.join(name);
-            if !candidate.exists() { continue; }
+            if !candidate.exists() {
+                continue;
+            }
             if let Some(entry) = parse_manifest(&candidate, name) {
                 manifests.push(entry);
             }
@@ -71,7 +78,10 @@ pub fn read_package_manifest(root: &Path, params: ReadPackageManifestParams) -> 
 
     let json = serde_json::to_string(&manifests).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadPackageManifestResult { manifests, token_count })
+    Ok(ReadPackageManifestResult {
+        manifests,
+        token_count,
+    })
 }
 
 fn parse_manifest(path: &Path, rel: &str) -> Option<ManifestEntry> {
@@ -119,8 +129,14 @@ fn parse_package_json(path: &Path, rel: &str) -> Option<ManifestEntry> {
     Some(ManifestEntry {
         path: rel.to_string(),
         ecosystem: "npm".to_string(),
-        name: v.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()),
-        version: v.get("version").and_then(|n| n.as_str()).map(|s| s.to_string()),
+        name: v
+            .get("name")
+            .and_then(|n| n.as_str())
+            .map(|s| s.to_string()),
+        version: v
+            .get("version")
+            .and_then(|n| n.as_str())
+            .map(|s| s.to_string()),
         dependencies: deps,
         scripts,
     })
@@ -131,8 +147,14 @@ fn parse_cargo_toml(path: &Path, rel: &str) -> Option<ManifestEntry> {
     let doc: toml::Value = toml::from_str(&content).ok()?;
 
     let pkg = doc.get("package");
-    let name = pkg.and_then(|p| p.get("name")).and_then(|n| n.as_str()).map(|s| s.to_string());
-    let version = pkg.and_then(|p| p.get("version")).and_then(|v| v.as_str()).map(|s| s.to_string());
+    let name = pkg
+        .and_then(|p| p.get("name"))
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_string());
+    let version = pkg
+        .and_then(|p| p.get("version"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let mut deps = Vec::new();
     for (section, kind) in &[
@@ -189,19 +211,35 @@ fn parse_pyproject_toml(path: &Path, rel: &str) -> Option<ManifestEntry> {
 
     // Poetry style
     if let Some(poetry) = doc.get("tool").and_then(|t| t.get("poetry")) {
-        let name = poetry.get("name").and_then(|n| n.as_str()).map(|s| s.to_string());
-        let version = poetry.get("version").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let name = poetry
+            .get("name")
+            .and_then(|n| n.as_str())
+            .map(|s| s.to_string());
+        let version = poetry
+            .get("version")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
         let mut deps = Vec::new();
         for (section, kind) in &[("dependencies", "runtime"), ("dev-dependencies", "dev")] {
             if let Some(table) = poetry.get(section).and_then(|d| d.as_table()) {
                 for (dep_name, dep_val) in table {
-                    if dep_name == "python" { continue; }
+                    if dep_name == "python" {
+                        continue;
+                    }
                     let ver = match dep_val {
                         toml::Value::String(s) => s.clone(),
-                        toml::Value::Table(t) => t.get("version").and_then(|v| v.as_str()).unwrap_or("*").to_string(),
+                        toml::Value::Table(t) => t
+                            .get("version")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("*")
+                            .to_string(),
                         _ => "*".to_string(),
                     };
-                    deps.push(DependencyEntry { name: dep_name.clone(), version: ver, kind: kind.to_string() });
+                    deps.push(DependencyEntry {
+                        name: dep_name.clone(),
+                        version: ver,
+                        kind: kind.to_string(),
+                    });
                 }
             }
         }
@@ -217,26 +255,50 @@ fn parse_pyproject_toml(path: &Path, rel: &str) -> Option<ManifestEntry> {
 
     // PEP 517/518 style
     let project = doc.get("project");
-    let name = project.and_then(|p| p.get("name")).and_then(|n| n.as_str()).map(|s| s.to_string());
-    let version = project.and_then(|p| p.get("version")).and_then(|v| v.as_str()).map(|s| s.to_string());
+    let name = project
+        .and_then(|p| p.get("name"))
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_string());
+    let version = project
+        .and_then(|p| p.get("version"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let mut deps = Vec::new();
 
-    if let Some(arr) = project.and_then(|p| p.get("dependencies")).and_then(|d| d.as_array()) {
+    if let Some(arr) = project
+        .and_then(|p| p.get("dependencies"))
+        .and_then(|d| d.as_array())
+    {
         for dep in arr {
             if let Some(s) = dep.as_str() {
                 let (n, v) = parse_pep_dep(s);
-                deps.push(DependencyEntry { name: n, version: v, kind: "runtime".to_string() });
+                deps.push(DependencyEntry {
+                    name: n,
+                    version: v,
+                    kind: "runtime".to_string(),
+                });
             }
         }
     }
-    if let Some(opt) = project.and_then(|p| p.get("optional-dependencies")).and_then(|d| d.as_table()) {
+    if let Some(opt) = project
+        .and_then(|p| p.get("optional-dependencies"))
+        .and_then(|d| d.as_table())
+    {
         for (group, arr) in opt {
-            let kind = if group.contains("dev") || group.contains("test") { "dev" } else { "optional" };
+            let kind = if group.contains("dev") || group.contains("test") {
+                "dev"
+            } else {
+                "optional"
+            };
             if let Some(arr) = arr.as_array() {
                 for dep in arr {
                     if let Some(s) = dep.as_str() {
                         let (n, v) = parse_pep_dep(s);
-                        deps.push(DependencyEntry { name: n, version: v, kind: kind.to_string() });
+                        deps.push(DependencyEntry {
+                            name: n,
+                            version: v,
+                            kind: kind.to_string(),
+                        });
                     }
                 }
             }
@@ -267,9 +329,15 @@ fn parse_requirements_txt(path: &Path, rel: &str) -> Option<ManifestEntry> {
     let mut deps = Vec::new();
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with('-') { continue; }
+        if line.is_empty() || line.starts_with('#') || line.starts_with('-') {
+            continue;
+        }
         let (name, ver) = parse_pep_dep(line);
-        deps.push(DependencyEntry { name, version: ver, kind: "runtime".to_string() });
+        deps.push(DependencyEntry {
+            name,
+            version: ver,
+            kind: "runtime".to_string(),
+        });
     }
     Some(ManifestEntry {
         path: rel.to_string(),
@@ -302,7 +370,11 @@ fn parse_go_mod(path: &Path, rel: &str) -> Option<ManifestEntry> {
             let dep_line = trimmed.trim_start_matches("require ").trim();
             let parts: Vec<&str> = dep_line.splitn(2, ' ').collect();
             if parts.len() == 2 {
-                let kind = if dep_line.ends_with("// indirect") { "optional" } else { "runtime" };
+                let kind = if dep_line.ends_with("// indirect") {
+                    "optional"
+                } else {
+                    "runtime"
+                };
                 deps.push(DependencyEntry {
                     name: parts[0].to_string(),
                     version: parts[1].trim_end_matches("// indirect").trim().to_string(),
@@ -331,13 +403,18 @@ fn parse_pom_xml(path: &Path, rel: &str) -> Option<ManifestEntry> {
     let version_re = Regex::new(r"<version>([^<]+)</version>").unwrap();
 
     let name = name_re.captures(&content).map(|c| c[1].trim().to_string());
-    let version = version_re.captures(&content).map(|c| c[1].trim().to_string());
+    let version = version_re
+        .captures(&content)
+        .map(|c| c[1].trim().to_string());
 
     let mut deps = Vec::new();
     for cap in re_dep.captures_iter(&content) {
         let group = cap[1].trim().to_string();
         let artifact = cap[2].trim().to_string();
-        let ver = cap.get(3).map(|v| v.as_str().trim().to_string()).unwrap_or_else(|| "*".to_string());
+        let ver = cap
+            .get(3)
+            .map(|v| v.as_str().trim().to_string())
+            .unwrap_or_else(|| "*".to_string());
         let kind = match cap.get(4).map(|s| s.as_str().trim()) {
             Some("test") => "dev",
             Some("provided") | Some("optional") => "optional",
@@ -380,7 +457,11 @@ fn parse_gradle(path: &Path, rel: &str) -> Option<ManifestEntry> {
                 "compileOnly" | "runtimeOnly" | "annotationProcessor" | "kapt" => "optional",
                 _ => "runtime",
             };
-            deps.push(DependencyEntry { name, version, kind: kind.to_string() });
+            deps.push(DependencyEntry {
+                name,
+                version,
+                kind: kind.to_string(),
+            });
         }
     }
 

@@ -17,7 +17,9 @@ use crate::security::safe_path;
 pub struct ManageImportsParams {
     #[schemars(description = "Root-relative path to the code file")]
     pub path: String,
-    #[schemars(description = "Full import lines to add (e.g. \"use std::path::Path;\"). Duplicates of existing imports are skipped.")]
+    #[schemars(
+        description = "Full import lines to add (e.g. \"use std::path::Path;\"). Duplicates of existing imports are skipped."
+    )]
     pub add: Option<Vec<String>>,
     #[schemars(description = "Full import lines to remove (matched by trimmed equality).")]
     pub remove: Option<Vec<String>>,
@@ -180,7 +182,10 @@ mod tests {
 
     #[test]
     fn add_and_remove_together() {
-        let dir = setup("a.ts", "import { a } from 'x';\nimport { b } from 'y';\n\nconst z = 1;\n");
+        let dir = setup(
+            "a.ts",
+            "import { a } from 'x';\nimport { b } from 'y';\n\nconst z = 1;\n",
+        );
         let r = manage_imports(
             dir.path(),
             ManageImportsParams {
@@ -213,6 +218,10 @@ mod tests {
         .unwrap();
         assert!(!r.written);
         assert_eq!(r.added, 1);
-        assert!(!std::fs::read_to_string(dir.path().join("a.rs")).unwrap().contains("std::fmt"));
+        assert!(
+            !std::fs::read_to_string(dir.path().join("a.rs"))
+                .unwrap()
+                .contains("std::fmt")
+        );
     }
 }

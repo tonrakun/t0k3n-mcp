@@ -48,15 +48,33 @@ pub fn memory_get(db: &Database, params: MemoryGetParams) -> Result<Option<Memor
     let mut stmt = db.conn.prepare(
         "SELECT id, key, value, tags, created_at, updated_at FROM memories WHERE key = ?1",
     )?;
-    let entry = stmt.query_row(params![params.key], |row| {
-        let tags_str: String = row.get(3)?;
-        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, tags_str, row.get::<_, i64>(4)?, row.get::<_, i64>(5)?))
-    }).optional()?;
+    let entry = stmt
+        .query_row(params![params.key], |row| {
+            let tags_str: String = row.get(3)?;
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                tags_str,
+                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)?,
+            ))
+        })
+        .optional()?;
 
-    Ok(entry.map(|(id, key, value, tags_str, created_at, updated_at)| {
-        let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
-        MemoryEntry { id, key, value, tags, created_at, updated_at }
-    }))
+    Ok(
+        entry.map(|(id, key, value, tags_str, created_at, updated_at)| {
+            let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
+            MemoryEntry {
+                id,
+                key,
+                value,
+                tags,
+                created_at,
+                updated_at,
+            }
+        }),
+    )
 }
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
@@ -72,27 +90,45 @@ pub fn memory_list(db: &Database, params: MemoryListParams) -> Result<Vec<Memory
         "SELECT id, key, value, tags, created_at, updated_at FROM memories ORDER BY updated_at DESC",
     )?;
 
-    let entries: Vec<MemoryEntry> = stmt.query_map([], |row| {
-        let tags_str: String = row.get(3)?;
-        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, tags_str, row.get::<_, i64>(4)?, row.get::<_, i64>(5)?))
-    })?.filter_map(|r| r.ok()).map(|(id, key, value, tags_str, created_at, updated_at)| {
-        let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
-        MemoryEntry { id, key, value, tags, created_at, updated_at }
-    })
-    .filter(|e| {
-        if let Some(tag) = &params.tag
-            && !e.tags.contains(tag) {
+    let entries: Vec<MemoryEntry> = stmt
+        .query_map([], |row| {
+            let tags_str: String = row.get(3)?;
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                tags_str,
+                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)?,
+            ))
+        })?
+        .filter_map(|r| r.ok())
+        .map(|(id, key, value, tags_str, created_at, updated_at)| {
+            let tags: Vec<String> = serde_json::from_str(&tags_str).unwrap_or_default();
+            MemoryEntry {
+                id,
+                key,
+                value,
+                tags,
+                created_at,
+                updated_at,
+            }
+        })
+        .filter(|e| {
+            if let Some(tag) = &params.tag
+                && !e.tags.contains(tag)
+            {
                 return false;
             }
-        if let Some(search) = &params.search {
-            let s = search.to_lowercase();
-            if !e.key.to_lowercase().contains(&s) && !e.value.to_lowercase().contains(&s) {
-                return false;
+            if let Some(search) = &params.search {
+                let s = search.to_lowercase();
+                if !e.key.to_lowercase().contains(&s) && !e.value.to_lowercase().contains(&s) {
+                    return false;
+                }
             }
-        }
-        true
-    })
-    .collect();
+            true
+        })
+        .collect();
 
     Ok(entries)
 }
@@ -104,7 +140,9 @@ pub struct MemoryDeleteParams {
 }
 
 pub fn memory_delete(db: &Database, params: MemoryDeleteParams) -> Result<String> {
-    let n = db.conn.execute("DELETE FROM memories WHERE key = ?1", params![params.key])?;
+    let n = db
+        .conn
+        .execute("DELETE FROM memories WHERE key = ?1", params![params.key])?;
     if n > 0 {
         Ok(format!("Memory '{}' deleted.", params.key))
     } else {

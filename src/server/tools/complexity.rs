@@ -48,8 +48,8 @@ pub fn read_complexity_map(
         scoped_root(root, params.path.as_deref()).map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let code_exts = [
-        "rs", "py", "js", "jsx", "ts", "tsx", "go", "cpp", "cc", "cxx", "c",
-        "java", "rb", "cs", "php", "kt", "swift", "lua",
+        "rs", "py", "js", "jsx", "ts", "tsx", "go", "cpp", "cc", "cxx", "c", "java", "rb", "cs",
+        "php", "kt", "swift", "lua",
     ];
 
     let mut entries: Vec<ComplexityEntry> = Vec::new();
@@ -151,11 +151,7 @@ fn compute_complexity(body: &str, _ext: &str) -> u32 {
     let mut count: u32 = 1;
     for line in body.lines() {
         let t = line.trim();
-        if t.starts_with("//")
-            || t.starts_with('#')
-            || t.starts_with('*')
-            || t.starts_with("/*")
-        {
+        if t.starts_with("//") || t.starts_with('#') || t.starts_with('*') || t.starts_with("/*") {
             continue;
         }
         // Branch keywords
@@ -213,7 +209,10 @@ mod tests {
             limit: None,
         };
         let result = read_complexity_map(std::path::Path::new("."), params).unwrap();
-        assert!(result.total_analyzed > 0, "scoped scan must analyze functions");
+        assert!(
+            result.total_analyzed > 0,
+            "scoped scan must analyze functions"
+        );
         assert!(result.entries.iter().all(|e| e.path.starts_with("src/")));
     }
 }

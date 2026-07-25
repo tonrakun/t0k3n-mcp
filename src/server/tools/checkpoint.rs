@@ -63,7 +63,11 @@ fn run_git(args: &[&str], root: &Path) -> anyhow::Result<String> {
         .output()
         .map_err(|e| anyhow::anyhow!("git not available: {e}"))?;
     if !out.status.success() {
-        anyhow::bail!("git {:?} failed: {}", args, String::from_utf8_lossy(&out.stderr));
+        anyhow::bail!(
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
@@ -111,7 +115,9 @@ pub fn edit_checkpoint(
             checkpoint_id: format!("git:{sha}"),
             strategy: "git".to_string(),
             files: 0,
-            note: format!("tracked files only — untracked new files are not captured{label_suffix}"),
+            note: format!(
+                "tracked files only — untracked new files are not captured{label_suffix}"
+            ),
         });
     }
 
@@ -132,7 +138,9 @@ pub fn edit_checkpoint(
     let cp_dir = root.join(".t0k3n").join("checkpoints").join(&id);
     let mut count = 0usize;
     for f in &files {
-        let Ok(rel) = f.strip_prefix(root) else { continue };
+        let Ok(rel) = f.strip_prefix(root) else {
+            continue;
+        };
         let dest = cp_dir.join(rel);
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
@@ -171,7 +179,9 @@ pub fn rollback(root: &Path, params: RollbackParams) -> anyhow::Result<RollbackR
             if !p.is_file() {
                 continue;
             }
-            let Ok(rel) = p.strip_prefix(&cp_dir) else { continue };
+            let Ok(rel) = p.strip_prefix(&cp_dir) else {
+                continue;
+            };
             let dest = root.join(rel);
             if let Some(parent) = dest.parent() {
                 std::fs::create_dir_all(parent)?;
@@ -214,9 +224,18 @@ mod tests {
         assert!(cp.checkpoint_id.starts_with("copy:"));
 
         std::fs::write(dir.path().join("a.txt"), "v2-broken").unwrap();
-        let rb = rollback(dir.path(), RollbackParams { checkpoint_id: cp.checkpoint_id }).unwrap();
+        let rb = rollback(
+            dir.path(),
+            RollbackParams {
+                checkpoint_id: cp.checkpoint_id,
+            },
+        )
+        .unwrap();
         assert_eq!(rb.strategy, "copy");
-        assert_eq!(std::fs::read_to_string(dir.path().join("a.txt")).unwrap(), "v1");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).unwrap(),
+            "v1"
+        );
     }
 
     #[test]
@@ -241,14 +260,28 @@ mod tests {
 
         // Break it further, then roll back to the checkpoint.
         std::fs::write(root.join("a.txt"), "broken\n").unwrap();
-        rollback(root, RollbackParams { checkpoint_id: cp.checkpoint_id }).unwrap();
-        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "checkpoint-state\n");
+        rollback(
+            root,
+            RollbackParams {
+                checkpoint_id: cp.checkpoint_id,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.join("a.txt")).unwrap(),
+            "checkpoint-state\n"
+        );
     }
 
     #[test]
     fn unknown_checkpoint_id_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let r = rollback(dir.path(), RollbackParams { checkpoint_id: "bogus".into() });
+        let r = rollback(
+            dir.path(),
+            RollbackParams {
+                checkpoint_id: "bogus".into(),
+            },
+        );
         assert!(r.is_err());
     }
 }

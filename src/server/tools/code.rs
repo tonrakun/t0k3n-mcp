@@ -4,8 +4,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::security::{rel_display, safe_path, scoped_root};
 use super::fs::estimate_tokens;
+use crate::security::{rel_display, safe_path, scoped_root};
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadCodeSkeletonParams {
@@ -31,22 +31,30 @@ pub struct ReadCodeSkeletonResult {
     pub token_count: usize,
 }
 
-pub fn read_code_skeleton(root: &Path, params: ReadCodeSkeletonParams) -> anyhow::Result<ReadCodeSkeletonResult> {
+pub fn read_code_skeleton(
+    root: &Path,
+    params: ReadCodeSkeletonParams,
+) -> anyhow::Result<ReadCodeSkeletonResult> {
     let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let (language, skeleton) = parse_skeleton(&content, ext);
     let json = serde_json::to_string(&skeleton).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadCodeSkeletonResult { language, skeleton, token_count })
+    Ok(ReadCodeSkeletonResult {
+        language,
+        skeleton,
+        token_count,
+    })
 }
 
 fn parse_skeleton(content: &str, ext: &str) -> (String, Vec<SkeletonItem>) {
     // tree-sitter first, regex fallback
     if let Some((lang_name, items)) = try_parse_ts(content, ext)
-        && !items.is_empty() {
-            return (lang_name.to_string(), items);
-        }
+        && !items.is_empty()
+    {
+        return (lang_name.to_string(), items);
+    }
     let lang_name = match ext {
         "rs" => "rust",
         "py" => "python",
@@ -174,16 +182,30 @@ pub fn ts_setup(ext: &str) -> Option<(tree_sitter::Language, &'static str, &'sta
     match ext {
         "rs" => Some((tree_sitter_rust::LANGUAGE.into(), RUST_QUERY, "rust")),
         "py" => Some((tree_sitter_python::LANGUAGE.into(), PYTHON_QUERY, "python")),
-        "js" | "jsx" => Some((tree_sitter_javascript::LANGUAGE.into(), JS_QUERY, "javascript")),
-        "ts" => Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), TS_QUERY, "typescript")),
+        "js" | "jsx" => Some((
+            tree_sitter_javascript::LANGUAGE.into(),
+            JS_QUERY,
+            "javascript",
+        )),
+        "ts" => Some((
+            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            TS_QUERY,
+            "typescript",
+        )),
         "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), TS_QUERY, "tsx")),
         "go" => Some((tree_sitter_go::LANGUAGE.into(), GO_QUERY, "go")),
-        "cpp" | "cc" | "cxx" | "hpp" | "hh" | "h" => Some((tree_sitter_cpp::LANGUAGE.into(), CPP_QUERY, "cpp")),
+        "cpp" | "cc" | "cxx" | "hpp" | "hh" | "h" => {
+            Some((tree_sitter_cpp::LANGUAGE.into(), CPP_QUERY, "cpp"))
+        }
         "java" => Some((tree_sitter_java::LANGUAGE.into(), JAVA_QUERY, "java")),
         "rb" => Some((tree_sitter_ruby::LANGUAGE.into(), RUBY_QUERY, "ruby")),
         "cs" => Some((tree_sitter_c_sharp::LANGUAGE.into(), CSHARP_QUERY, "csharp")),
         "php" => Some((tree_sitter_php::LANGUAGE_PHP.into(), PHP_QUERY, "php")),
-        "kt" | "kts" => Some((tree_sitter_kotlin_ng::LANGUAGE.into(), KOTLIN_QUERY, "kotlin")),
+        "kt" | "kts" => Some((
+            tree_sitter_kotlin_ng::LANGUAGE.into(),
+            KOTLIN_QUERY,
+            "kotlin",
+        )),
         "swift" => Some((tree_sitter_swift::LANGUAGE.into(), SWIFT_QUERY, "swift")),
         "lua" => Some((tree_sitter_lua::LANGUAGE.into(), LUA_QUERY, "lua")),
         _ => None,
@@ -199,7 +221,11 @@ fn extract_node_signature(content: &str, node: &tree_sitter::Node, ext: &str) ->
         node_text
     };
     // Normalize whitespace so multi-line signatures become a single line
-    sig.split_whitespace().collect::<Vec<_>>().join(" ").trim().to_string()
+    sig.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
 }
 
 fn try_parse_ts(content: &str, ext: &str) -> Option<(&'static str, Vec<SkeletonItem>)> {
@@ -214,7 +240,11 @@ fn try_parse_ts(content: &str, ext: &str) -> Option<(&'static str, Vec<SkeletonI
 
     let query = tree_sitter::Query::new(&lang, query_str).ok()?;
     // Precompute to avoid borrow conflict with the match iterator
-    let cap_names: Vec<String> = query.capture_names().iter().map(|s| s.to_string()).collect();
+    let cap_names: Vec<String> = query
+        .capture_names()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
 
     let mut cursor = tree_sitter::QueryCursor::new();
     let mut items = Vec::new();
@@ -233,7 +263,10 @@ fn try_parse_ts(content: &str, ext: &str) -> Option<(&'static str, Vec<SkeletonI
         let mut kind = String::new();
 
         for cap in mat.captures {
-            let cap_name = cap_names.get(cap.index as usize).map(|s| s.as_str()).unwrap_or("");
+            let cap_name = cap_names
+                .get(cap.index as usize)
+                .map(|s| s.as_str())
+                .unwrap_or("");
             if let Some(k) = cap_name.strip_prefix("definition.") {
                 def_node = Some(cap.node);
                 kind = k.to_string();
@@ -268,19 +301,37 @@ fn parse_rust(content: &str) -> Vec<SkeletonItem> {
     let mut items = Vec::new();
 
     let patterns = [
-        (Regex::new(r"^(\s*)(pub\s+)?(async\s+)?fn\s+(\w+)").unwrap(), "function"),
-        (Regex::new(r"^(\s*)(pub\s+)?struct\s+(\w+)").unwrap(), "struct"),
+        (
+            Regex::new(r"^(\s*)(pub\s+)?(async\s+)?fn\s+(\w+)").unwrap(),
+            "function",
+        ),
+        (
+            Regex::new(r"^(\s*)(pub\s+)?struct\s+(\w+)").unwrap(),
+            "struct",
+        ),
         (Regex::new(r"^(\s*)(pub\s+)?enum\s+(\w+)").unwrap(), "enum"),
-        (Regex::new(r"^(\s*)(pub\s+)?trait\s+(\w+)").unwrap(), "trait"),
-        (Regex::new(r"^(\s*)impl(\s*<[^>]*>)?\s+(\w+)").unwrap(), "impl"),
+        (
+            Regex::new(r"^(\s*)(pub\s+)?trait\s+(\w+)").unwrap(),
+            "trait",
+        ),
+        (
+            Regex::new(r"^(\s*)impl(\s*<[^>]*>)?\s+(\w+)").unwrap(),
+            "impl",
+        ),
         (Regex::new(r"^(\s*)(pub\s+)?mod\s+(\w+)").unwrap(), "mod"),
     ];
 
     for (i, line) in lines.iter().enumerate() {
         for (re, kind) in &patterns {
             if let Some(cap) = re.captures(line) {
-                let name = cap.get(cap.len() - 1).map(|m| m.as_str()).unwrap_or("").to_string();
-                if name.is_empty() { continue; }
+                let name = cap
+                    .get(cap.len() - 1)
+                    .map(|m| m.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if name.is_empty() {
+                    continue;
+                }
                 let end_line = find_block_end(&lines, i);
                 items.push(SkeletonItem {
                     id: format!("{}:{}-{}", kind, i + 1, end_line),
@@ -337,18 +388,39 @@ fn parse_js_ts(content: &str) -> Vec<SkeletonItem> {
     let mut items = Vec::new();
 
     let patterns = [
-        (Regex::new(r"^(\s*)(export\s+)?(default\s+)?(async\s+)?function\s+(\w+)").unwrap(), "function"),
-        (Regex::new(r"^(\s*)(export\s+)?(abstract\s+)?class\s+(\w+)").unwrap(), "class"),
-        (Regex::new(r"^(\s*)(export\s+)?(const|let|var)\s+(\w+)\s*=\s*(async\s*)?\(").unwrap(), "arrow_fn"),
-        (Regex::new(r"^(\s*)(export\s+)?interface\s+(\w+)").unwrap(), "interface"),
-        (Regex::new(r"^(\s*)(export\s+)?type\s+(\w+)").unwrap(), "type"),
+        (
+            Regex::new(r"^(\s*)(export\s+)?(default\s+)?(async\s+)?function\s+(\w+)").unwrap(),
+            "function",
+        ),
+        (
+            Regex::new(r"^(\s*)(export\s+)?(abstract\s+)?class\s+(\w+)").unwrap(),
+            "class",
+        ),
+        (
+            Regex::new(r"^(\s*)(export\s+)?(const|let|var)\s+(\w+)\s*=\s*(async\s*)?\(").unwrap(),
+            "arrow_fn",
+        ),
+        (
+            Regex::new(r"^(\s*)(export\s+)?interface\s+(\w+)").unwrap(),
+            "interface",
+        ),
+        (
+            Regex::new(r"^(\s*)(export\s+)?type\s+(\w+)").unwrap(),
+            "type",
+        ),
     ];
 
     for (i, line) in lines.iter().enumerate() {
         for (re, kind) in &patterns {
             if let Some(cap) = re.captures(line) {
-                let name = cap.get(cap.len() - 1).map(|m| m.as_str()).unwrap_or("").to_string();
-                if name.is_empty() || ["async", "function", "class", "interface", "type"].contains(&name.as_str()) {
+                let name = cap
+                    .get(cap.len() - 1)
+                    .map(|m| m.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if name.is_empty()
+                    || ["async", "function", "class", "interface", "type"].contains(&name.as_str())
+                {
                     continue;
                 }
                 let end_line = find_block_end(&lines, i);
@@ -378,7 +450,11 @@ fn parse_go(content: &str) -> Vec<SkeletonItem> {
         if let Some(cap) = fn_re.captures(line) {
             let name = cap.get(2).map(|m| m.as_str()).unwrap_or("").to_string();
             let end_line = find_block_end(&lines, i);
-            let kind = if cap.get(1).is_some() { "method" } else { "function" };
+            let kind = if cap.get(1).is_some() {
+                "method"
+            } else {
+                "function"
+            };
             items.push(SkeletonItem {
                 id: format!("{}:{}-{}", kind, i + 1, end_line),
                 kind: kind.to_string(),
@@ -533,7 +609,9 @@ fn find_python_block_end(lines: &[&str], start: usize) -> usize {
 pub struct ReadCodeBodyParams {
     #[schemars(description = "Root-relative path to the code file")]
     pub path: String,
-    #[schemars(description = "List of skeleton IDs from read_code_skeleton (e.g. 'function:10-25')")]
+    #[schemars(
+        description = "List of skeleton IDs from read_code_skeleton (e.g. 'function:10-25')"
+    )]
     pub ids: Vec<String>,
     #[schemars(
         description = "Detail level: 'body' (default, full source), 'sketch' (control-flow only), 'skeleton' (signatures only, ignores ids), or 'auto' (pick by the latest check_budget strategy: critical→skeleton, aggressive→sketch, else body)."
@@ -552,7 +630,10 @@ pub struct ReadCodeBodyResult {
     pub token_count: usize,
 }
 
-pub fn read_code_body(root: &Path, params: ReadCodeBodyParams) -> anyhow::Result<ReadCodeBodyResult> {
+pub fn read_code_body(
+    root: &Path,
+    params: ReadCodeBodyParams,
+) -> anyhow::Result<ReadCodeBodyResult> {
     let path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&path)?;
     let lines: Vec<&str> = content.lines().collect();
@@ -563,25 +644,32 @@ pub fn read_code_body(root: &Path, params: ReadCodeBodyParams) -> anyhow::Result
         if parts.len() == 2 {
             let range: Vec<&str> = parts[0].splitn(2, '-').collect();
             if range.len() == 2
-                && let (Ok(start), Ok(end)) = (range[0].parse::<usize>(), range[1].parse::<usize>()) {
-                    let start = start.saturating_sub(1);
-                    let end = end.min(lines.len());
-                    if start >= end {
-                        items.push(CodeBodyItem {
+                && let (Ok(start), Ok(end)) = (range[0].parse::<usize>(), range[1].parse::<usize>())
+            {
+                let start = start.saturating_sub(1);
+                let end = end.min(lines.len());
+                if start >= end {
+                    items.push(CodeBodyItem {
                             id: id.clone(),
                             content: format!(
                                 "Error: id '{id}' is out of range (file has {} lines). Re-run read_code_skeleton for fresh ids.",
                                 lines.len()
                             ),
                         });
-                        continue;
-                    }
-                    let body = lines[start..end].join("\n");
-                    items.push(CodeBodyItem { id: id.clone(), content: body });
                     continue;
                 }
+                let body = lines[start..end].join("\n");
+                items.push(CodeBodyItem {
+                    id: id.clone(),
+                    content: body,
+                });
+                continue;
+            }
         }
-        items.push(CodeBodyItem { id: id.clone(), content: format!("Error: invalid id '{}'", id) });
+        items.push(CodeBodyItem {
+            id: id.clone(),
+            content: format!("Error: invalid id '{}'", id),
+        });
     }
 
     let json = serde_json::to_string(&items).unwrap_or_default();
@@ -592,16 +680,19 @@ pub fn read_code_body(root: &Path, params: ReadCodeBodyParams) -> anyhow::Result
 // ─── read_symbol_usages ───────────────────────────────────────────────────────
 
 pub const CODE_EXTENSIONS: &[&str] = &[
-    "rs", "py", "js", "jsx", "ts", "tsx", "go",
-    "cpp", "cc", "cxx", "hpp", "hh", "h", "java", "rb", "c",
-    "cs", "php",
+    "rs", "py", "js", "jsx", "ts", "tsx", "go", "cpp", "cc", "cxx", "hpp", "hh", "h", "java", "rb",
+    "c", "cs", "php",
 ];
 
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct ReadSymbolUsagesParams {
-    #[schemars(description = "Symbol name to search for (function, struct, class, variable, etc.)")]
+    #[schemars(
+        description = "Symbol name to search for (function, struct, class, variable, etc.)"
+    )]
     pub symbol: String,
-    #[schemars(description = "Restrict search to this file or directory (root-relative). Omit to search entire workspace.")]
+    #[schemars(
+        description = "Restrict search to this file or directory (root-relative). Omit to search entire workspace."
+    )]
     pub path: Option<String>,
 }
 
@@ -622,7 +713,10 @@ pub struct ReadSymbolUsagesResult {
     pub token_count: usize,
 }
 
-pub fn read_symbol_usages(root: &Path, params: ReadSymbolUsagesParams) -> anyhow::Result<ReadSymbolUsagesResult> {
+pub fn read_symbol_usages(
+    root: &Path,
+    params: ReadSymbolUsagesParams,
+) -> anyhow::Result<ReadSymbolUsagesResult> {
     if params.symbol.is_empty() {
         anyhow::bail!("symbol は空にできません");
     }
@@ -646,20 +740,37 @@ pub fn read_symbol_usages(root: &Path, params: ReadSymbolUsagesParams) -> anyhow
         .flatten()
     {
         let path = entry.path();
-        if path.is_dir() { continue; }
+        if path.is_dir() {
+            continue;
+        }
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if !CODE_EXTENSIONS.contains(&ext) { continue; }
+        if !CODE_EXTENSIONS.contains(&ext) {
+            continue;
+        }
 
-        let Ok(content) = std::fs::read_to_string(path) else { continue };
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
         let lines: Vec<&str> = content.lines().collect();
         let rel = rel_display(root, path);
 
         for (i, line) in lines.iter().enumerate() {
-            if !re.is_match(line) { continue; }
+            if !re.is_match(line) {
+                continue;
+            }
             let mut context = Vec::new();
-            if i > 0 { context.push(format!("{}: {}", i, lines[i - 1])); }
-            if i + 1 < lines.len() { context.push(format!("{}: {}", i + 2, lines[i + 1])); }
-            usages.push(SymbolUsage { path: rel.clone(), line: i + 1, content: line.to_string(), context });
+            if i > 0 {
+                context.push(format!("{}: {}", i, lines[i - 1]));
+            }
+            if i + 1 < lines.len() {
+                context.push(format!("{}: {}", i + 2, lines[i + 1]));
+            }
+            usages.push(SymbolUsage {
+                path: rel.clone(),
+                line: i + 1,
+                content: line.to_string(),
+                context,
+            });
             if usages.len() >= MAX_RESULTS {
                 truncated = true;
                 break 'outer;
@@ -670,7 +781,13 @@ pub fn read_symbol_usages(root: &Path, params: ReadSymbolUsagesParams) -> anyhow
     let total = usages.len();
     let json = serde_json::to_string(&usages).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadSymbolUsagesResult { symbol: params.symbol, usages, total, truncated, token_count })
+    Ok(ReadSymbolUsagesResult {
+        symbol: params.symbol,
+        usages,
+        total,
+        truncated,
+        token_count,
+    })
 }
 
 // ─── read_type_skeleton ───────────────────────────────────────────────────────
@@ -685,7 +802,7 @@ pub struct ReadTypeSkeletonParams {
 pub struct TypeItem {
     pub id: String,
     pub name: String,
-    pub kind: String,    // "interface" | "type" | "enum" | "struct"
+    pub kind: String, // "interface" | "type" | "enum" | "struct"
     pub fields: Vec<String>,
     pub start_line: usize,
     pub end_line: usize,
@@ -699,10 +816,13 @@ pub struct ReadTypeSkeletonResult {
     pub token_count: usize,
 }
 
-pub fn read_type_skeleton(root: &Path, params: ReadTypeSkeletonParams) -> anyhow::Result<ReadTypeSkeletonResult> {
+pub fn read_type_skeleton(
+    root: &Path,
+    params: ReadTypeSkeletonParams,
+) -> anyhow::Result<ReadTypeSkeletonResult> {
     let path = safe_path(root, &params.path)?;
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
+    let content =
+        std::fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let rel = rel_display(root, &path);
 
@@ -715,16 +835,19 @@ pub fn read_type_skeleton(root: &Path, params: ReadTypeSkeletonParams) -> anyhow
 
     let json = serde_json::to_string(&types).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadTypeSkeletonResult { path: rel, language, types, token_count })
+    Ok(ReadTypeSkeletonResult {
+        path: rel,
+        language,
+        types,
+        token_count,
+    })
 }
 
 fn parse_ts_types(content: &str) -> (String, Vec<TypeItem>) {
     let lines: Vec<&str> = content.lines().collect();
     let mut items = Vec::new();
 
-    let re = Regex::new(
-        r"^(?:export\s+)?(?:declare\s+)?(interface|type|enum)\s+(\w+)"
-    ).unwrap();
+    let re = Regex::new(r"^(?:export\s+)?(?:declare\s+)?(interface|type|enum)\s+(\w+)").unwrap();
     let re_field_ts = Regex::new(r"^\s+(?:readonly\s+)?(\w+\??)\s*[?:]").unwrap();
 
     let mut i = 0;
@@ -737,11 +860,19 @@ fn parse_ts_types(content: &str) -> (String, Vec<TypeItem>) {
             // For `type Foo = ...` without braces (union, intersection, alias)
             if kind == "type" && !lines[i].contains('{') {
                 let end_line = i + 1;
-                let value = lines[i].split_once('=').map(|x| x.1)
-                    .unwrap_or("").trim().to_string();
+                let value = lines[i]
+                    .split_once('=')
+                    .map(|x| x.1)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
                 items.push(TypeItem {
                     id: format!("type:{}-{}", start_line, end_line),
-                    name, kind, fields: vec![value], start_line, end_line,
+                    name,
+                    kind,
+                    fields: vec![value],
+                    start_line,
+                    end_line,
                 });
                 i += 1;
                 continue;
@@ -755,23 +886,34 @@ fn parse_ts_types(content: &str) -> (String, Vec<TypeItem>) {
 
             while j < lines.len() {
                 let l = lines[j].trim();
-                let opens  = l.chars().filter(|&c| c == '{').count() as i32;
+                let opens = l.chars().filter(|&c| c == '{').count() as i32;
                 let closes = l.chars().filter(|&c| c == '}').count() as i32;
                 depth += opens - closes;
-                if opens > 0 { found_open = true; }
+                if opens > 0 {
+                    found_open = true;
+                }
 
-                if found_open && depth == 1 && j > i
-                    && let Some(fc) = re_field_ts.captures(lines[j]) {
-                        fields.push(fc[0].trim().trim_end_matches([',', ';']).to_string());
-                    }
-                if found_open && depth <= 0 { break; }
+                if found_open
+                    && depth == 1
+                    && j > i
+                    && let Some(fc) = re_field_ts.captures(lines[j])
+                {
+                    fields.push(fc[0].trim().trim_end_matches([',', ';']).to_string());
+                }
+                if found_open && depth <= 0 {
+                    break;
+                }
                 j += 1;
             }
 
             let end_line = (j + 1).min(lines.len());
             items.push(TypeItem {
                 id: format!("{}:{}-{}", kind, start_line, end_line),
-                name, kind, fields, start_line, end_line,
+                name,
+                kind,
+                fields,
+                start_line,
+                end_line,
             });
             i = j + 1;
             continue;
@@ -794,16 +936,25 @@ fn parse_go_types(content: &str) -> (String, Vec<TypeItem>) {
         if let Some(cap) = re_type.captures(lines[i]) {
             let name = cap[1].to_string();
             let raw_kind = &cap[2];
-            let kind = if raw_kind == "struct" { "struct" }
-                else if raw_kind == "interface" { "interface" }
-                else { "type" }.to_string();
+            let kind = if raw_kind == "struct" {
+                "struct"
+            } else if raw_kind == "interface" {
+                "interface"
+            } else {
+                "type"
+            }
+            .to_string();
             let start_line = i + 1;
 
             if !lines[i].contains('{') {
                 // simple type alias
                 items.push(TypeItem {
                     id: format!("type:{}-{}", start_line, start_line),
-                    name, kind, fields: vec![raw_kind.to_string()], start_line, end_line: start_line,
+                    name,
+                    kind,
+                    fields: vec![raw_kind.to_string()],
+                    start_line,
+                    end_line: start_line,
                 });
                 i += 1;
                 continue;
@@ -815,22 +966,30 @@ fn parse_go_types(content: &str) -> (String, Vec<TypeItem>) {
 
             while j < lines.len() {
                 let l = lines[j].trim();
-                let opens  = l.chars().filter(|&c| c == '{').count() as i32;
+                let opens = l.chars().filter(|&c| c == '{').count() as i32;
                 let closes = l.chars().filter(|&c| c == '}').count() as i32;
                 depth += opens - closes;
 
-                if depth == 1 && j > i
-                    && let Some(fc) = re_field.captures(lines[j]) {
-                        fields.push(fc[0].trim().to_string());
-                    }
-                if depth <= 0 && opens + closes > 0 { break; }
+                if depth == 1
+                    && j > i
+                    && let Some(fc) = re_field.captures(lines[j])
+                {
+                    fields.push(fc[0].trim().to_string());
+                }
+                if depth <= 0 && opens + closes > 0 {
+                    break;
+                }
                 j += 1;
             }
 
             let end_line = (j + 1).min(lines.len());
             items.push(TypeItem {
                 id: format!("{}:{}-{}", kind, start_line, end_line),
-                name, kind, fields, start_line, end_line,
+                name,
+                kind,
+                fields,
+                start_line,
+                end_line,
             });
             i = j + 1;
             continue;
@@ -845,7 +1004,8 @@ fn parse_rust_types(content: &str) -> (String, Vec<TypeItem>) {
     let lines: Vec<&str> = content.lines().collect();
     let mut items = Vec::new();
 
-    let re = Regex::new(r"^(?:pub(?:\(\w+\))?\s+)?(?:pub\s+)?(struct|enum|trait|type)\s+(\w+)").unwrap();
+    let re =
+        Regex::new(r"^(?:pub(?:\(\w+\))?\s+)?(?:pub\s+)?(struct|enum|trait|type)\s+(\w+)").unwrap();
     let re_field = Regex::new(r"^\s+(?:pub(?:\(\w+\))?\s+)?(\w+)\s*:").unwrap();
 
     let mut i = 0;
@@ -858,7 +1018,11 @@ fn parse_rust_types(content: &str) -> (String, Vec<TypeItem>) {
             if !lines[i].contains('{') && kind == "type" {
                 items.push(TypeItem {
                     id: format!("type:{}-{}", start_line, start_line),
-                    name, kind, fields: Vec::new(), start_line, end_line: start_line,
+                    name,
+                    kind,
+                    fields: Vec::new(),
+                    start_line,
+                    end_line: start_line,
                 });
                 i += 1;
                 continue;
@@ -871,23 +1035,34 @@ fn parse_rust_types(content: &str) -> (String, Vec<TypeItem>) {
 
             while j < lines.len() {
                 let l = lines[j].trim();
-                let opens  = l.chars().filter(|&c| c == '{').count() as i32;
+                let opens = l.chars().filter(|&c| c == '{').count() as i32;
                 let closes = l.chars().filter(|&c| c == '}').count() as i32;
                 depth += opens - closes;
-                if opens > 0 { found_open = true; }
+                if opens > 0 {
+                    found_open = true;
+                }
 
-                if found_open && depth == 1 && j > i
-                    && let Some(fc) = re_field.captures(lines[j]) {
-                        fields.push(fc[0].trim().trim_end_matches(',').to_string());
-                    }
-                if found_open && depth <= 0 { break; }
+                if found_open
+                    && depth == 1
+                    && j > i
+                    && let Some(fc) = re_field.captures(lines[j])
+                {
+                    fields.push(fc[0].trim().trim_end_matches(',').to_string());
+                }
+                if found_open && depth <= 0 {
+                    break;
+                }
                 j += 1;
             }
 
             let end_line = (j + 1).min(lines.len());
             items.push(TypeItem {
                 id: format!("{}:{}-{}", kind, start_line, end_line),
-                name, kind, fields, start_line, end_line,
+                name,
+                kind,
+                fields,
+                start_line,
+                end_line,
             });
             i = j + 1;
             continue;
@@ -906,7 +1081,9 @@ pub struct ReadCallGraphParams {
     pub path: String,
     #[schemars(description = "Function ID from read_code_skeleton (e.g. 'function:34-42').")]
     pub function_id: String,
-    #[schemars(description = "Cross-file trace depth (0=single file only, 1-5=follow calls across files). Default: 0.")]
+    #[schemars(
+        description = "Cross-file trace depth (0=single file only, 1-5=follow calls across files). Default: 0."
+    )]
     pub depth: Option<u8>,
 }
 
@@ -922,7 +1099,10 @@ pub struct ReadCallGraphResult {
     pub cross_file_callers: Vec<serde_json::Value>,
 }
 
-pub fn read_call_graph(root: &Path, params: ReadCallGraphParams) -> anyhow::Result<ReadCallGraphResult> {
+pub fn read_call_graph(
+    root: &Path,
+    params: ReadCallGraphParams,
+) -> anyhow::Result<ReadCallGraphResult> {
     let file_path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
@@ -931,11 +1111,23 @@ pub fn read_call_graph(root: &Path, params: ReadCallGraphParams) -> anyhow::Resu
 
     // Parse the function_id to get line range
     let parts: Vec<&str> = params.function_id.rsplitn(2, ':').collect();
-    anyhow::ensure!(parts.len() == 2, "無効な function_id 形式: {}", params.function_id);
+    anyhow::ensure!(
+        parts.len() == 2,
+        "無効な function_id 形式: {}",
+        params.function_id
+    );
     let range: Vec<&str> = parts[0].splitn(2, '-').collect();
-    anyhow::ensure!(range.len() == 2, "無効な function_id 形式: {}", params.function_id);
-    let start: usize = range[0].parse().map_err(|_| anyhow::anyhow!("無効な開始行"))?;
-    let end: usize   = range[1].parse().map_err(|_| anyhow::anyhow!("無効な終了行"))?;
+    anyhow::ensure!(
+        range.len() == 2,
+        "無効な function_id 形式: {}",
+        params.function_id
+    );
+    let start: usize = range[0]
+        .parse()
+        .map_err(|_| anyhow::anyhow!("無効な開始行"))?;
+    let end: usize = range[1]
+        .parse()
+        .map_err(|_| anyhow::anyhow!("無効な終了行"))?;
 
     let from = start.saturating_sub(1);
     let to = end.min(lines.len());
@@ -990,22 +1182,32 @@ pub fn read_call_graph(root: &Path, params: ReadCallGraphParams) -> anyhow::Resu
 
 /// Find files that define any of the given function names (cross-file callees).
 fn find_cross_file_definitions(root: &Path, fn_names: &[String]) -> Vec<serde_json::Value> {
-    if fn_names.is_empty() { return Vec::new(); }
-    let fn_re = Regex::new(
-        r"(?:fn|func|def|function|class)\s+(\w+)\s*[(<]"
-    ).unwrap();
+    if fn_names.is_empty() {
+        return Vec::new();
+    }
+    let fn_re = Regex::new(r"(?:fn|func|def|function|class)\s+(\w+)\s*[(<]").unwrap();
     let mut results: Vec<serde_json::Value> = Vec::new();
     let mut found_names = std::collections::HashSet::new();
 
     for entry in WalkBuilder::new(root)
-        .hidden(false).git_ignore(true).git_global(false).git_exclude(false)
-        .build().flatten()
+        .hidden(false)
+        .git_ignore(true)
+        .git_global(false)
+        .git_exclude(false)
+        .build()
+        .flatten()
     {
         let path = entry.path();
-        if path.is_dir() { continue; }
+        if path.is_dir() {
+            continue;
+        }
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if !CODE_EXTENSIONS.contains(&ext) { continue; }
-        let Ok(content) = std::fs::read_to_string(path) else { continue };
+        if !CODE_EXTENSIONS.contains(&ext) {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
         let rel = rel_display(root, path);
 
         for (i, line) in content.lines().enumerate() {
@@ -1020,7 +1222,9 @@ fn find_cross_file_definitions(root: &Path, fn_names: &[String]) -> Vec<serde_js
                 }
             }
         }
-        if found_names.len() >= fn_names.len() { break; }
+        if found_names.len() >= fn_names.len() {
+            break;
+        }
     }
     results
 }
@@ -1033,18 +1237,32 @@ fn find_cross_file_callers(root: &Path, fn_name: &str, self_file: &str) -> Vec<s
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for entry in WalkBuilder::new(root)
-        .hidden(false).git_ignore(true).git_global(false).git_exclude(false)
-        .build().flatten()
+        .hidden(false)
+        .git_ignore(true)
+        .git_global(false)
+        .git_exclude(false)
+        .build()
+        .flatten()
     {
         let path = entry.path();
-        if path.is_dir() { continue; }
+        if path.is_dir() {
+            continue;
+        }
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if !CODE_EXTENSIONS.contains(&ext) { continue; }
+        if !CODE_EXTENSIONS.contains(&ext) {
+            continue;
+        }
         let rel = rel_display(root, path);
-        if rel == self_file { continue; } // skip the source file
+        if rel == self_file {
+            continue;
+        } // skip the source file
 
-        let Ok(content) = std::fs::read_to_string(path) else { continue };
-        if !content.contains(fn_name) { continue; }
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        if !content.contains(fn_name) {
+            continue;
+        }
 
         let mut current_fn: Option<String> = None;
         for (i, line) in content.lines().enumerate() {
@@ -1052,18 +1270,21 @@ fn find_cross_file_callers(root: &Path, fn_name: &str, self_file: &str) -> Vec<s
                 current_fn = Some(cap[1].to_string());
             }
             if call_re.is_match(line)
-                && let Some(ref caller) = current_fn {
-                    let key = format!("{}:{}", rel, caller);
-                    if seen.insert(key) {
-                        results.push(serde_json::json!({
-                            "caller": caller,
-                            "file": rel,
-                            "line": i + 1,
-                        }));
-                    }
+                && let Some(ref caller) = current_fn
+            {
+                let key = format!("{}:{}", rel, caller);
+                if seen.insert(key) {
+                    results.push(serde_json::json!({
+                        "caller": caller,
+                        "file": rel,
+                        "line": i + 1,
+                    }));
                 }
+            }
         }
-        if results.len() >= 50 { break; }
+        if results.len() >= 50 {
+            break;
+        }
     }
     results
 }
@@ -1072,11 +1293,11 @@ fn extract_fn_name(line: &str) -> Option<String> {
     // Rust: pub fn foo( / async fn foo(
     let re_rust = Regex::new(r"fn\s+(\w+)\s*[<(]").unwrap();
     // JS/TS: function foo( / async function foo( / const foo = ( / foo(
-    let re_js   = Regex::new(r"(?:function\s+|const\s+|let\s+|var\s+)(\w+)\s*[=(]").unwrap();
+    let re_js = Regex::new(r"(?:function\s+|const\s+|let\s+|var\s+)(\w+)\s*[=(]").unwrap();
     // Python: def foo(
-    let re_py   = Regex::new(r"def\s+(\w+)\s*\(").unwrap();
+    let re_py = Regex::new(r"def\s+(\w+)\s*\(").unwrap();
     // Go: func Foo(
-    let re_go   = Regex::new(r"func\s+(?:\(\w+\s+\*?\w+\)\s+)?(\w+)\s*\(").unwrap();
+    let re_go = Regex::new(r"func\s+(?:\(\w+\s+\*?\w+\)\s+)?(\w+)\s*\(").unwrap();
 
     for re in &[re_rust, re_go, re_js, re_py] {
         if let Some(cap) = re.captures(line) {
@@ -1090,10 +1311,37 @@ fn extract_calls(body: &str, self_name: Option<&str>) -> Vec<String> {
     // Match: identifier( — but not control keywords
     let re = Regex::new(r"\b([a-zA-Z_]\w*)\s*\(").unwrap();
     let skip = &[
-        "if", "while", "for", "match", "switch", "return", "typeof", "instanceof",
-        "new", "await", "async", "yield", "delete", "void", "throw", "catch",
-        "super", "assert", "print", "println", "eprintln", "format", "vec",
-        "Some", "None", "Ok", "Err", "Box", "Arc", "Rc", "Mutex",
+        "if",
+        "while",
+        "for",
+        "match",
+        "switch",
+        "return",
+        "typeof",
+        "instanceof",
+        "new",
+        "await",
+        "async",
+        "yield",
+        "delete",
+        "void",
+        "throw",
+        "catch",
+        "super",
+        "assert",
+        "print",
+        "println",
+        "eprintln",
+        "format",
+        "vec",
+        "Some",
+        "None",
+        "Ok",
+        "Err",
+        "Box",
+        "Arc",
+        "Rc",
+        "Mutex",
     ];
 
     let mut seen = std::collections::HashSet::new();
@@ -1101,9 +1349,20 @@ fn extract_calls(body: &str, self_name: Option<&str>) -> Vec<String> {
 
     for cap in re.captures_iter(body) {
         let name = cap[1].to_string();
-        if skip.contains(&&*name) { continue; }
-        if Some(name.as_str()) == self_name { continue; } // skip recursive self-call
-        if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) { continue; } // skip type constructors
+        if skip.contains(&&*name) {
+            continue;
+        }
+        if Some(name.as_str()) == self_name {
+            continue;
+        } // skip recursive self-call
+        if name
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
+            continue;
+        } // skip type constructors
         if seen.insert(name.clone()) {
             calls.push(name);
         }
@@ -1115,9 +1374,7 @@ fn extract_calls(body: &str, self_name: Option<&str>) -> Vec<String> {
 fn find_callers(lines: &[&str], fn_name: &str, fn_start: usize, fn_end: usize) -> Vec<String> {
     // Find other functions in the file that call fn_name
     let call_re = Regex::new(&format!(r"\b{}\s*\(", regex::escape(fn_name))).unwrap();
-    let fn_re = Regex::new(
-        r"(?:fn|func|def|function)\s+(\w+)\s*[(<]"
-    ).unwrap();
+    let fn_re = Regex::new(r"(?:fn|func|def|function)\s+(\w+)\s*[(<]").unwrap();
 
     let mut current_fn: Option<String> = None;
     let mut current_fn_start = 0usize;
@@ -1130,13 +1387,16 @@ fn find_callers(lines: &[&str], fn_name: &str, fn_start: usize, fn_end: usize) -
         }
 
         // Skip calls from within the function itself
-        if i >= fn_start && i < fn_end { continue; }
+        if i >= fn_start && i < fn_end {
+            continue;
+        }
 
         if call_re.is_match(line)
             && let Some(ref caller) = current_fn
-                && (current_fn_start < fn_start || current_fn_start >= fn_end) {
-                    callers.insert(caller.clone());
-                }
+            && (current_fn_start < fn_start || current_fn_start >= fn_end)
+        {
+            callers.insert(caller.clone());
+        }
     }
 
     callers.into_iter().collect()
@@ -1189,7 +1449,10 @@ pub fn read_interface_conformance(
         // TypeScript: class Foo implements Bar
         Pattern {
             exts: &["ts", "tsx"],
-            re_str: format!(r"(?:class|interface)\s+(\w+)(?:[^{{]*?)implements\s+(?:[^{{]*?)?{}", escaped),
+            re_str: format!(
+                r"(?:class|interface)\s+(\w+)(?:[^{{]*?)implements\s+(?:[^{{]*?)?{}",
+                escaped
+            ),
         },
         // Rust: impl TraitName for TypeName
         Pattern {
@@ -1199,41 +1462,67 @@ pub fn read_interface_conformance(
         // Java/Kotlin: class Foo implements Bar / extends Bar
         Pattern {
             exts: &["java", "kt", "kts"],
-            re_str: format!(r"(?:class|object)\s+(\w+)(?:[^{{]*?)(?:implements|extends)\s+(?:[^{{]*?)?{}", escaped),
+            re_str: format!(
+                r"(?:class|object)\s+(\w+)(?:[^{{]*?)(?:implements|extends)\s+(?:[^{{]*?)?{}",
+                escaped
+            ),
         },
         // Go: type assertion pattern — var _ Interface = (*Impl)(nil)
         Pattern {
             exts: &["go"],
-            re_str: format!(r"var\s+_\s+{0}\s*=\s*(?:&?\s*(\w+)\{{|(?:\*)?(\w+)\(|(?:\*)?(\w+)\{{)", escaped),
+            re_str: format!(
+                r"var\s+_\s+{0}\s*=\s*(?:&?\s*(\w+)\{{|(?:\*)?(\w+)\(|(?:\*)?(\w+)\{{)",
+                escaped
+            ),
         },
         // PHP: class Foo implements Bar
         Pattern {
             exts: &["php"],
-            re_str: format!(r"class\s+(\w+)(?:[^{{]*?)implements\s+(?:[^{{]*?)?{}", escaped),
+            re_str: format!(
+                r"class\s+(\w+)(?:[^{{]*?)implements\s+(?:[^{{]*?)?{}",
+                escaped
+            ),
         },
         // C#: class Foo : Bar
         Pattern {
             exts: &["cs"],
-            re_str: format!(r"(?:class|struct)\s+(\w+)(?:[^{{]*?):\s*(?:[^{{]*?)?{}", escaped),
+            re_str: format!(
+                r"(?:class|struct)\s+(\w+)(?:[^{{]*?):\s*(?:[^{{]*?)?{}",
+                escaped
+            ),
         },
     ];
 
     let mut implementations = Vec::new();
 
     for pat in &patterns {
-        let Ok(re) = Regex::new(&pat.re_str) else { continue };
+        let Ok(re) = Regex::new(&pat.re_str) else {
+            continue;
+        };
 
         for entry in WalkBuilder::new(&start)
-            .hidden(false).git_ignore(true).git_global(false).git_exclude(false)
-            .build().flatten()
+            .hidden(false)
+            .git_ignore(true)
+            .git_global(false)
+            .git_exclude(false)
+            .build()
+            .flatten()
         {
             let path = entry.path();
-            if path.is_dir() { continue; }
+            if path.is_dir() {
+                continue;
+            }
             let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if !pat.exts.contains(&ext) { continue; }
+            if !pat.exts.contains(&ext) {
+                continue;
+            }
 
-            let Ok(content) = std::fs::read_to_string(path) else { continue };
-            if !content.contains(params.name.as_str()) { continue; }
+            let Ok(content) = std::fs::read_to_string(path) else {
+                continue;
+            };
+            if !content.contains(params.name.as_str()) {
+                continue;
+            }
 
             let rel = rel_display(root, path);
             let language = match ext {
@@ -1253,7 +1542,9 @@ pub fn read_interface_conformance(
                     let type_name = (1..=3)
                         .find_map(|g| cap.get(g).map(|m| m.as_str().trim().to_string()))
                         .unwrap_or_default();
-                    if type_name.is_empty() { continue; }
+                    if type_name.is_empty() {
+                        continue;
+                    }
                     implementations.push(ConformanceEntry {
                         type_name,
                         file: rel.clone(),
@@ -1263,7 +1554,9 @@ pub fn read_interface_conformance(
                 }
             }
 
-            if implementations.len() >= 200 { break; }
+            if implementations.len() >= 200 {
+                break;
+            }
         }
     }
 
@@ -1273,7 +1566,11 @@ pub fn read_interface_conformance(
     implementations.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
 
     let total = implementations.len();
-    let kind = if params.name.starts_with(|c: char| c.is_uppercase()) { "interface" } else { "trait" };
+    let kind = if params.name.starts_with(|c: char| c.is_uppercase()) {
+        "interface"
+    } else {
+        "trait"
+    };
     let json = serde_json::to_string(&implementations).unwrap_or_default();
     let token_count = estimate_tokens(&json);
 
@@ -1299,11 +1596,15 @@ mod tests {
     #[test]
     fn read_code_body_out_of_range_id_returns_error_not_panic() {
         let dir = setup("fn a() {}\nfn b() {}\n");
-        let r = read_code_body(dir.path(), ReadCodeBodyParams {
-            path: "a.rs".into(),
-            ids: vec!["function:100-120".into()],
-            zoom: None,
-        }).unwrap();
+        let r = read_code_body(
+            dir.path(),
+            ReadCodeBodyParams {
+                path: "a.rs".into(),
+                ids: vec!["function:100-120".into()],
+                zoom: None,
+            },
+        )
+        .unwrap();
         assert_eq!(r.items.len(), 1);
         assert!(r.items[0].content.contains("out of range"));
     }
@@ -1311,11 +1612,15 @@ mod tests {
     #[test]
     fn read_call_graph_out_of_range_id_errors_not_panics() {
         let dir = setup("fn a() {}\n");
-        let err = read_call_graph(dir.path(), ReadCallGraphParams {
-            path: "a.rs".into(),
-            function_id: "function:100-120".into(),
-            depth: None,
-        }).unwrap_err();
+        let err = read_call_graph(
+            dir.path(),
+            ReadCallGraphParams {
+                path: "a.rs".into(),
+                function_id: "function:100-120".into(),
+                depth: None,
+            },
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("read_code_skeleton"));
     }
 }

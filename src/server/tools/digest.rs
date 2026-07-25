@@ -96,7 +96,12 @@ pub fn project_digest(
 
 fn finish(digest: ProjectDigest, cached: bool, dirty: bool) -> ProjectDigestResult {
     let token_count = estimate_tokens(&serde_json::to_string(&digest).unwrap_or_default());
-    ProjectDigestResult { cached, dirty, digest, token_count }
+    ProjectDigestResult {
+        cached,
+        dirty,
+        digest,
+        token_count,
+    }
 }
 
 fn build_digest(root: &Path, head: String, budget: usize) -> anyhow::Result<ProjectDigest> {
@@ -105,7 +110,12 @@ fn build_digest(root: &Path, head: String, budget: usize) -> anyhow::Result<Proj
         .by_language
         .into_iter()
         .take(8)
-        .map(|l| LangLine { language: l.language, files: l.files, lines: l.lines, pct: l.pct })
+        .map(|l| LangLine {
+            language: l.language,
+            files: l.files,
+            lines: l.lines,
+            pct: l.pct,
+        })
         .collect();
 
     let entry_points = collect_entry_points(root);
@@ -113,7 +123,10 @@ fn build_digest(root: &Path, head: String, budget: usize) -> anyhow::Result<Proj
     // A shallow tree is enough to orient; trim if it blows the budget.
     let tree = read_directory_tree(
         root,
-        ReadDirectoryTreeParams { path: None, depth: Some(2) },
+        ReadDirectoryTreeParams {
+            path: None,
+            depth: Some(2),
+        },
     )
     .map(|t| t.tree)
     .unwrap_or_default();
@@ -178,10 +191,13 @@ fn collect_entry_points(root: &Path) -> Vec<EntryPoint> {
 fn entry_point_for(root: &Path, rel: &str) -> Option<EntryPoint> {
     let content = std::fs::read_to_string(root.join(rel)).ok()?;
     let tokens = estimate_tokens(&content);
-    let skel = read_code_skeleton(root, ReadCodeSkeletonParams {
-        path: rel.to_string(),
-        include_blocks: Some(false),
-    })
+    let skel = read_code_skeleton(
+        root,
+        ReadCodeSkeletonParams {
+            path: rel.to_string(),
+            include_blocks: Some(false),
+        },
+    )
     .ok()?;
     let symbols: Vec<String> = skel
         .skeleton
@@ -189,7 +205,12 @@ fn entry_point_for(root: &Path, rel: &str) -> Option<EntryPoint> {
         .take(MAX_ENTRY_SYMBOLS)
         .map(|s| s.signature.clone())
         .collect();
-    Some(EntryPoint { path: rel.to_string(), language: skel.language, tokens, symbols })
+    Some(EntryPoint {
+        path: rel.to_string(),
+        language: skel.language,
+        tokens,
+        symbols,
+    })
 }
 
 /// Higher is more likely to be an entry point. 0 = not a conventional name.
@@ -208,8 +229,21 @@ fn name_score(stem: &str) -> i32 {
 fn is_code_ext(ext: &str) -> bool {
     matches!(
         ext,
-        "rs" | "py" | "js" | "jsx" | "ts" | "tsx" | "go" | "java" | "kt" | "rb" | "cs" | "php"
-            | "swift" | "cpp" | "cc" | "c"
+        "rs" | "py"
+            | "js"
+            | "jsx"
+            | "ts"
+            | "tsx"
+            | "go"
+            | "java"
+            | "kt"
+            | "rb"
+            | "cs"
+            | "php"
+            | "swift"
+            | "cpp"
+            | "cc"
+            | "c"
     )
 }
 
@@ -259,7 +293,10 @@ fn save_cache(path: &Path, head: &str, digest: &ProjectDigest) -> std::io::Resul
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let env = CacheEnvelope { git_head: head.to_string(), digest: digest.clone() };
+    let env = CacheEnvelope {
+        git_head: head.to_string(),
+        digest: digest.clone(),
+    };
     let json = serde_json::to_string(&env).unwrap_or_default();
     std::fs::write(path, json)
 }
@@ -301,11 +338,22 @@ mod tests {
         .unwrap();
 
         // no git here → head is "no-git", so it always rebuilds (cached:false)
-        let r = project_digest(root, ProjectDigestParams { refresh: None, budget: None }).unwrap();
+        let r = project_digest(
+            root,
+            ProjectDigestParams {
+                refresh: None,
+                budget: None,
+            },
+        )
+        .unwrap();
         assert!(!r.cached);
         assert_eq!(r.digest.git_head, "no-git");
         assert!(r.digest.total_files >= 1);
-        let ep = r.digest.entry_points.iter().find(|e| e.path == "src/main.rs");
+        let ep = r
+            .digest
+            .entry_points
+            .iter()
+            .find(|e| e.path == "src/main.rs");
         assert!(ep.is_some(), "main.rs should be an entry point");
         assert!(r.token_count > 0);
     }

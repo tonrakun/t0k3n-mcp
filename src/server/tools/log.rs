@@ -5,8 +5,8 @@ use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
+use crate::security::{rel_display, safe_path};
 
 // ─── read_log_tail ────────────────────────────────────────────────────────────
 
@@ -16,7 +16,9 @@ pub struct ReadLogTailParams {
     pub path: String,
     #[schemars(description = "Max lines to return (default: 100, max: 1000).")]
     pub lines: Option<usize>,
-    #[schemars(description = "Filter by log level: ERROR, WARN, INFO, DEBUG (case-insensitive). Omit for all levels.")]
+    #[schemars(
+        description = "Filter by log level: ERROR, WARN, INFO, DEBUG (case-insensitive). Omit for all levels."
+    )]
     pub level: Option<String>,
     #[schemars(description = "Additional filter regex pattern. Only matching lines are returned.")]
     pub pattern: Option<String>,
@@ -52,19 +54,27 @@ pub fn read_log_tail(root: &Path, params: ReadLogTailParams) -> anyhow::Result<R
     let total = all_lines.len();
 
     let level_filter = params.level.as_deref().map(|l| l.to_uppercase());
-    let pattern_re = params.pattern.as_deref()
+    let pattern_re = params
+        .pattern
+        .as_deref()
         .map(Regex::new)
         .transpose()
         .map_err(|e| anyhow::anyhow!("無効な正規表現: {e}"))?;
 
-    let mut counts = LogLevelCounts { error: 0, warn: 0, info: 0, debug: 0, other: 0 };
+    let mut counts = LogLevelCounts {
+        error: 0,
+        warn: 0,
+        info: 0,
+        debug: 0,
+        other: 0,
+    };
     for line in &all_lines {
         match detect_log_level(line) {
             "ERROR" => counts.error += 1,
-            "WARN"  => counts.warn  += 1,
-            "INFO"  => counts.info  += 1,
+            "WARN" => counts.warn += 1,
+            "INFO" => counts.info += 1,
             "DEBUG" => counts.debug += 1,
-            _       => counts.other += 1,
+            _ => counts.other += 1,
         }
     }
 
@@ -74,9 +84,15 @@ pub fn read_log_tail(root: &Path, params: ReadLogTailParams) -> anyhow::Result<R
         .iter()
         .filter(|line| {
             if let Some(ref lvl) = level_filter
-                && detect_log_level(line) != lvl.as_str() { return false; }
+                && detect_log_level(line) != lvl.as_str()
+            {
+                return false;
+            }
             if let Some(ref re) = pattern_re
-                && !re.is_match(line) { return false; }
+                && !re.is_match(line)
+            {
+                return false;
+            }
             true
         })
         .map(|s| s.to_string())
@@ -99,11 +115,17 @@ pub fn read_log_tail(root: &Path, params: ReadLogTailParams) -> anyhow::Result<R
 
 fn detect_log_level(line: &str) -> &'static str {
     let u = line.to_uppercase();
-    if u.contains("ERROR") || u.contains("CRITICAL") || u.contains("FATAL") { "ERROR" }
-    else if u.contains("WARN") { "WARN" }
-    else if u.contains("INFO")  { "INFO"  }
-    else if u.contains("DEBUG") || u.contains("TRACE") { "DEBUG" }
-    else { "OTHER" }
+    if u.contains("ERROR") || u.contains("CRITICAL") || u.contains("FATAL") {
+        "ERROR"
+    } else if u.contains("WARN") {
+        "WARN"
+    } else if u.contains("INFO") {
+        "INFO"
+    } else if u.contains("DEBUG") || u.contains("TRACE") {
+        "DEBUG"
+    } else {
+        "OTHER"
+    }
 }
 
 // ─── read_stack_trace ────────────────────────────────────────────────────────
@@ -132,7 +154,10 @@ pub struct ReadStackTraceResult {
     pub token_count: usize,
 }
 
-pub fn read_stack_trace(root: &Path, params: ReadStackTraceParams) -> anyhow::Result<ReadStackTraceResult> {
+pub fn read_stack_trace(
+    root: &Path,
+    params: ReadStackTraceParams,
+) -> anyhow::Result<ReadStackTraceResult> {
     let context = params.context_lines.unwrap_or(5);
     let raw_frames = parse_stack_trace(&params.stack_trace);
 
@@ -141,7 +166,9 @@ pub fn read_stack_trace(root: &Path, params: ReadStackTraceParams) -> anyhow::Re
 
     for (file, line, func) in &raw_frames {
         let source_context = try_read_context(root, file, *line, context);
-        if source_context.is_some() { resolved += 1; }
+        if source_context.is_some() {
+            resolved += 1;
+        }
         frames.push(StackTraceFrame {
             file: file.clone(),
             line: *line,
@@ -153,7 +180,12 @@ pub fn read_stack_trace(root: &Path, params: ReadStackTraceParams) -> anyhow::Re
     let json = serde_json::to_string(&frames).unwrap_or_default();
     let token_count = estimate_tokens(&json);
 
-    Ok(ReadStackTraceResult { total_frames: frames.len(), resolved_frames: resolved, frames, token_count })
+    Ok(ReadStackTraceResult {
+        total_frames: frames.len(),
+        resolved_frames: resolved,
+        frames,
+        token_count,
+    })
 }
 
 fn parse_stack_trace(text: &str) -> Vec<(String, usize, Option<String>)> {
@@ -184,7 +216,11 @@ fn parse_stack_trace(text: &str) -> Vec<(String, usize, Option<String>)> {
         }
 
         if let Some(cap) = py.captures(line) {
-            push!(cap[1].to_string(), cap[2].parse().unwrap_or(0), cap.get(3).map(|m| m.as_str().to_string()));
+            push!(
+                cap[1].to_string(),
+                cap[2].parse().unwrap_or(0),
+                cap.get(3).map(|m| m.as_str().to_string())
+            );
             continue;
         }
         if let Some(cap) = cs.captures(line) {
@@ -192,7 +228,11 @@ fn parse_stack_trace(text: &str) -> Vec<(String, usize, Option<String>)> {
             continue;
         }
         if let Some(cap) = js.captures(line) {
-            push!(cap[2].to_string(), cap[3].parse().unwrap_or(0), cap.get(1).map(|m| m.as_str().to_string()));
+            push!(
+                cap[2].to_string(),
+                cap[3].parse().unwrap_or(0),
+                cap.get(1).map(|m| m.as_str().to_string())
+            );
             continue;
         }
         if let Some(cap) = java.captures(line) {
@@ -212,23 +252,32 @@ fn parse_stack_trace(text: &str) -> Vec<(String, usize, Option<String>)> {
 }
 
 fn try_read_context(root: &Path, file: &str, line: usize, context: usize) -> Option<String> {
-    if line == 0 { return None; }
+    if line == 0 {
+        return None;
+    }
 
     let candidates = [root.join(file), std::path::PathBuf::from(file)];
 
     for path in &candidates {
         if let Ok(content) = std::fs::read_to_string(path) {
             let lines: Vec<&str> = content.lines().collect();
-            if line > lines.len() { continue; }
+            if line > lines.len() {
+                continue;
+            }
 
             let from = line.saturating_sub(context + 1);
             let to = (line + context).min(lines.len());
 
-            let ctx: Vec<String> = lines[from..to].iter().enumerate()
+            let ctx: Vec<String> = lines[from..to]
+                .iter()
+                .enumerate()
                 .map(|(i, l)| {
                     let ln = from + i + 1;
-                    if ln == line { format!(">{:4} | {}", ln, l) }
-                    else          { format!(" {:4} | {}", ln, l) }
+                    if ln == line {
+                        format!(">{:4} | {}", ln, l)
+                    } else {
+                        format!(" {:4} | {}", ln, l)
+                    }
                 })
                 .collect();
 

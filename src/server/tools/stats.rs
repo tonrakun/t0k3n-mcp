@@ -39,8 +39,15 @@ pub struct ReadWorkspaceStatsResult {
     pub token_count: usize,
 }
 
-pub fn read_workspace_stats(root: &Path, params: ReadWorkspaceStatsParams) -> anyhow::Result<ReadWorkspaceStatsResult> {
-    let glob_re = params.glob.as_deref().map(glob_to_regex).and_then(|p| regex::Regex::new(&p).ok());
+pub fn read_workspace_stats(
+    root: &Path,
+    params: ReadWorkspaceStatsParams,
+) -> anyhow::Result<ReadWorkspaceStatsResult> {
+    let glob_re = params
+        .glob
+        .as_deref()
+        .map(glob_to_regex)
+        .and_then(|p| regex::Regex::new(&p).ok());
 
     // (files, lines, tokens)
     let mut by_language: HashMap<String, (usize, usize, usize)> = HashMap::new();
@@ -55,17 +62,28 @@ pub fn read_workspace_stats(root: &Path, params: ReadWorkspaceStatsParams) -> an
         .flatten()
     {
         let path = entry.path();
-        if path.is_dir() { continue; }
+        if path.is_dir() {
+            continue;
+        }
 
         let rel = rel_display(root, path);
 
         if let Some(ref re) = glob_re
-            && !re.is_match(&rel) { continue; }
+            && !re.is_match(&rel)
+        {
+            continue;
+        }
 
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_string();
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_string();
         let language = ext_to_language(&ext);
 
-        let Ok(content) = std::fs::read_to_string(path) else { continue };
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
         let lines = content.lines().count();
         let tokens = estimate_tokens(&content);
 
@@ -86,14 +104,24 @@ pub fn read_workspace_stats(root: &Path, params: ReadWorkspaceStatsParams) -> an
         .map(|(lang, (files, lines, tokens))| {
             let pct = if total_tokens > 0 {
                 (tokens as f64 / total_tokens as f64 * 100.0 * 10.0).round() / 10.0
-            } else { 0.0 };
-            LanguageStat { language: lang, files, lines, tokens, pct }
+            } else {
+                0.0
+            };
+            LanguageStat {
+                language: lang,
+                files,
+                lines,
+                tokens,
+                pct,
+            }
         })
         .collect();
     by_language_vec.sort_by_key(|l| std::cmp::Reverse(l.tokens));
 
     all_files.sort_by(|(_, a), (_, b)| b.cmp(a));
-    let largest_files: Vec<LargestFile> = all_files.into_iter().take(10)
+    let largest_files: Vec<LargestFile> = all_files
+        .into_iter()
+        .take(10)
         .map(|(path, tokens)| LargestFile { path, tokens })
         .collect();
 
@@ -149,7 +177,8 @@ fn ext_to_language(ext: &str) -> String {
         "tf" | "tfvars" => "terraform",
         "" => "no extension",
         other => other,
-    }.to_string()
+    }
+    .to_string()
 }
 
 fn glob_to_regex(glob: &str) -> String {
@@ -159,7 +188,9 @@ fn glob_to_regex(glob: &str) -> String {
         match c {
             '*' if chars.peek() == Some(&'*') => {
                 chars.next();
-                if chars.peek() == Some(&'/') { chars.next(); }
+                if chars.peek() == Some(&'/') {
+                    chars.next();
+                }
                 re.push_str(".*");
             }
             '*' => re.push_str("[^/]*"),

@@ -16,7 +16,9 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadDependencyAuditParams {
-    #[schemars(description = "Only return vulnerabilities at this severity or above: low | moderate | high | critical.")]
+    #[schemars(
+        description = "Only return vulnerabilities at this severity or above: low | moderate | high | critical."
+    )]
     pub severity: Option<String>,
     #[schemars(description = "Cap the number of vulnerabilities returned (after severity sort).")]
     pub max_items: Option<usize>,
@@ -107,9 +109,7 @@ fn detect_ecosystem(root: &Path) -> Option<Ecosystem> {
         Some(Ecosystem::Cargo)
     } else if root.join("package.json").exists() {
         Some(Ecosystem::Npm)
-    } else if root.join("pyproject.toml").exists()
-        || root.join("requirements.txt").exists()
-    {
+    } else if root.join("pyproject.toml").exists() || root.join("requirements.txt").exists() {
         Some(Ecosystem::Pip)
     } else if root.join("go.mod").exists() {
         // No native go scanner here; osv-scanner covers Go modules.
@@ -346,7 +346,11 @@ fn parse_pip_audit(stdout: &str) -> Vec<Vulnerability> {
     };
     let mut out = Vec::new();
     for dep in deps {
-        let name = dep.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let name = dep
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
         let version = dep
             .get("version")
             .and_then(|x| x.as_str())
@@ -356,7 +360,11 @@ fn parse_pip_audit(stdout: &str) -> Vec<Vulnerability> {
             continue;
         };
         for vuln in vulns {
-            let id = vuln.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let id = vuln
+                .get("id")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string();
             let title = vuln
                 .get("description")
                 .and_then(|x| x.as_str())
@@ -425,7 +433,11 @@ fn parse_osv(stdout: &str) -> Vec<Vulnerability> {
                 continue;
             };
             for vuln in vulns {
-                let id = vuln.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                let id = vuln
+                    .get("id")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 let title = vuln
                     .get("summary")
                     .and_then(|x| x.as_str())
@@ -434,7 +446,9 @@ fn parse_osv(stdout: &str) -> Vec<Vulnerability> {
                     .to_string();
                 out.push(Vulnerability {
                     package: name.clone(),
-                    severity: group_severity.clone().unwrap_or_else(|| "unknown".to_string()),
+                    severity: group_severity
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string()),
                     id,
                     affected: version.clone(),
                     patched: None,
@@ -552,7 +566,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let r = read_dependency_audit(
             dir.path(),
-            ReadDependencyAuditParams { severity: None, max_items: None },
+            ReadDependencyAuditParams {
+                severity: None,
+                max_items: None,
+            },
         )
         .unwrap();
         assert!(!r.scanner_available);

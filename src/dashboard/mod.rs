@@ -121,7 +121,13 @@ impl DashboardState {
         })
     }
 
-    pub async fn record_call(&self, tool: String, duration_ms: u64, success: bool, tokens: Option<u64>) {
+    pub async fn record_call(
+        &self,
+        tool: String,
+        duration_ms: u64,
+        success: bool,
+        tokens: Option<u64>,
+    ) {
         let record = ToolCallRecord {
             tool: tool.clone(),
             timestamp_ms: SystemTime::now()
@@ -136,7 +142,8 @@ impl DashboardState {
         if !success {
             self.error_calls.fetch_add(1, Ordering::Relaxed);
         }
-        self.total_duration_ms.fetch_add(duration_ms, Ordering::Relaxed);
+        self.total_duration_ms
+            .fetch_add(duration_ms, Ordering::Relaxed);
         if let Some(tok) = tokens {
             self.total_tokens_used.fetch_add(tok, Ordering::Relaxed);
         }
@@ -144,9 +151,13 @@ impl DashboardState {
             let mut stats = self.per_tool_stats.write().await;
             let entry = stats.entry(tool).or_default();
             entry.calls += 1;
-            if !success { entry.errors += 1; }
+            if !success {
+                entry.errors += 1;
+            }
             entry.total_duration_ms += duration_ms;
-            if let Some(tok) = tokens { entry.total_tokens += tok; }
+            if let Some(tok) = tokens {
+                entry.total_tokens += tok;
+            }
         }
         {
             let mut calls = self.recent_calls.write().await;
@@ -169,7 +180,11 @@ impl DashboardState {
         let total = self.total_calls.load(Ordering::Relaxed);
         let errors = self.error_calls.load(Ordering::Relaxed);
         let total_dur = self.total_duration_ms.load(Ordering::Relaxed);
-        let avg_dur = if total > 0 { total_dur / total as u64 } else { 0 };
+        let avg_dur = if total > 0 {
+            total_dur / total as u64
+        } else {
+            0
+        };
         let total_tokens = self.total_tokens_used.load(Ordering::Relaxed);
         // Estimated savings: benchmark shows ~87% token reduction on average
         // raw_tokens ≈ tokens_used / 0.13 → tokens_saved = raw - used = used * 6.69
@@ -179,17 +194,23 @@ impl DashboardState {
         let update = self.update_info.read().await.clone();
 
         let per_tool_map = self.per_tool_stats.read().await;
-        let mut per_tool: Vec<serde_json::Value> = per_tool_map.iter().map(|(name, stat)| {
-            serde_json::json!({
-                "tool": name,
-                "calls": stat.calls,
-                "errors": stat.errors,
-                "avg_duration_ms": stat.total_duration_ms.checked_div(stat.calls).unwrap_or(0),
-                "total_tokens": stat.total_tokens,
+        let mut per_tool: Vec<serde_json::Value> = per_tool_map
+            .iter()
+            .map(|(name, stat)| {
+                serde_json::json!({
+                    "tool": name,
+                    "calls": stat.calls,
+                    "errors": stat.errors,
+                    "avg_duration_ms": stat.total_duration_ms.checked_div(stat.calls).unwrap_or(0),
+                    "total_tokens": stat.total_tokens,
+                })
             })
-        }).collect();
+            .collect();
         per_tool.sort_by(|a, b| {
-            b["calls"].as_u64().unwrap_or(0).cmp(&a["calls"].as_u64().unwrap_or(0))
+            b["calls"]
+                .as_u64()
+                .unwrap_or(0)
+                .cmp(&a["calls"].as_u64().unwrap_or(0))
         });
 
         serde_json::json!({
@@ -223,7 +244,10 @@ pub struct ReleaseNote {
 /// project directory the dashboard's `--root` points at — this panel shows the
 /// tool's changelog, not the analyzed project's tags.
 async fn fetch_releases() -> Vec<ReleaseNote> {
-    let url = format!("https://api.github.com/repos/{}/releases", crate::update::GITHUB_REPO);
+    let url = format!(
+        "https://api.github.com/repos/{}/releases",
+        crate::update::GITHUB_REPO
+    );
 
     let client = match reqwest::Client::builder()
         .user_agent(format!("t0k3n/{}", env!("CARGO_PKG_VERSION")))
@@ -234,7 +258,12 @@ async fn fetch_releases() -> Vec<ReleaseNote> {
         Err(_) => return Vec::new(),
     };
 
-    let resp = match client.get(&url).send().await.and_then(|r| r.error_for_status()) {
+    let resp = match client
+        .get(&url)
+        .send()
+        .await
+        .and_then(|r| r.error_for_status())
+    {
         Ok(r) => r,
         Err(_) => return Vec::new(),
     };
@@ -253,45 +282,16 @@ async fn fetch_releases() -> Vec<ReleaseNote> {
         .filter(|r| !r["draft"].as_bool().unwrap_or(false))
         .filter_map(|r| {
             let tag = r["tag_name"].as_str()?.to_string();
-            let date = r["published_at"].as_str().unwrap_or("").chars().take(10).collect();
+            let date = r["published_at"]
+                .as_str()
+                .unwrap_or("")
+                .chars()
+                .take(10)
+                .collect();
             let body = r["body"].as_str().unwrap_or("").trim().to_string();
             Some(ReleaseNote { tag, date, body })
         })
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tokens_differ_between_states() {
-        let a = DashboardState::new("test");
-        let b = DashboardState::new("test");
-        assert_eq!(a.token.len(), 32);
-        assert_ne!(a.token, b.token, "each process/state needs its own token");
-    }
-
-    #[test]
-    fn authorize_requires_the_exact_token() {
-        let state = DashboardState::new("test");
-        let token = state.token.clone();
-        assert!(authorize(&state, &format!("t={token}")));
-        assert!(authorize(&state, &format!("foo=1&t={token}")));
-        assert!(!authorize(&state, ""));
-        assert!(!authorize(&state, "t="));
-        assert!(!authorize(&state, "t=wrong"));
-        // A correct prefix must not pass.
-        assert!(!authorize(&state, &format!("t={}", &token[..16])));
-    }
-
-    #[test]
-    fn dashboard_url_embeds_the_token() {
-        assert_eq!(
-            dashboard_url(14123, "abc"),
-            "http://127.0.0.1:14123/?t=abc"
-        );
-    }
 }
 
 pub async fn run(state: Arc<DashboardState>, port: u16) {
@@ -394,5 +394,36 @@ async fn ws_conn(mut socket: WebSocket, state: Arc<DashboardState>) {
                 if msg.is_none() { break; }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokens_differ_between_states() {
+        let a = DashboardState::new("test");
+        let b = DashboardState::new("test");
+        assert_eq!(a.token.len(), 32);
+        assert_ne!(a.token, b.token, "each process/state needs its own token");
+    }
+
+    #[test]
+    fn authorize_requires_the_exact_token() {
+        let state = DashboardState::new("test");
+        let token = state.token.clone();
+        assert!(authorize(&state, &format!("t={token}")));
+        assert!(authorize(&state, &format!("foo=1&t={token}")));
+        assert!(!authorize(&state, ""));
+        assert!(!authorize(&state, "t="));
+        assert!(!authorize(&state, "t=wrong"));
+        // A correct prefix must not pass.
+        assert!(!authorize(&state, &format!("t={}", &token[..16])));
+    }
+
+    #[test]
+    fn dashboard_url_embeds_the_token() {
+        assert_eq!(dashboard_url(14123, "abc"), "http://127.0.0.1:14123/?t=abc");
     }
 }

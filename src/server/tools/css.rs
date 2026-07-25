@@ -3,8 +3,8 @@ use std::path::Path;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::security::{rel_display, safe_path};
 use super::fs::estimate_tokens;
+use crate::security::{rel_display, safe_path};
 
 // ─── read_css_skeleton ────────────────────────────────────────────────────────
 
@@ -30,7 +30,10 @@ pub struct ReadCssSkeletonResult {
     pub token_count: usize,
 }
 
-pub fn read_css_skeleton(root: &Path, params: ReadCssSkeletonParams) -> anyhow::Result<ReadCssSkeletonResult> {
+pub fn read_css_skeleton(
+    root: &Path,
+    params: ReadCssSkeletonParams,
+) -> anyhow::Result<ReadCssSkeletonResult> {
     let file_path = safe_path(root, &params.path)?;
     let content = std::fs::read_to_string(&file_path)
         .map_err(|e| anyhow::anyhow!("ファイル読み取り失敗: {e}"))?;
@@ -39,7 +42,11 @@ pub fn read_css_skeleton(root: &Path, params: ReadCssSkeletonParams) -> anyhow::
     let selectors = parse_css_skeleton(&content);
     let json = serde_json::to_string(&selectors).unwrap_or_default();
     let token_count = estimate_tokens(&json);
-    Ok(ReadCssSkeletonResult { path: rel, selectors, token_count })
+    Ok(ReadCssSkeletonResult {
+        path: rel,
+        selectors,
+        token_count,
+    })
 }
 
 pub fn parse_css_skeleton(content: &str) -> Vec<CssSelectorItem> {
@@ -63,12 +70,7 @@ pub fn parse_css_skeleton(content: &str) -> Vec<CssSelectorItem> {
 
         // Selector line ends with '{' (might have inline content too)
         if trimmed.contains('{') && !trimmed.starts_with("//") {
-            let selector = trimmed
-                .split('{')
-                .next()
-                .unwrap_or("")
-                .trim()
-                .to_string();
+            let selector = trimmed.split('{').next().unwrap_or("").trim().to_string();
 
             if selector.is_empty() {
                 i += 1;
@@ -98,13 +100,21 @@ pub fn parse_css_skeleton(content: &str) -> Vec<CssSelectorItem> {
                     property_count += 1;
                 }
 
-                if depth <= 0 { break; }
+                if depth <= 0 {
+                    break;
+                }
                 j += 1;
             }
 
             let end_line = (j + 1).min(lines.len()); // 1-indexed closing brace line
             let id = format!("selector:{}-{}", start_line, end_line);
-            items.push(CssSelectorItem { id, selector, property_count, start_line, end_line });
+            items.push(CssSelectorItem {
+                id,
+                selector,
+                property_count,
+                start_line,
+                end_line,
+            });
             i = j + 1;
             continue;
         }
@@ -119,9 +129,13 @@ pub fn parse_css_skeleton(content: &str) -> Vec<CssSelectorItem> {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadCssBodyParams {
-    #[schemars(description = "Root-relative path to the CSS file (from read_css_skeleton result).")]
+    #[schemars(
+        description = "Root-relative path to the CSS file (from read_css_skeleton result)."
+    )]
     pub path: String,
-    #[schemars(description = "List of selector IDs from read_css_skeleton (e.g. 'selector:5-12').")]
+    #[schemars(
+        description = "List of selector IDs from read_css_skeleton (e.g. 'selector:5-12')."
+    )]
     pub ids: Vec<String>,
 }
 
@@ -152,13 +166,12 @@ pub fn read_css_body(root: &Path, params: ReadCssBodyParams) -> anyhow::Result<R
         if parts.len() == 2 {
             let range: Vec<&str> = parts[0].splitn(2, '-').collect();
             if range.len() == 2
-                && let (Ok(start), Ok(end)) =
-                    (range[0].parse::<usize>(), range[1].parse::<usize>())
-                {
-                    let from = start.saturating_sub(1); // 0-indexed selector line
-                    let to = end.min(lines.len());
-                    if from >= to {
-                        items.push(CssBodyItem {
+                && let (Ok(start), Ok(end)) = (range[0].parse::<usize>(), range[1].parse::<usize>())
+            {
+                let from = start.saturating_sub(1); // 0-indexed selector line
+                let to = end.min(lines.len());
+                if from >= to {
+                    items.push(CssBodyItem {
                             id: id.clone(),
                             selector: String::new(),
                             content: format!(
@@ -166,16 +179,21 @@ pub fn read_css_body(root: &Path, params: ReadCssBodyParams) -> anyhow::Result<R
                                 lines.len()
                             ),
                         });
-                        continue;
-                    }
-                    let body = lines[from..to].join("\n");
-                    let selector = skeleton.iter()
-                        .find(|s| &s.id == id)
-                        .map(|s| s.selector.clone())
-                        .unwrap_or_default();
-                    items.push(CssBodyItem { id: id.clone(), selector, content: body });
                     continue;
                 }
+                let body = lines[from..to].join("\n");
+                let selector = skeleton
+                    .iter()
+                    .find(|s| &s.id == id)
+                    .map(|s| s.selector.clone())
+                    .unwrap_or_default();
+                items.push(CssBodyItem {
+                    id: id.clone(),
+                    selector,
+                    content: body,
+                });
+                continue;
+            }
         }
         items.push(CssBodyItem {
             id: id.clone(),
@@ -197,10 +215,14 @@ mod tests {
     fn read_css_body_out_of_range_id_returns_error_not_panic() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.css"), ".x { color: red; }\n").unwrap();
-        let r = read_css_body(dir.path(), ReadCssBodyParams {
-            path: "a.css".into(),
-            ids: vec![".x:100-120".into()],
-        }).unwrap();
+        let r = read_css_body(
+            dir.path(),
+            ReadCssBodyParams {
+                path: "a.css".into(),
+                ids: vec![".x:100-120".into()],
+            },
+        )
+        .unwrap();
         assert_eq!(r.items.len(), 1);
         assert!(r.items[0].content.contains("out of range"));
     }

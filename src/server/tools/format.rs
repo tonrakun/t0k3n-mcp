@@ -28,7 +28,9 @@ const TIMEOUT: Duration = Duration::from_secs(45);
 pub struct FormatCodeParams {
     #[schemars(description = "Root-relative path to the file to format")]
     pub path: String,
-    #[schemars(description = "true = format a copy and return the diff without writing (default false)")]
+    #[schemars(
+        description = "true = format a copy and return the diff without writing (default false)"
+    )]
     pub dry_run: Option<bool>,
 }
 
@@ -85,7 +87,9 @@ fn run_formatter(program: &str, extra: &[&str], target: &str, cwd: &Path) -> Str
             c
         }
     };
-    cmd.current_dir(cwd).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.current_dir(cwd)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     let child = match cmd.spawn() {
         Ok(c) => c,
@@ -205,17 +209,34 @@ mod tests {
     #[test]
     fn unsupported_extension_errors() {
         let dir = setup("a.txt", "hello");
-        let r = format_code(dir.path(), FormatCodeParams { path: "a.txt".into(), dry_run: None });
+        let r = format_code(
+            dir.path(),
+            FormatCodeParams {
+                path: "a.txt".into(),
+                dry_run: None,
+            },
+        );
         assert!(r.is_err());
     }
 
     #[test]
     fn rustfmt_formats_or_skips_when_unavailable() {
         let dir = setup("a.rs", "fn  main( ){let x=1;}\n");
-        let r = format_code(dir.path(), FormatCodeParams { path: "a.rs".into(), dry_run: None }).unwrap();
+        let r = format_code(
+            dir.path(),
+            FormatCodeParams {
+                path: "a.rs".into(),
+                dry_run: None,
+            },
+        )
+        .unwrap();
         if r.formatter_available {
             let out = std::fs::read_to_string(dir.path().join("a.rs")).unwrap();
-            assert!(r.changed, "rustfmt should reformat messy code; note={:?} file={:?}", r.note, out);
+            assert!(
+                r.changed,
+                "rustfmt should reformat messy code; note={:?} file={:?}",
+                r.note, out
+            );
             assert!(out.contains("fn main()"));
         } else {
             // No rustfmt in this environment — must be a clean non-error skip.
@@ -227,7 +248,14 @@ mod tests {
     #[test]
     fn dry_run_does_not_write() {
         let dir = setup("a.rs", "fn  main( ){let x=1;}\n");
-        let r = format_code(dir.path(), FormatCodeParams { path: "a.rs".into(), dry_run: Some(true) }).unwrap();
+        let r = format_code(
+            dir.path(),
+            FormatCodeParams {
+                path: "a.rs".into(),
+                dry_run: Some(true),
+            },
+        )
+        .unwrap();
         assert!(!r.written);
         // Original file is untouched regardless of formatter availability.
         assert_eq!(

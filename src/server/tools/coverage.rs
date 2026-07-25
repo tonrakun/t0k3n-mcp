@@ -18,7 +18,9 @@ use super::fs::estimate_tokens;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ReadTestCoverageParams {
-    #[schemars(description = "Restrict to this file or directory (root-relative). Omit for the whole report.")]
+    #[schemars(
+        description = "Restrict to this file or directory (root-relative). Omit for the whole report."
+    )]
     pub path: Option<String>,
     #[schemars(description = "Only return symbols that are not fully covered (pct < 100).")]
     pub uncovered_only: Option<bool>,
@@ -236,18 +238,29 @@ fn parse_coveragepy(text: &str) -> Option<HashMap<String, RawCoverage>> {
         let executed: HashSet<usize> = data
             .get("executed_lines")
             .and_then(|x| x.as_array())
-            .map(|a| a.iter().filter_map(|n| n.as_u64().map(|n| n as usize)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|n| n.as_u64().map(|n| n as usize))
+                    .collect()
+            })
             .unwrap_or_default();
         let missing: HashSet<usize> = data
             .get("missing_lines")
             .and_then(|x| x.as_array())
-            .map(|a| a.iter().filter_map(|n| n.as_u64().map(|n| n as usize)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|n| n.as_u64().map(|n| n as usize))
+                    .collect()
+            })
             .unwrap_or_default();
         let mut instrumented = executed.clone();
         instrumented.extend(&missing);
         out.insert(
             path.clone(),
-            RawCoverage { covered: executed, instrumented },
+            RawCoverage {
+                covered: executed,
+                instrumented,
+            },
         );
     }
     Some(out)
@@ -262,10 +275,11 @@ fn parse_cobertura(text: &str) -> HashMap<String, RawCoverage> {
     for cap in re.captures_iter(text) {
         if let Some(file) = cap.get(1) {
             current = Some(file.as_str().to_string());
-            out.entry(file.as_str().to_string()).or_insert_with(|| RawCoverage {
-                covered: HashSet::new(),
-                instrumented: HashSet::new(),
-            });
+            out.entry(file.as_str().to_string())
+                .or_insert_with(|| RawCoverage {
+                    covered: HashSet::new(),
+                    instrumented: HashSet::new(),
+                });
         } else if let (Some(ln), Some(hits), Some(file)) = (cap.get(2), cap.get(3), &current)
             && let (Ok(ln), Ok(hits)) = (ln.as_str().parse::<usize>(), hits.as_str().parse::<i64>())
             && let Some(entry) = out.get_mut(file)
@@ -285,7 +299,10 @@ fn parse_cobertura(text: &str) -> HashMap<String, RawCoverage> {
 fn map_symbols(root: &Path, rel: &str, cov: &RawCoverage) -> Vec<SymbolCoverage> {
     let Ok(skeleton) = read_code_skeleton(
         root,
-        ReadCodeSkeletonParams { path: rel.to_string(), include_blocks: None },
+        ReadCodeSkeletonParams {
+            path: rel.to_string(),
+            include_blocks: None,
+        },
     ) else {
         return Vec::new();
     };
@@ -353,7 +370,15 @@ mod tests {
     #[test]
     fn no_report_is_non_error() {
         let dir = tempfile::tempdir().unwrap();
-        let r = read_test_coverage(dir.path(), ReadTestCoverageParams { path: None, uncovered_only: None, threshold: None }).unwrap();
+        let r = read_test_coverage(
+            dir.path(),
+            ReadTestCoverageParams {
+                path: None,
+                uncovered_only: None,
+                threshold: None,
+            },
+        )
+        .unwrap();
         assert!(!r.report_available);
         assert!(r.hint.is_some());
     }
@@ -361,14 +386,26 @@ mod tests {
     #[test]
     fn parses_lcov_and_maps_symbols() {
         let dir = tempfile::tempdir().unwrap();
-        write(dir.path(), "src/lib.rs", "fn covered() {\n    let x = 1;\n    let y = 2;\n}\nfn uncovered() {\n    let z = 3;\n    let w = 4;\n}\n");
+        write(
+            dir.path(),
+            "src/lib.rs",
+            "fn covered() {\n    let x = 1;\n    let y = 2;\n}\nfn uncovered() {\n    let z = 3;\n    let w = 4;\n}\n",
+        );
         // covered(): lines 2,3 hit. uncovered(): lines 6,7 not hit.
         write(
             dir.path(),
             "lcov.info",
             "SF:src/lib.rs\nDA:2,5\nDA:3,5\nDA:6,0\nDA:7,0\nend_of_record\n",
         );
-        let r = read_test_coverage(dir.path(), ReadTestCoverageParams { path: None, uncovered_only: None, threshold: None }).unwrap();
+        let r = read_test_coverage(
+            dir.path(),
+            ReadTestCoverageParams {
+                path: None,
+                uncovered_only: None,
+                threshold: None,
+            },
+        )
+        .unwrap();
         assert!(r.report_available);
         assert_eq!(r.format.as_deref(), Some("lcov"));
         assert_eq!(r.overall_pct, Some(50.0));
@@ -382,9 +419,25 @@ mod tests {
     #[test]
     fn uncovered_only_filters() {
         let dir = tempfile::tempdir().unwrap();
-        write(dir.path(), "src/lib.rs", "fn covered() {\n    let x = 1;\n}\nfn bad() {\n    let z = 3;\n}\n");
-        write(dir.path(), "lcov.info", "SF:src/lib.rs\nDA:2,5\nDA:5,0\nend_of_record\n");
-        let r = read_test_coverage(dir.path(), ReadTestCoverageParams { path: None, uncovered_only: Some(true), threshold: None }).unwrap();
+        write(
+            dir.path(),
+            "src/lib.rs",
+            "fn covered() {\n    let x = 1;\n}\nfn bad() {\n    let z = 3;\n}\n",
+        );
+        write(
+            dir.path(),
+            "lcov.info",
+            "SF:src/lib.rs\nDA:2,5\nDA:5,0\nend_of_record\n",
+        );
+        let r = read_test_coverage(
+            dir.path(),
+            ReadTestCoverageParams {
+                path: None,
+                uncovered_only: Some(true),
+                threshold: None,
+            },
+        )
+        .unwrap();
         let file = &r.files[0];
         assert!(file.symbols.iter().all(|s| s.pct < 100.0));
         assert!(file.symbols.iter().any(|s| s.name == "bad"));
@@ -399,7 +452,15 @@ mod tests {
             "coverage.json",
             r#"{"files":{"app.py":{"executed_lines":[1,2],"missing_lines":[]}}}"#,
         );
-        let r = read_test_coverage(dir.path(), ReadTestCoverageParams { path: None, uncovered_only: None, threshold: None }).unwrap();
+        let r = read_test_coverage(
+            dir.path(),
+            ReadTestCoverageParams {
+                path: None,
+                uncovered_only: None,
+                threshold: None,
+            },
+        )
+        .unwrap();
         assert!(r.report_available);
         assert_eq!(r.format.as_deref(), Some("coveragepy"));
         assert_eq!(r.overall_pct, Some(100.0));
@@ -413,7 +474,8 @@ mod tests {
             "coverage.xml",
             r#"<coverage><packages><package><classes><class filename="src/a.rs"><lines><line number="1" hits="2"/><line number="2" hits="0"/></lines></class></classes></package></packages></coverage>"#,
         );
-        let parsed = parse_cobertura(&std::fs::read_to_string(dir.path().join("coverage.xml")).unwrap());
+        let parsed =
+            parse_cobertura(&std::fs::read_to_string(dir.path().join("coverage.xml")).unwrap());
         let cov = parsed.get("src/a.rs").unwrap();
         assert_eq!(cov.instrumented.len(), 2);
         assert_eq!(cov.covered.len(), 1);
