@@ -207,13 +207,73 @@ pub const WRITE_TOOLS: &[&str] = &[
     "write_markdown_section",
 ];
 
+/// Tools that execute arbitrary shell commands. Enabled by default (they predate
+/// the capability model and are core to the build/test loop), but removable with
+/// `--disable-commands` for setups that must not hand the agent a shell.
+///
+/// Note: while `run_command` is registered, the server is *not* read-only —
+/// anything reachable from a shell is reachable. `--enable-writes` gates the
+/// structured write tools, not the machine's writability.
+pub const COMMAND_TOOLS: &[&str] = &["run_command"];
+
+/// Tools that stay registered under every category profile: without them the agent
+/// cannot discover what else it has or report its own configuration.
+const ALWAYS_KEEP_TOOLS: &[&str] = &["help", "debug_info"];
+
+/// Resolve a list of help() category names to the set of tool names to keep.
+/// Unknown categories are ignored (validated and reported at startup instead).
+fn tools_in_categories(categories: &[String]) -> std::collections::HashSet<&'static str> {
+    let catalog = tools::help::catalog();
+    let mut keep: std::collections::HashSet<&'static str> =
+        ALWAYS_KEEP_TOOLS.iter().copied().collect();
+    for cat in categories {
+        if let Some(entries) = catalog.get(cat.trim().to_ascii_lowercase().as_str()) {
+            keep.extend(entries.iter().map(|e| e.name));
+        }
+    }
+    keep
+}
+
+/// Category names accepted by `--tools`, taken from the help() catalog so the two
+/// can never drift apart.
+pub fn known_tool_categories() -> Vec<&'static str> {
+    tools::help::catalog().keys().copied().collect()
+}
+
+/// Startup capability configuration. Grouped into a struct so adding a capability
+/// does not change every `T0k3nServer::new` call site.
+#[derive(Clone, Debug)]
+pub struct ServerConfig {
+    pub root: String,
+    /// True when --root / T0K3N_ROOT was explicitly given.
+    pub root_configured: bool,
+    /// Register `read_type_diagnostics` (opt-in; spawns cargo check / tsc / …).
+    pub diagnostics_enabled: bool,
+    /// Register the structured write tools (opt-in).
+    pub writes_enabled: bool,
+    /// Register `run_command` (opt-out; on by default).
+    pub commands_enabled: bool,
+    /// When set, only tools in these help() categories are registered. Trims the
+    /// tool-schema payload the client carries in every request.
+    pub tool_categories: Option<Vec<String>>,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            root: ".".to_string(),
+            root_configured: false,
+            diagnostics_enabled: false,
+            writes_enabled: false,
+            commands_enabled: true,
+            tool_categories: None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct T0k3nServer {
     pub root: PathBuf,
-    /// True when --root (or T0K3N_ROOT) was explicitly given at startup. When false,
-    /// `root` is just the process's working directory, and EffectiveRoot lets each
-    /// tool call override it via a `root` argument instead.
-    root_configured: bool,
     db: Arc<Mutex<Database>>,
     web_cache: Arc<Mutex<HashMap<String, String>>>,
     ledger: Arc<Mutex<ReadLedger>>,
@@ -223,13 +283,22 @@ pub struct T0k3nServer {
     /// used by read_code_body's zoom:auto to pick a detail level.
     budget_status: Arc<Mutex<Option<String>>>,
     tool_router: ToolRouter<Self>,
-    diagnostics_enabled: bool,
-    writes_enabled: bool,
+    config: ServerConfig,
     pub dashboard: Option<Arc<DashboardState>>,
 }
 
 fn err(msg: impl std::fmt::Display) -> McpError {
     McpError::internal_error(msg.to_string(), None)
+}
+
+/// Short content digest published with delta stubs so a caller can verify it still
+/// holds the content the stub refers to. 12 hex chars is ample for that check and
+/// costs a handful of tokens.
+fn short_sha256(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    hex::encode(hasher.finalize())[..12].to_string()
 }
 
 /// Per-call extractor resolving the workspace root for a tool call. When the server
@@ -263,7 +332,7 @@ impl FromToolCallContextPart<T0k3nServer> for EffectiveRoot {
         context: &mut ToolCallContext<T0k3nServer>,
     ) -> Result<Self, McpError> {
         let root = resolve_effective_root(
-            context.service.root_configured,
+            context.service.config.root_configured,
             &context.service.root,
             &mut context.arguments,
         );
@@ -364,30 +433,38 @@ macro_rules! instrument {
 
 #[tool_router(router = tool_router)]
 impl T0k3nServer {
-    pub fn new(
-        root: String,
-        dashboard: Option<Arc<DashboardState>>,
-        diagnostics_enabled: bool,
-        writes_enabled: bool,
-        root_configured: bool,
-    ) -> Self {
-        let root_path = PathBuf::from(&root);
+    pub fn new(config: ServerConfig, dashboard: Option<Arc<DashboardState>>) -> Self {
+        let root_path = PathBuf::from(&config.root);
         let db_path = root_path.join(".t0k3n").join("t0k3n.db");
         let db = Database::new(&db_path).unwrap_or_else(|e| {
             tracing::warn!("Failed to open DB at {:?}: {}. Using in-memory DB.", db_path, e);
             Database::new(std::path::Path::new(":memory:")).unwrap()
         });
 
+        let mut tool_router = Self::tool_router();
+
+        // Optional category profile: every tool schema is carried by the client on
+        // every request, so trimming the roster is itself a token optimization.
+        if let Some(cats) = &config.tool_categories {
+            let keep = tools_in_categories(cats);
+            tool_router.map.retain(|name, _| keep.contains(name.as_ref()));
+        }
+
         // read_type_diagnostics is opt-in: spawning cargo check / tsc / pyright is
         // heavyweight, so it is unregistered (not advertised, not callable) unless
         // explicitly enabled via --enable-diagnostics / T0K3N_ENABLE_DIAGNOSTICS.
-        let mut tool_router = Self::tool_router();
-        if !diagnostics_enabled {
+        if !config.diagnostics_enabled {
             tool_router.map.remove("read_type_diagnostics");
         }
         // Mutating write tools are opt-in: unregistered unless --enable-writes.
-        if !writes_enabled {
+        if !config.writes_enabled {
             for t in WRITE_TOOLS {
+                tool_router.map.remove(*t);
+            }
+        }
+        // Shell execution is opt-out: registered unless --disable-commands.
+        if !config.commands_enabled {
+            for t in COMMAND_TOOLS {
                 tool_router.map.remove(*t);
             }
         }
@@ -396,9 +473,18 @@ impl T0k3nServer {
         // gen4 warm start: load the cross-session content ledger from disk.
         let content_ledger = ContentLedger::load(&root_path, tools::digest::git_head(&root_path));
 
-        let server = Self {
+        tracing::info!(
+            "t0k3n-mcp v{} initialized — {} tools registered \
+             (diagnostics: {}, writes: {}, commands: {})",
+            env!("CARGO_PKG_VERSION"),
+            tool_count,
+            if config.diagnostics_enabled { "enabled" } else { "disabled (opt-in)" },
+            if config.writes_enabled { "enabled" } else { "disabled (opt-in)" },
+            if config.commands_enabled { "enabled" } else { "disabled" },
+        );
+
+        Self {
             root: root_path,
-            root_configured,
             db: Arc::new(Mutex::new(db)),
             web_cache: Arc::new(Mutex::new(HashMap::new())),
             ledger: Arc::new(Mutex::new(ReadLedger::new())),
@@ -406,18 +492,9 @@ impl T0k3nServer {
             content_ledger: Arc::new(Mutex::new(content_ledger)),
             budget_status: Arc::new(Mutex::new(None)),
             tool_router,
-            diagnostics_enabled,
-            writes_enabled,
+            config,
             dashboard,
-        };
-        tracing::info!(
-            "t0k3n-mcp v{} initialized — {} tools registered (diagnostics: {}, writes: {})",
-            env!("CARGO_PKG_VERSION"),
-            tool_count,
-            if diagnostics_enabled { "enabled" } else { "disabled (opt-in)" },
-            if writes_enabled { "enabled" } else { "disabled (opt-in)" },
-        );
-        server
+        }
     }
 
     /// Render a tool response, consulting the delta-read ledger first.
@@ -431,9 +508,13 @@ impl T0k3nServer {
         let delta = self.ledger.lock().unwrap().check_and_update(&key, &rendered);
         match delta {
             Delta::Full => ok_text(rendered),
+            // The stub is only sound while the caller still holds the earlier content.
+            // Context compaction can silently break that, and the caller cannot tell
+            // from a bare "unchanged" — so publish a digest it can check itself.
             Delta::Unchanged { full_tokens } => ok_json(serde_json::json!({
                 "unchanged": true,
-                "note": "Identical to what you already received earlier this session — content not re-sent. Call delta_reset (optionally with a path pattern) and retry if you need the full content again.",
+                "content_sha256": short_sha256(&rendered),
+                "note": "Identical to what you already received earlier this session — content not re-sent. If you no longer have that content in context (e.g. after compaction), do NOT guess: call delta_reset (optionally with a path pattern) and retry.",
                 "full_token_count": full_tokens,
                 "token_count": 50,
             })),
@@ -945,7 +1026,7 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Search code semantically using a natural language query. Spawns Claude CLI to identify relevant functions from the skeleton, then returns their bodies. Requires `claude` CLI to be installed and authenticated.")]
+    #[tool(description = "Search code semantically using a natural language query. EXPENSIVE AND NOT A GREP SUBSTITUTE: this spawns a separate `claude -p` CLI process, which is a billed model call of its own, adds seconds of latency, and gives non-deterministic results. Requires the `claude` CLI installed and authenticated. Prefer search_file (regex) or read_code_skeleton + read_code_body when you can name what you are looking for; reach for this only when the query is genuinely conceptual.")]
     async fn semantic_search(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1723,7 +1804,7 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Find unused symbols (functions, classes, structs) that are defined but never called across the workspace. Works across all tree-sitter supported languages without a compiler or LSP.")]
+    #[tool(description = "Find unused symbols (functions, classes, structs) that are defined but never called across the workspace. Works across all tree-sitter supported languages without a compiler or LSP. HEURISTIC name-based matching: trait/interface impls, dynamic dispatch and reflection targets can look unused, so each entry carries a `confidence` — confirm before deleting.")]
     async fn read_dead_code(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1762,7 +1843,7 @@ impl T0k3nServer {
         })
     }
 
-    #[tool(description = "Static security surface scan: finds potential injection vectors, XSS sinks, hardcoded secrets, unsafe code, and path traversal patterns across the codebase. No compiler needed. Categories: injection, xss, secrets, unsafe, path_traversal, all.")]
+    #[tool(description = "Static security surface scan: flags potential injection vectors, XSS sinks, hardcoded secrets, unsafe code, and path traversal patterns. HEURISTIC line-pattern matcher, not taint analysis — every finding carries `severity` (impact if real) AND `confidence` (how likely it is real); verify anything below high confidence by reading the code. Test code is skipped unless include_tests:true; pass min_confidence to cut noise. Categories: injection, xss, secrets, unsafe, path_traversal, all.")]
     async fn read_security_surface(
         &self,
         EffectiveRoot(root): EffectiveRoot,
@@ -1775,6 +1856,8 @@ impl T0k3nServer {
                 "total": result.total,
                 "by_category": result.by_category,
                 "by_severity": result.by_severity,
+                "by_confidence": result.by_confidence,
+                "note": result.note,
                 "token_count": result.token_count,
             }))
         })
@@ -1864,7 +1947,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<ReadTypeDiagnosticsParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "read_type_diagnostics", {
-            if !self.diagnostics_enabled {
+            if !self.config.diagnostics_enabled {
                 return ok_json(serde_json::json!({
                     "error": "read_type_diagnostics is disabled. Restart the server with --enable-diagnostics (or set T0K3N_ENABLE_DIAGNOSTICS=1) to use it.",
                     "token_count": 30,
@@ -2004,12 +2087,14 @@ impl T0k3nServer {
                 "ok": true,
                 "version": env!("CARGO_PKG_VERSION"),
                 "root": self.root.display().to_string(),
-                "root_configured": self.root_configured,
+                "root_configured": self.config.root_configured,
                 "db_status": db_status,
                 "tool_count": tools.len(),
                 "tools": tools,
-                "diagnostics_enabled": self.diagnostics_enabled,
-                "writes_enabled": self.writes_enabled,
+                "diagnostics_enabled": self.config.diagnostics_enabled,
+                "writes_enabled": self.config.writes_enabled,
+                "commands_enabled": self.config.commands_enabled,
+                "tool_categories": self.config.tool_categories,
                 "content_ledger_git_head": ledger_git_head,
                 "timestamp_unix": timestamp_unix,
                 "dashboard": self.dashboard.is_some(),
@@ -2021,8 +2106,13 @@ impl T0k3nServer {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for T0k3nServer {
     fn get_info(&self) -> ServerInfo {
-        let mut instructions = String::from(
-            "T0K3N-MCP is active (91 tools across 15 categories). Use t0k3n-mcp tools \
+        // Counts are computed, never hardcoded: a stale "91 tools" in the very
+        // instructions that tell the agent to trust this server erodes that trust.
+        let tool_count = self.tool_router.map.len();
+        let category_count = tools::help::catalog().len();
+        let mut instructions = format!(
+            "T0K3N-MCP is active ({tool_count} tools across {category_count} categories). \
+             Use t0k3n-mcp tools \
              instead of built-in Read/Grep/Glob for all file, web, code-analysis, and \
              memory operations.\n\
              \n\
@@ -2038,24 +2128,30 @@ impl ServerHandler for T0k3nServer {
              read_context_pack gathers ranked files + symbols + bodies in one call.\n\
              4. Combine multiple read operations into a single batch_read call — one round \
              trip and one response envelope instead of many.\n\
-             5. DISCOVER TOOLS WITH help — there are 91 and you will miss the best fit if you \
+             5. DISCOVER TOOLS WITH help — there are {tool_count} and you will miss the best \
+             fit if you \
              guess. Call help() for category names, help(\"<category>\") for that category's \
              tools, or help(\"all\") for the full catalog BEFORE falling back to a generic \
              read, search, or run_command. Categories: file / write / git / schema / web / \
              notebook / test / log / text / memory / task / session / analysis / cmd / debug.\n\
              6. EDITING: prefer surgical writes over rewriting files. patch_symbol (replace a \
              symbol) and rename_symbol are always available; create_file / insert_symbol / \
-             delete_symbol / apply_edits require the server to be started with --enable-writes \
-             (read-only by default). All support dry_run and return diffs/summaries only — \
+             delete_symbol / apply_edits are registered only when the server was started with \
+             --enable-writes. All support dry_run and return diffs/summaries only — \
              never resend a whole file you are editing.\n\
+             7. HEURISTIC RESULTS: read_security_surface, read_dead_code and read_complexity_map \
+             are pattern/AST heuristics, not compilers or taint analyzers. Findings from the \
+             first two carry a `confidence` field: verify anything below `high` by reading the \
+             code before reporting it as a real problem.\n\
              \n\
-             DELTA READS: repeat reads return {unchanged:true} stubs or unified diffs instead \
+             DELTA READS: repeat reads return {{unchanged:true}} stubs or unified diffs instead \
              of re-sending identical content. Trust them — the content equals what you already \
              received earlier this session (or, when labeled a cold cache, an unchanged file \
-             from a previous session). If that content is no longer in your context \
+             from a previous session). Each stub carries a `content_sha256` prefix so you can \
+             confirm you still hold the referenced content; if you no longer have it \
              (e.g. after compaction), call delta_reset and retry the read.",
         );
-        if !self.root_configured {
+        if !self.config.root_configured {
             instructions.push_str(
                 "\n\n\
                  NO WORKSPACE ROOT CONFIGURED: this server was started without --root \
@@ -2118,22 +2214,123 @@ impl ServerHandler for T0k3nServer {
 mod tests {
     use super::*;
 
+    /// Build a server rooted at `dir` with the default capability set, letting the
+    /// caller tweak just the flags under test.
+    fn test_server(dir: &std::path::Path, tweak: impl FnOnce(&mut ServerConfig)) -> T0k3nServer {
+        let mut config = ServerConfig {
+            root: dir.to_string_lossy().to_string(),
+            root_configured: true,
+            ..Default::default()
+        };
+        tweak(&mut config);
+        T0k3nServer::new(config, None)
+    }
+
     #[test]
     fn diagnostics_route_is_opt_in() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().to_string_lossy().to_string();
 
-        let off = T0k3nServer::new(root.clone(), None, false, false, true);
+        let off = test_server(tmp.path(), |_| {});
         assert!(
             !off.tool_router.map.contains_key("read_type_diagnostics"),
             "diagnostics tool must NOT be registered by default"
         );
 
-        let on = T0k3nServer::new(root, None, true, false, true);
+        let on = test_server(tmp.path(), |c| c.diagnostics_enabled = true);
         assert!(
             on.tool_router.map.contains_key("read_type_diagnostics"),
             "diagnostics tool must be registered with --enable-diagnostics"
         );
+    }
+
+    #[test]
+    fn command_tools_are_opt_out() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let on = test_server(tmp.path(), |_| {});
+        for t in COMMAND_TOOLS {
+            assert!(
+                on.tool_router.map.contains_key(*t),
+                "command tool {t} must be registered by default"
+            );
+        }
+
+        let off = test_server(tmp.path(), |c| c.commands_enabled = false);
+        for t in COMMAND_TOOLS {
+            assert!(
+                !off.tool_router.map.contains_key(*t),
+                "command tool {t} must NOT be registered with --disable-commands"
+            );
+        }
+    }
+
+    #[test]
+    fn tool_categories_trim_the_roster() {
+        let tmp = tempfile::tempdir().unwrap();
+        let full = test_server(tmp.path(), |_| {});
+        let trimmed = test_server(tmp.path(), |c| {
+            c.tool_categories = Some(vec!["git".to_string()]);
+        });
+
+        assert!(trimmed.tool_router.map.len() < full.tool_router.map.len());
+        assert!(trimmed.tool_router.map.contains_key("read_git_log"));
+        assert!(!trimmed.tool_router.map.contains_key("read_openapi"));
+        // Discovery and introspection must survive any profile.
+        for t in ALWAYS_KEEP_TOOLS {
+            assert!(
+                trimmed.tool_router.map.contains_key(*t),
+                "{t} must stay registered under a category profile"
+            );
+        }
+    }
+
+    #[test]
+    fn short_sha256_is_stable_and_short() {
+        assert_eq!(short_sha256("abc"), "ba7816bf8f01");
+        assert_eq!(short_sha256("abc").len(), 12);
+        assert_ne!(short_sha256("abc"), short_sha256("abd"));
+    }
+
+    #[test]
+    fn known_tool_categories_are_non_empty_and_lowercase() {
+        let cats = known_tool_categories();
+        assert!(cats.contains(&"git") && cats.contains(&"file"));
+        assert!(cats.iter().all(|c| c == &c.to_ascii_lowercase()));
+    }
+
+    #[test]
+    fn category_profile_still_honors_the_write_gate() {
+        let tmp = tempfile::tempdir().unwrap();
+        // "write" selects the write category, but the opt-in gate must still win.
+        let server = test_server(tmp.path(), |c| {
+            c.tool_categories = Some(vec!["write".to_string()]);
+        });
+        for t in WRITE_TOOLS {
+            assert!(
+                !server.tool_router.map.contains_key(*t),
+                "{t} must stay gated even when its category is selected"
+            );
+        }
+    }
+
+    /// The tool count is written by hand in the READMEs. It has drifted before, and a
+    /// wrong count in the file people read first is the cheapest kind of bug to prevent.
+    #[test]
+    fn readme_tool_counts_match_the_registry() {
+        let expected = REGISTERED_TOOLS.len();
+        for (file, heading) in [
+            ("README.md", format!("## Tools ({expected} tools)")),
+            ("README.ja.md", format!("## ツール一覧（{expected} ツール）")),
+        ] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(file);
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("could not read {file}: {e}"));
+            assert!(
+                text.contains(&heading),
+                "{file} must contain the heading {heading:?} — \
+                 REGISTERED_TOOLS has {expected} entries"
+            );
+        }
     }
 
     #[test]
@@ -2157,9 +2354,8 @@ mod tests {
     #[test]
     fn write_tools_are_opt_in() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path().to_string_lossy().to_string();
 
-        let off = T0k3nServer::new(root.clone(), None, false, false, true);
+        let off = test_server(tmp.path(), |_| {});
         for t in WRITE_TOOLS {
             assert!(
                 !off.tool_router.map.contains_key(*t),
@@ -2170,7 +2366,7 @@ mod tests {
         assert!(off.tool_router.map.contains_key("patch_symbol"));
         assert!(off.tool_router.map.contains_key("rename_symbol"));
 
-        let on = T0k3nServer::new(root, None, false, true, true);
+        let on = test_server(tmp.path(), |c| c.writes_enabled = true);
         for t in WRITE_TOOLS {
             assert!(
                 on.tool_router.map.contains_key(*t),
@@ -2201,7 +2397,7 @@ mod tests {
     #[test]
     fn check_budget_updates_zoom_status() {
         let tmp = tempfile::tempdir().unwrap();
-        let server = T0k3nServer::new(tmp.path().to_string_lossy().to_string(), None, false, false, true);
+        let server = test_server(tmp.path(), |_| {});
         // Before any check_budget call, auto falls back to body.
         assert_eq!(server.resolve_zoom(Some("auto")), "body");
         // Simulate a critical-budget check_budget result being recorded.

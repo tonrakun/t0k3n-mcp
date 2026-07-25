@@ -38,12 +38,30 @@ OPTIONS:
     --dashboard-port <port>   Dashboard port (default: 14123)
     --list-tools              Print all registered tool names and exit
     --refresh-parsers         Clear the tree-sitter parser cache on startup
-    --enable-diagnostics      Register the opt-in read_type_diagnostics tool
-                              (heavyweight: spawns cargo check/tsc/pyright/go vet;
-                              also enablable via T0K3N_ENABLE_DIAGNOSTICS=1)
-    --enable-writes           Register opt-in write tools (create_file, delete_symbol,
-                              insert_symbol, apply_edits). Read-only by default;
-                              also enablable via T0K3N_ENABLE_WRITES=1
+    --tools <categories>      Register only these help() categories, comma-separated
+                              (e.g. file,git,analysis). Every tool schema is carried by
+                              the client on every request, so a narrower roster saves
+                              tokens. help and debug_info are always kept.
+                              Also settable via T0K3N_TOOLS
+    --no-update-check         Do not contact GitHub for a newer release on startup
+                              (also via T0K3N_NO_UPDATE_CHECK=1)
+
+CAPABILITIES:
+    Reads are always on. The remaining capabilities are:
+
+    --enable-diagnostics      Register read_type_diagnostics (opt-in, default off).
+                              Heavyweight: spawns cargo check/tsc/pyright/go vet.
+                              Also via T0K3N_ENABLE_DIAGNOSTICS=1
+    --enable-writes           Register the structured write tools (create_file,
+                              delete_symbol, insert_symbol, apply_edits, ...).
+                              Opt-in, default off. Also via T0K3N_ENABLE_WRITES=1
+    --disable-commands        Unregister run_command. Opt-out: shell execution is ON
+                              by default. Also via T0K3N_DISABLE_COMMANDS=1
+
+    NOTE: with run_command registered the server is NOT read-only — anything
+    reachable from a shell is reachable. --enable-writes gates the structured write
+    tools; use --disable-commands as well for a genuinely read-only server.
+
     --version, -V             Print version and exit"
     );
 }
@@ -72,14 +90,36 @@ pub async fn upgrade() -> Result<()> {
     }
 
     let artifact = artifact_name()?;
-    let url =
-        format!("https://github.com/{GITHUB_REPO}/releases/download/v{latest}/{artifact}");
-    println!("Downloading {url}");
+    let base = format!("https://github.com/{GITHUB_REPO}/releases/download/v{latest}");
+    let url = format!("{base}/{artifact}");
 
     let client = reqwest::Client::builder()
         .user_agent(format!("t0k3n/{CURRENT_VERSION}"))
         .timeout(std::time::Duration::from_secs(300))
         .build()?;
+
+    // Fetch the checksum manifest *before* the binary: a release we cannot verify
+    // must not be written over the running executable.
+    let sums_url = format!("{base}/SHA256SUMS.txt");
+    let manifest = client
+        .get(&sums_url)
+        .send()
+        .await?
+        .error_for_status()
+        .with_context(|| {
+            format!(
+                "could not download the checksum manifest ({sums_url}). \
+                 Releases before v3.4.0 do not publish one; \
+                 install manually from the releases page instead."
+            )
+        })?
+        .text()
+        .await?;
+    let expected = expected_sha256(&manifest, &artifact).with_context(|| {
+        format!("SHA256SUMS.txt does not list {artifact} — refusing to install an unverified binary")
+    })?;
+
+    println!("Downloading {url}");
     let bytes = client
         .get(&url)
         .send()
@@ -94,7 +134,18 @@ pub async fn upgrade() -> Result<()> {
             bytes.len()
         );
     }
-    println!("Downloaded {:.1} MB", bytes.len() as f64 / (1024.0 * 1024.0));
+
+    let actual = sha256_hex(&bytes);
+    if actual != expected {
+        bail!(
+            "checksum mismatch for {artifact}\n  expected: {expected}\n  actual:   {actual}\n\
+             The download was corrupted or tampered with; nothing was installed."
+        );
+    }
+    println!(
+        "Downloaded {:.1} MB — sha256 verified",
+        bytes.len() as f64 / (1024.0 * 1024.0)
+    );
 
     let exe = std::env::current_exe().context("could not locate the running executable")?;
     replace_binary(&exe, &bytes)?;
@@ -120,6 +171,27 @@ fn artifact_name() -> Result<String> {
     };
     let ext = if cfg!(windows) { ".exe" } else { "" };
     Ok(format!("t0k3n-{os}-{arch}{ext}"))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    hex::encode(hasher.finalize())
+}
+
+/// Look up `artifact`'s digest in a `sha256sum`-style manifest
+/// (`<hex>  <filename>` per line, optionally with a `*` binary marker).
+fn expected_sha256(manifest: &str, artifact: &str) -> Option<String> {
+    manifest.lines().find_map(|line| {
+        let (digest, name) = line.split_once("  ").or_else(|| line.split_once(' '))?;
+        let name = name.trim().trim_start_matches('*');
+        let digest = digest.trim().to_ascii_lowercase();
+        // Reject anything that is not a plausible sha256 so a stray prose line
+        // in the manifest can never be mistaken for a valid digest.
+        let valid = digest.len() == 64 && digest.chars().all(|c| c.is_ascii_hexdigit());
+        (name == artifact && valid).then_some(digest)
+    })
 }
 
 fn replace_binary(target: &Path, bytes: &[u8]) -> Result<()> {
@@ -279,6 +351,35 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&config_path).unwrap()).unwrap();
         assert_eq!(json["mcpServers"]["other"]["command"], "x");
         assert!(json["mcpServers"]["t0k3n"]["command"].is_string());
+    }
+
+    #[test]
+    fn test_expected_sha256_parses_manifest() {
+        let digest = "a".repeat(64);
+        let manifest = format!(
+            "{digest}  t0k3n-linux-x86_64\n{}  t0k3n-windows-x86_64.exe\n",
+            "b".repeat(64)
+        );
+        assert_eq!(
+            expected_sha256(&manifest, "t0k3n-linux-x86_64"),
+            Some(digest)
+        );
+        assert_eq!(expected_sha256(&manifest, "t0k3n-macos-aarch64"), None);
+    }
+
+    #[test]
+    fn test_expected_sha256_rejects_non_digest_lines() {
+        // A prose line naming the artifact must never be accepted as a digest.
+        let manifest = "see the release notes for t0k3n-linux-x86_64\n";
+        assert_eq!(expected_sha256(manifest, "t0k3n-linux-x86_64"), None);
+    }
+
+    #[test]
+    fn test_sha256_hex_known_vector() {
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]

@@ -94,11 +94,21 @@ jobs:
         with:
           path: artifacts
 
+      # Flatten the per-artifact directories and publish a checksum manifest so
+      # `t0k3n upgrade` and the install scripts can verify what they downloaded.
+      - name: Collect artifacts and generate SHA256SUMS.txt
+        run: |
+          mkdir -p dist
+          find artifacts -type f -exec cp {} dist/ \;
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            artifacts/**/*
+            dist/*
             install.ps1
             install.sh
           generate_release_notes: true

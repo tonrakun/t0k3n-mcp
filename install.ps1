@@ -18,7 +18,8 @@ Get-ChildItem "$InstallDir\t0k3n*.old*", "$InstallDir\VERSION" -ErrorAction Sile
 }
 
 # Download
-$Url = "https://github.com/$Repo/releases/latest/download/$Artifact"
+$Base = "https://github.com/$Repo/releases/latest/download"
+$Url = "$Base/$Artifact"
 Write-Host "  $Url" -ForegroundColor DarkGray
 $TmpPath = "$BinPath.new"
 Invoke-WebRequest -Uri $Url -OutFile $TmpPath -UseBasicParsing
@@ -27,6 +28,28 @@ if ($size -lt 1MB) {
     Remove-Item -Force $TmpPath -ErrorAction SilentlyContinue
     throw "Downloaded file is too small ($size bytes) - not a valid binary"
 }
+
+# Verify against the published checksum manifest before putting it on PATH.
+try {
+    $Sums = (Invoke-WebRequest -Uri "$Base/SHA256SUMS.txt" -UseBasicParsing).Content
+} catch {
+    Remove-Item -Force $TmpPath -ErrorAction SilentlyContinue
+    throw "Could not download $Base/SHA256SUMS.txt - refusing to install an unverified binary"
+}
+$Expected = $Sums -split "`n" | ForEach-Object {
+    $parts = $_.Trim() -split '\s+', 2
+    if ($parts.Count -eq 2 -and $parts[1].TrimStart('*') -eq $Artifact) { $parts[0] }
+} | Select-Object -First 1
+if (-not $Expected) {
+    Remove-Item -Force $TmpPath -ErrorAction SilentlyContinue
+    throw "SHA256SUMS.txt does not list $Artifact - refusing to install an unverified binary"
+}
+$Actual = (Get-FileHash -Algorithm SHA256 $TmpPath).Hash.ToLower()
+if ($Actual -ne $Expected.ToLower()) {
+    Remove-Item -Force $TmpPath -ErrorAction SilentlyContinue
+    throw "Checksum mismatch for $Artifact`n  expected: $Expected`n  actual:   $Actual"
+}
+Write-Host "  sha256 verified" -ForegroundColor DarkGray
 
 # Swap: a running exe blocks deletion but allows renaming
 if (Test-Path $BinPath) {

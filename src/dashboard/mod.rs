@@ -5,8 +5,9 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use axum::{
     Router,
-    extract::{State, WebSocketUpgrade},
     extract::ws::{Message, WebSocket},
+    extract::{RawQuery, State, WebSocketUpgrade},
+    http::StatusCode,
     response::{Html, IntoResponse, Response},
     routing::get,
 };
@@ -49,6 +50,10 @@ pub enum UpdateKind {
 
 pub struct DashboardState {
     pub version: &'static str,
+    /// Per-process secret required on /api/* and /ws. The dashboard binds to
+    /// loopback, but on a shared machine every local user and process can still
+    /// reach it — and the call log contains file paths and shell commands.
+    pub token: String,
     start_instant: Instant,
     pub start_ms: u64,
     pub total_calls: AtomicUsize,
@@ -61,6 +66,38 @@ pub struct DashboardState {
     broadcast: broadcast::Sender<String>,
 }
 
+/// Per-process dashboard token. Not a cryptographic secret store: the goal is that
+/// another local process cannot *guess* the URL, mixing in the pid, a high-resolution
+/// timestamp and a heap address so it is not derivable from the clock alone.
+fn generate_token(now_ms: u64) -> String {
+    use sha2::{Digest, Sha256};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or_default();
+    let probe = Box::new(0u8);
+    let addr = &*probe as *const u8 as usize;
+    let mut hasher = Sha256::new();
+    hasher.update(now_ms.to_le_bytes());
+    hasher.update(nanos.to_le_bytes());
+    hasher.update(std::process::id().to_le_bytes());
+    hasher.update(addr.to_le_bytes());
+    hex::encode(hasher.finalize())[..32].to_string()
+}
+
+/// Constant-time-ish comparison so a rejected request does not leak the token
+/// prefix through timing. Both operands are fixed-length hex.
+fn token_matches(expected: &str, given: &str) -> bool {
+    if expected.len() != given.len() {
+        return false;
+    }
+    expected
+        .bytes()
+        .zip(given.bytes())
+        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+        == 0
+}
+
 impl DashboardState {
     pub fn new(version: &'static str) -> Arc<Self> {
         let (tx, _) = broadcast::channel(512);
@@ -70,6 +107,7 @@ impl DashboardState {
             .as_millis() as u64;
         Arc::new(Self {
             version,
+            token: generate_token(now_ms),
             start_instant: Instant::now(),
             start_ms: now_ms,
             total_calls: AtomicUsize::new(0),
@@ -222,7 +260,42 @@ async fn fetch_releases() -> Vec<ReleaseNote> {
         .collect()
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokens_differ_between_states() {
+        let a = DashboardState::new("test");
+        let b = DashboardState::new("test");
+        assert_eq!(a.token.len(), 32);
+        assert_ne!(a.token, b.token, "each process/state needs its own token");
+    }
+
+    #[test]
+    fn authorize_requires_the_exact_token() {
+        let state = DashboardState::new("test");
+        let token = state.token.clone();
+        assert!(authorize(&state, &format!("t={token}")));
+        assert!(authorize(&state, &format!("foo=1&t={token}")));
+        assert!(!authorize(&state, ""));
+        assert!(!authorize(&state, "t="));
+        assert!(!authorize(&state, "t=wrong"));
+        // A correct prefix must not pass.
+        assert!(!authorize(&state, &format!("t={}", &token[..16])));
+    }
+
+    #[test]
+    fn dashboard_url_embeds_the_token() {
+        assert_eq!(
+            dashboard_url(14123, "abc"),
+            "http://127.0.0.1:14123/?t=abc"
+        );
+    }
+}
+
 pub async fn run(state: Arc<DashboardState>, port: u16) {
+    let url = dashboard_url(port, &state.token);
     let app = Router::new()
         .route("/", get(serve_html))
         .route("/ws", get(ws_handler))
@@ -238,26 +311,65 @@ pub async fn run(state: Arc<DashboardState>, port: u16) {
             return;
         }
     };
-    tracing::info!("Dashboard: http://127.0.0.1:{port}");
+    tracing::info!("Dashboard: {url}");
     axum::serve(listener, app).await.ok();
 }
 
+/// The only URL that can read the call log — the token is part of it.
+pub fn dashboard_url(port: u16, token: &str) -> String {
+    format!("http://127.0.0.1:{port}/?t={token}")
+}
+
+/// The page itself carries no data; it reads the token from its own query string
+/// and forwards it to the endpoints that do.
 async fn serve_html() -> Html<&'static str> {
     Html(DASHBOARD_HTML)
 }
 
-async fn api_state(State(state): State<Arc<DashboardState>>) -> impl IntoResponse {
-    axum::Json(state.snapshot().await)
+/// Reject a data request whose `t` query parameter does not match this process's token.
+fn authorize(state: &DashboardState, query: &str) -> bool {
+    query
+        .split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .any(|(k, v)| k == "t" && token_matches(&state.token, v))
 }
 
-async fn api_releases() -> impl IntoResponse {
-    axum::Json(fetch_releases().await)
+async fn api_state(
+    State(state): State<Arc<DashboardState>>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    if !authorize(&state, query.as_deref().unwrap_or("")) {
+        return unauthorized();
+    }
+    axum::Json(state.snapshot().await).into_response()
+}
+
+async fn api_releases(
+    State(state): State<Arc<DashboardState>>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    if !authorize(&state, query.as_deref().unwrap_or("")) {
+        return unauthorized();
+    }
+    axum::Json(fetch_releases().await).into_response()
+}
+
+fn unauthorized() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        "Missing or invalid dashboard token. Open the URL printed at startup.",
+    )
+        .into_response()
 }
 
 async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<DashboardState>>,
+    RawQuery(query): RawQuery,
 ) -> Response {
+    if !authorize(&state, query.as_deref().unwrap_or("")) {
+        return unauthorized();
+    }
     ws.on_upgrade(|socket| ws_conn(socket, state))
 }
 

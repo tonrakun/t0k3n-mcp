@@ -1953,6 +1953,97 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
 
 ---
 
+### Phase 19 — 供給網・境界・出力精度の健全化 v3.4+
+
+機能追加が Phase 18 まで積み上がった一方で、リリース経路・サンドボックス境界・
+解析出力の精度といった「土台」が追いついていなかった。批判的レビューで洗い出した
+以下の項目をまとめて解消する。
+
+**CI / リリース**
+
+- [x] `.github/workflows/ci.yml` を新設。push（main）/ PR / 手動で `cargo test`（3 OS）＋
+  `cargo fmt --check`＋`cargo clippy --all-targets -D warnings`（ubuntu のみ）を実行。
+  `cargo audit` は別ジョブで `continue-on-error`（上流 advisory で PR を止めないため可視化のみ）。
+  従来は `release.yml` しか無く、テストがゲートされないままタグでバイナリが配布されていた
+- [x] リポジトリ全体を `cargo fmt` で正規化（760 差分ハンク）。巻き戻し用に
+  `.git-blame-ignore-revs` を追加し、`git blame` が整形コミットを飛ばせるようにした
+- [x] `release.yml` に `SHA256SUMS.txt` 生成ステップを追加（アーティファクトを `dist/` に
+  フラット化して `sha256sum *`）。リリース資産として公開
+- [x] `t0k3n upgrade` に SHA256 検証を追加。バイナリより**先に**マニフェストを取得し、
+  該当アーティファクトの記載が無い／ダイジェスト不一致ならインストールを拒否
+  （`expected_sha256` は 64 桁 hex 以外の行を弾く。従来は「1MB 以上か」しか見ていなかった）
+- [x] `install.sh` / `install.ps1` にも同じマニフェスト検証を追加（`sha256sum`/`shasum`/`Get-FileHash`）
+
+**ケイパビリティモデルの一貫化**
+
+- [x] `ServerConfig` 構造体を導入し `T0k3nServer::new(config, dashboard)` に集約
+  （引数 7 個化と `clippy::too_many_arguments` を回避、以後の追加で全呼び出し側を触らない）
+- [x] `run_command` を `COMMAND_TOOLS` としてオプトアウト化（`--disable-commands` /
+  `T0K3N_DISABLE_COMMANDS=1`）。デフォルト有効なので後方互換。これにより
+  「読み取り＝常時／シェル＝既定有効・除去可／構造化書き込み＝既定無効・追加可／型診断＝既定無効・追加可」
+  という 4 段のケイパビリティが揃った
+- [x] 「`--enable-writes` を付けなければ読み取り専用」という**誤った説明を全面撤回**。
+  `run_command` が登録されている間はシェル経由で何でも書けるため、ゲートが守るのは
+  ツール表面とスキーマ量であってマシンではない旨を `print_help` / `get_info` /
+  README 両言語に明記
+- [x] `--no-update-check` / `T0K3N_NO_UPDATE_CHECK=1` を追加。起動時のリリース確認は
+  サーバーが自発的に行う唯一の外向き通信であり、閉域・監査環境では無効化手段が必要
+
+**トークン削減の自己矛盾の解消**
+
+- [x] `--tools <categories>` / `T0K3N_TOOLS` を追加。`help()` カタログのカテゴリ単位で
+  登録ツールを絞る。ツールスキーマはクライアントが毎リクエスト運搬するため、
+  ツールを減らすこと自体がトークン削減になる（91 ツール分のスキーマが常時コストだった）。
+  未知カテゴリは起動時に exit 2 で拒否、`help`/`debug_info` は常に残す（`ALWAYS_KEEP_TOOLS`）。
+  カテゴリ名は `help()` カタログから導出するので定義がドリフトしない
+- [x] `get_info` instructions のツール数・カテゴリ数を実行時計算に変更（`91` のハードコードを撤去）。
+  「サーバーを信頼せよ」と書いてある文章自体が陳腐化するのを防ぐ
+- [x] README のツール数見出しが `REGISTERED_TOOLS.len()` と一致することを検証する
+  `readme_tool_counts_match_the_registry` テストを追加（help カタログの staleness テストと同趣旨）
+
+**サンドボックス境界**
+
+- [x] `safe_path_or_absolute` の「絶対パスは無条件許可」を撤回。`convert_document` が
+  システム一時ディレクトリに書く `t0k3n-*` スクラッチファイル（親ディレクトリを
+  canonicalize 比較、`..` を含むパスは拒否）のみを例外とし、それ以外の絶対パスは
+  root 内解決を要求。`SecurityError::AbsoluteNotAllowed` を追加して理由を明示。
+  従来は `read_markdown_toc`/`read_markdown_section` だけが root 外を読める非対称だった
+
+**解析出力の精度（誤検知）**
+
+- [x] `read_security_surface` に `confidence`（実際に問題である確度）を追加し、
+  `severity`（実際に問題だった場合の影響）と役割を分離。ルール表を `rule!` マクロ化して
+  全 54 ルールに付与。`confidence` 降順→`severity` 降順でソートし、`min_confidence`
+  パラメータで低信号を切れるようにした。結果に `by_confidence` と恒久 `note`（ヒューリスティックである旨）を追加
+- [x] 文字列リテラル内マッチの抑制。`(`/`=`/`::` を含む「コードとしてのみ意味を持つ」
+  パターンが引用符内に**しか**現れない行は、パターンが*使われている*のではなく
+  *名前として書かれている*（ルール表・エラーメッセージ）と判定して除外。
+  `../` や `-----BEGIN` のような内容パターンは対象外（リテラル内にあるのが正常）。
+  自プロジェクトをスキャンした際に `security_surface.rs` 自身のルール定義が
+  high severity として 10 件報告される、という自己言及的な誤検知を解消
+- [x] テストコードの除外（既定）。Rust の `#[cfg(test)]` 以降を打ち切り、
+  `tests`/`__tests__`/`spec`/`fixtures`/`testdata` セグメントや `*_test.go`/`*.spec.ts` 等の
+  パスをスキップ。`include_tests: true` で従来動作。テストフィクスチャは誤検知の最大要因
+- [x] `read_dead_code` / `read_security_surface` のツール説明に「ヒューリスティックであり
+  `confidence` を確認してから報告せよ」を明記し、`get_info` instructions にルール 7 として追加
+
+**その他**
+
+- [x] デルタリードの `unchanged` スタブに `content_sha256`（12 桁）を追加。
+  コンテキスト圧縮で内容を失ったエージェントが「変わっていない」を検証できないという
+  静かな失敗モードに対する自己照合手段。note も「推測するな、`delta_reset` を呼べ」に強化
+- [x] ダッシュボードにプロセスごとのアクセストークンを導入。`/api/*` と `/ws` は
+  クエリ `t=<token>` を要求（比較は定数時間寄り）。トークンは起動時ログの URL と
+  `--open-browser` の URL に含まれ、HTML 側は `location.search` から引き継ぐ。
+  ループバックバインドだけでは同一マシンの他ユーザー／他プロセスから
+  呼び出しログ（パス・シェルコマンド）を隠せないため
+- [x] `semantic_search` のツール説明に「別プロセスの `claude -p` を起動する = それ自体が
+  課金対象のモデル呼び出しであり、レイテンシと非決定性を伴う。grep の代替ではない」を明記
+- [x] `serde_yaml` 0.9（アーカイブ済み）を維持フォーク `serde_yaml_ng` 0.10 へ移行。
+  Cargo のパッケージリネームでエイリアスし、20 箇所の呼び出し側は無変更
+
+---
+
 ## 6. 決定事項
 
 | # | 内容 | 決定 |

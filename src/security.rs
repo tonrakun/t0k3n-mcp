@@ -8,6 +8,10 @@ pub enum SecurityError {
     PathTraversal(String),
     #[error("Symlink '{0}' points outside the workspace root")]
     SymlinkEscape(String),
+    #[error(
+        "Absolute path '{0}' is neither inside the workspace root nor a t0k3n temporary file"
+    )]
+    AbsoluteNotAllowed(String),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -81,14 +85,51 @@ pub fn rel_display(root: &Path, path: &Path) -> String {
     stripped.to_string_lossy().replace('\\', "/")
 }
 
-/// Like `safe_path` but allows absolute paths anywhere (for tmp files from convert_document).
+/// Like `safe_path`, plus one narrow exception: the `t0k3n-*.md` scratch files that
+/// `convert_document` writes into the system temp directory. Everything else absolute
+/// must still resolve inside `root`.
+///
+/// The exception used to be "any absolute path", which quietly made these tools the
+/// one hole in the workspace sandbox.
 pub fn safe_path_or_absolute(root: &Path, user_path: &str) -> Result<PathBuf, SecurityError> {
     let p = Path::new(user_path);
-    if p.is_absolute() {
-        // Allow absolute paths (e.g., /tmp/t0k3n-*.md from convert_document)
+    if p.is_absolute() && !p.starts_with(root) && is_t0k3n_temp_file(p) {
         return Ok(p.to_path_buf());
     }
-    safe_path(root, user_path)
+    safe_path(root, user_path).map_err(|e| match e {
+        // Report the real reason for an absolute path that missed both allowances.
+        SecurityError::OutsideRoot(_) if p.is_absolute() => {
+            SecurityError::AbsoluteNotAllowed(user_path.to_string())
+        }
+        other => other,
+    })
+}
+
+/// True for a `t0k3n-*` scratch file directly inside the system temp directory —
+/// the only absolute location `safe_path_or_absolute` will step outside root for.
+/// `..` is rejected first so `/tmp/../etc/passwd` cannot pose as a temp file.
+fn is_t0k3n_temp_file(path: &Path) -> bool {
+    let Some(normalized) = normalize_path_checked(path) else {
+        return false;
+    };
+    if normalized != path {
+        return false;
+    }
+    let temp = std::env::temp_dir();
+    // Compare canonicalized temp roots where possible: on macOS /tmp and
+    // /private/tmp name the same directory.
+    let temp_canon = temp.canonicalize().unwrap_or_else(|_| temp.clone());
+    let parent_canon = match normalized.parent() {
+        Some(p) => p.canonicalize().unwrap_or_else(|_| p.to_path_buf()),
+        None => return false,
+    };
+    if parent_canon != temp_canon {
+        return false;
+    }
+    normalized
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with("t0k3n-"))
 }
 
 /// Normalize a path without hitting the filesystem (resolve `.` and `..`).
@@ -166,6 +207,42 @@ mod tests {
         let root = Path::new(".");
         let canonical = safe_path(root, "src/main.rs").unwrap();
         assert_eq!(rel_display(root, &canonical), "src/main.rs");
+    }
+
+    #[test]
+    fn safe_path_or_absolute_allows_only_t0k3n_temp_files() {
+        let root = tempfile::tempdir().unwrap();
+        let temp = std::env::temp_dir();
+
+        // The convert_document scratch file is allowed.
+        let allowed = temp.join("t0k3n-abc123.md");
+        assert!(
+            safe_path_or_absolute(root.path(), allowed.to_str().unwrap()).is_ok(),
+            "t0k3n-* temp files must stay readable"
+        );
+
+        // An unrelated file in the same temp dir is not.
+        let other = temp.join("someone-elses-secret.md");
+        assert!(safe_path_or_absolute(root.path(), other.to_str().unwrap()).is_err());
+
+        // An arbitrary absolute path outside root is not.
+        #[cfg(windows)]
+        let outside = "C:\\Windows\\System32\\drivers\\etc\\hosts";
+        #[cfg(not(windows))]
+        let outside = "/etc/passwd";
+        assert!(safe_path_or_absolute(root.path(), outside).is_err());
+
+        // Traversal dressed up as a temp path is not.
+        let traversal = temp.join("..").join("t0k3n-evil.md");
+        assert!(safe_path_or_absolute(root.path(), traversal.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn safe_path_or_absolute_still_accepts_paths_inside_root() {
+        let root = tempfile::tempdir().unwrap();
+        let inside = root.path().join("doc.md");
+        assert!(safe_path_or_absolute(root.path(), inside.to_str().unwrap()).is_ok());
+        assert!(safe_path_or_absolute(root.path(), "doc.md").is_ok());
     }
 
     #[test]

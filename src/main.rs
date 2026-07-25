@@ -96,12 +96,54 @@ async fn main() -> Result<()> {
             .map(|v| v != "0" && !v.is_empty())
             .unwrap_or(false);
 
-    // Mutating write tools (create_file / delete_symbol / insert_symbol / apply_edits)
-    // are opt-in: read-only by default, enabled only with --enable-writes.
+    // Structured write tools are opt-in. Note this gates the *tools*, not the
+    // machine: run_command still exposes a shell unless --disable-commands is given.
     let writes_enabled = args.iter().any(|a| a == "--enable-writes")
         || std::env::var("T0K3N_ENABLE_WRITES")
             .map(|v| v != "0" && !v.is_empty())
             .unwrap_or(false);
+
+    // Shell execution is opt-out (on by default) so existing setups keep working.
+    let commands_enabled = !(args.iter().any(|a| a == "--disable-commands")
+        || std::env::var("T0K3N_DISABLE_COMMANDS")
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false));
+
+    // --tools <cat,cat,...> trims the registered roster. Every tool schema is
+    // carried by the client on every request, so a narrower roster is itself a
+    // token saving for focused sessions.
+    let tool_categories = args
+        .windows(2)
+        .find(|w| w[0] == "--tools")
+        .map(|w| {
+            w[1].split(',')
+                .map(|s| s.trim().to_ascii_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<String>>()
+        })
+        .or_else(|| {
+            std::env::var("T0K3N_TOOLS").ok().map(|v| {
+                v.split(',')
+                    .map(|s| s.trim().to_ascii_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+        })
+        .filter(|v: &Vec<String>| !v.is_empty());
+
+    if let Some(cats) = &tool_categories {
+        let known = server::known_tool_categories();
+        let unknown: Vec<&String> = cats.iter().filter(|c| !known.contains(&c.as_str())).collect();
+        if !unknown.is_empty() {
+            eprintln!(
+                "Unknown --tools categor{}: {}\nAvailable: {}",
+                if unknown.len() == 1 { "y" } else { "ies" },
+                unknown.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "),
+                known.join(", ")
+            );
+            std::process::exit(2);
+        }
+    }
 
     let no_dashboard = args.iter().any(|a| a == "--no-dashboard");
     let open_browser = args.iter().any(|a| a == "--open-browser");
@@ -132,7 +174,7 @@ async fn main() -> Result<()> {
         tokio::spawn(async move { dashboard::run(state_clone, port).await });
 
         if open_browser {
-            let url = format!("http://127.0.0.1:{port}");
+            let url = dashboard::dashboard_url(port, &state.token);
             if let Err(e) = open::that_detached(&url) {
                 tracing::debug!("Could not open browser: {e}");
             }
@@ -142,7 +184,17 @@ async fn main() -> Result<()> {
     };
 
     // ── Update check ───────────────────────────────────────────
-    update::spawn_update_check(dashboard.clone());
+    // Opt-out: this is the server's only unsolicited outbound request, and
+    // air-gapped or audited environments need to be able to switch it off.
+    let no_update_check = args.iter().any(|a| a == "--no-update-check")
+        || std::env::var("T0K3N_NO_UPDATE_CHECK")
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false);
+    if no_update_check {
+        tracing::info!("Update check disabled (--no-update-check)");
+    } else {
+        update::spawn_update_check(dashboard.clone());
+    }
 
     // ── Language detection ─────────────────────────────────────
     let root_path = std::path::Path::new(&root);
@@ -159,8 +211,17 @@ async fn main() -> Result<()> {
 
     // ── MCP server ─────────────────────────────────────────────
     let transport = stdio();
-    let server =
-        server::T0k3nServer::new(root, dashboard, diagnostics_enabled, writes_enabled, root_configured);
+    let server = server::T0k3nServer::new(
+        server::ServerConfig {
+            root,
+            root_configured,
+            diagnostics_enabled,
+            writes_enabled,
+            commands_enabled,
+            tool_categories,
+        },
+        dashboard,
+    );
     let service = server.serve(transport).await.inspect_err(|e| {
         tracing::error!("Server error: {}", e);
     })?;

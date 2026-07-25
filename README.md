@@ -143,8 +143,42 @@ This writes (or merges into) `.mcp.json`:
 | `--dashboard-port <port>` | Dashboard port (default: 14123) |
 | `--list-tools` | Print all registered tool names and exit |
 | `--refresh-parsers` | Clear the tree-sitter parser cache on startup |
+| `--tools <categories>` | Register only these `help()` categories, comma-separated (or `T0K3N_TOOLS`). See below |
+| `--no-update-check` | Do not contact GitHub for a newer release on startup (or `T0K3N_NO_UPDATE_CHECK=1`) |
 | `--enable-diagnostics` | Register the opt-in `read_type_diagnostics` tool (or `T0K3N_ENABLE_DIAGNOSTICS=1`) |
-| `--enable-writes` | Register the opt-in write tools — `create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` / `set_config_value` / `manage_imports` / `format_code` / `move_symbol` / `edit_checkpoint` / `rollback` / `write_markdown_section` (or `T0K3N_ENABLE_WRITES=1`). Read-only by default |
+| `--enable-writes` | Register the opt-in write tools — `create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` / `set_config_value` / `manage_imports` / `format_code` / `move_symbol` / `edit_checkpoint` / `rollback` / `write_markdown_section` (or `T0K3N_ENABLE_WRITES=1`). Off by default |
+| `--disable-commands` | Unregister `run_command` (or `T0K3N_DISABLE_COMMANDS=1`). Shell execution is **on** by default |
+
+### Capabilities
+
+Reads are always available. Everything else is an explicit capability:
+
+| Capability | Default | Switch |
+|------------|---------|--------|
+| Reads (structure, git, schema, analysis, web, memory) | on | — |
+| Shell execution (`run_command`) | **on** | `--disable-commands` to remove |
+| Structured writes (`create_file`, `apply_edits`, …) | off | `--enable-writes` to add |
+| Type diagnostics (`read_type_diagnostics`) | off | `--enable-diagnostics` to add |
+
+> **`--enable-writes` is not what makes the server safe.** While `run_command` is
+> registered, the agent has a shell, and anything reachable from a shell is reachable —
+> including writing files. The write gate limits the *structured* write tools and the
+> tool-schema payload, not the machine. For a genuinely read-only server, pass
+> `--disable-commands` as well.
+
+### Trimming the tool roster
+
+Every registered tool's JSON schema is carried by the MCP client on **every** request, so a
+narrower roster is itself a token saving. `--tools file,git,analysis` registers only those
+categories (`help` and `debug_info` are always kept):
+
+```jsonc
+"args": ["--root", "/path/to/project", "--tools", "file,git,analysis"]
+```
+
+Categories: `file` `write` `git` `schema` `web` `notebook` `test` `log` `text` `memory`
+`task` `session` `analysis` `cmd` `debug`. Capability gates still apply on top — selecting
+`write` without `--enable-writes` registers nothing extra.
 
 ### Running without a configured root
 
@@ -280,7 +314,9 @@ The cross-tool content ledger is persisted to `.t0k3n/content_ledger.json` and s
 
 ## Write tools (Phase 14–15, 18, opt-in)
 
-T0K3N-MCP is read-first. Mutating tools are **off by default** and only registered with `--enable-writes` (or `T0K3N_ENABLE_WRITES=1`), so the server is safe to point at any repo until you opt in. They share the house rules: `dry_run` preview, stale-line guards, CRLF/newline preservation, and diff/summary-only output (never the full file body). (`patch_symbol` and `rename_symbol` predate the gate and stay always-on.)
+T0K3N-MCP is read-first. The structured write tools are **off by default** and only registered with `--enable-writes` (or `T0K3N_ENABLE_WRITES=1`). They share the house rules: `dry_run` preview, stale-line guards, CRLF/newline preservation, and diff/summary-only output (never the full file body). (`patch_symbol` and `rename_symbol` predate the gate and stay always-on.)
+
+Note that this gate covers the *tools*, not the filesystem: `run_command` is registered by default and can write anything a shell can. Add `--disable-commands` if you need the server itself to be read-only — see [Capabilities](#capabilities).
 
 | Tool | Description |
 |------|-------------|
@@ -319,9 +355,38 @@ Parsers are statically bundled at build time — no runtime downloads. New langu
 
 ## Security
 
+**Workspace sandbox**
+
 - All path resolution outside `--root` is blocked (path traversal protection)
 - Symlink escapes beyond root are blocked
+- The one absolute-path exception is the `t0k3n-*` scratch file `convert_document` writes
+  into the system temp directory, which `read_markdown_toc` / `read_markdown_section` may
+  read back. Any other absolute path must resolve inside the root
 - Only web tools (`fetch_webpage`) target URLs outside root by design
+
+**What the sandbox does not cover**
+
+`run_command` executes arbitrary shell commands and is registered by default; the path
+sandbox does not constrain what a shell does. Use `--disable-commands` when that matters.
+
+**Release integrity**
+
+Every release publishes `SHA256SUMS.txt`. `t0k3n upgrade` and both install scripts fetch it
+first and refuse to install a binary whose digest does not match.
+
+**Dashboard**
+
+The dashboard binds to `127.0.0.1` only, and its data endpoints (`/api/*`, `/ws`) require a
+per-process token that appears in the URL logged at startup — the call log contains file
+paths and shell commands, and loopback alone does not isolate it from other local users.
+Use `--no-dashboard` to switch it off entirely.
+
+**Outbound network**
+
+The server's only unsolicited outbound request is the startup release check; disable it with
+`--no-update-check`. `fetch_webpage` / `convert_document` / `read_dependency_audit` reach the
+network only when called. `semantic_search` spawns a separate `claude` CLI process, which is
+a billed model call of its own.
 
 ---
 

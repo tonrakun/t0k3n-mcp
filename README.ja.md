@@ -151,8 +151,40 @@ t0k3n setup
 | `--dashboard-port <port>` | ダッシュボードのポート番号（デフォルト: 14123） |
 | `--list-tools` | 登録済みツール一覧を表示して終了 |
 | `--refresh-parsers` | 起動時に tree-sitter パーサーキャッシュをクリア |
+| `--tools <categories>` | 指定した `help()` カテゴリのツールのみ登録（カンマ区切り、`T0K3N_TOOLS` でも可）。詳細は下記 |
+| `--no-update-check` | 起動時の GitHub への新バージョン確認を行わない（`T0K3N_NO_UPDATE_CHECK=1` でも可） |
 | `--enable-diagnostics` | オプトインの `read_type_diagnostics` を登録（`T0K3N_ENABLE_DIAGNOSTICS=1` でも可） |
-| `--enable-writes` | オプトインの書き込みツール（`create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` / `set_config_value` / `manage_imports` / `format_code` / `move_symbol` / `edit_checkpoint` / `rollback` / `write_markdown_section`）を登録（`T0K3N_ENABLE_WRITES=1` でも可）。デフォルトは読み取り専用 |
+| `--enable-writes` | オプトインの書き込みツール（`create_file` / `delete_symbol` / `insert_symbol` / `apply_edits` / `set_config_value` / `manage_imports` / `format_code` / `move_symbol` / `edit_checkpoint` / `rollback` / `write_markdown_section`）を登録（`T0K3N_ENABLE_WRITES=1` でも可）。デフォルト無効 |
+| `--disable-commands` | `run_command` を登録解除（`T0K3N_DISABLE_COMMANDS=1` でも可）。シェル実行はデフォルト**有効** |
+
+### ケイパビリティ
+
+読み取りは常に利用可能。それ以外は明示的なケイパビリティとして扱う。
+
+| ケイパビリティ | デフォルト | 切り替え |
+|----------------|------------|----------|
+| 読み取り（構造・git・スキーマ・解析・Web・メモリー） | 有効 | — |
+| シェル実行（`run_command`） | **有効** | `--disable-commands` で除去 |
+| 構造化書き込み（`create_file`・`apply_edits` など） | 無効 | `--enable-writes` で追加 |
+| 型診断（`read_type_diagnostics`） | 無効 | `--enable-diagnostics` で追加 |
+
+> **`--enable-writes` はサーバーを安全にするための機構ではない。** `run_command` が登録されている間、
+> エージェントはシェルを持っており、シェルから到達できることは全て到達できる（ファイル書き込みを含む）。
+> 書き込みゲートが制限するのは*構造化された*書き込みツールとツールスキーマの量であって、マシンそのものではない。
+> 本当に読み取り専用にしたい場合は `--disable-commands` も併せて指定すること。
+
+### ツール数を絞る
+
+登録済みツールの JSON スキーマは、MCP クライアントが**毎リクエスト**で運搬する。つまりツールを絞ること自体が
+トークン削減になる。`--tools file,git,analysis` で該当カテゴリのみを登録する（`help` と `debug_info` は常に残る）:
+
+```jsonc
+"args": ["--root", "/path/to/project", "--tools", "file,git,analysis"]
+```
+
+カテゴリ: `file` `write` `git` `schema` `web` `notebook` `test` `log` `text` `memory`
+`task` `session` `analysis` `cmd` `debug`。ケイパビリティのゲートは上位で適用されるため、
+`--enable-writes` なしで `write` を選んでも書き込みツールは登録されない。
 
 ### root 未設定で動かす場合
 
@@ -379,7 +411,9 @@ t0k3n setup
 
 ## 書き込みツール（Phase 14–15・18・オプトイン）
 
-T0K3N-MCP は読み取り優先。ソースを変更するツールは**デフォルト無効**で、`--enable-writes`（または `T0K3N_ENABLE_WRITES=1`）でのみ登録される。オプトインするまでは任意のリポジトリに安全に向けられる。共通ルール: `dry_run` プレビュー・行番号陳腐化ガード・CRLF/末尾改行保持・出力は diff/サマリのみ（全文を返さない）。（`patch_symbol`・`rename_symbol` はゲート以前からあり常時有効）
+T0K3N-MCP は読み取り優先。構造化された書き込みツールは**デフォルト無効**で、`--enable-writes`（または `T0K3N_ENABLE_WRITES=1`）でのみ登録される。共通ルール: `dry_run` プレビュー・行番号陳腐化ガード・CRLF/末尾改行保持・出力は diff/サマリのみ（全文を返さない）。（`patch_symbol`・`rename_symbol` はゲート以前からあり常時有効）
+
+このゲートが覆うのは*ツール*であってファイルシステムではない。`run_command` はデフォルトで登録されており、シェルでできる書き込みは全て可能。サーバー自体を読み取り専用にしたい場合は `--disable-commands` を併用すること（[ケイパビリティ](#ケイパビリティ)参照）。
 
 | ツール | 説明 |
 |------|-------------|
@@ -422,9 +456,37 @@ T0K3N-MCP は読み取り優先。ソースを変更するツールは**デフ�
 
 ## セキュリティ
 
+**ワークスペースサンドボックス**
+
 - `--root` 外へのパス解決を全ブロック（パストラバーサル対策）
 - シンボリックリンクによる root 外エスケープをブロック
+- 絶対パスの例外は `convert_document` がシステム一時ディレクトリに書く `t0k3n-*` スクラッチファイル
+  1 種のみ（`read_markdown_toc` / `read_markdown_section` が読み戻すため）。それ以外の絶対パスは
+  root 内に解決される必要がある
 - Web ツール（`fetch_webpage`）のみ root 外 URL を対象（設計上）
+
+**サンドボックスの対象外**
+
+`run_command` は任意のシェルコマンドを実行し、デフォルトで登録されている。パスサンドボックスは
+シェルの挙動を制約しない。これが問題になる場合は `--disable-commands` を使うこと。
+
+**リリースの完全性**
+
+各リリースは `SHA256SUMS.txt` を公開する。`t0k3n upgrade` と両インストールスクリプトは
+バイナリより先にこれを取得し、ダイジェストが一致しない場合はインストールを拒否する。
+
+**ダッシュボード**
+
+ダッシュボードは `127.0.0.1` にのみバインドし、データエンドポイント（`/api/*`・`/ws`）は
+起動時にログ出力される URL に含まれるプロセスごとのトークンを要求する。呼び出しログには
+ファイルパスやシェルコマンドが含まれ、ループバックだけでは同一マシンの他ユーザーから隔離できないため。
+完全に無効化するには `--no-dashboard`。
+
+**外向き通信**
+
+サーバーが自発的に行う外向きリクエストは起動時のリリース確認のみで、`--no-update-check` で無効化できる。
+`fetch_webpage` / `convert_document` / `read_dependency_audit` は呼び出された時のみ通信する。
+`semantic_search` は別プロセスとして `claude` CLI を起動するため、それ自体が課金対象のモデル呼び出しになる。
 
 ---
 

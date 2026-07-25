@@ -490,9 +490,15 @@
     }).join('');
   }
 
+  // The startup URL carries ?t=<token>; every data endpoint requires it.
+  const AUTH_QS = (() => {
+    const t = new URLSearchParams(location.search).get('t');
+    return t ? '?t=' + encodeURIComponent(t) : '';
+  })();
+
   async function loadReleases() {
     try {
-      const res = await fetch('/api/releases');
+      const res = await fetch('/api/releases' + AUTH_QS);
       renderReleases(await res.json());
     } catch {
       $('release-list').innerHTML =
@@ -504,7 +510,7 @@
   let ws, retryTimer;
 
   function connect() {
-    ws = new WebSocket('ws://' + location.host + '/ws');
+    ws = new WebSocket('ws://' + location.host + '/ws' + AUTH_QS);
 
     ws.onopen = () => {
       clearTimeout(retryTimer);

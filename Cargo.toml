@@ -1,6 +1,6 @@
 [package]
 name = "t0k3n-mcp"
-version = "3.3.2"
+version = "3.4.0"
 edition = "2024"
 description = "Token-saving MCP server for AI coding tools"
 license = "MIT"
@@ -20,7 +20,9 @@ tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 schemars = "1"
-serde_yaml = "0.9"
+# dtolnay archived serde_yaml 0.9; serde_yaml_ng is the maintained fork with the
+# same API, aliased so call sites stay unchanged.
+serde_yaml = { package = "serde_yaml_ng", version = "0.10" }
 toml = { version = "0.8", features = ["parse"] }
 
 # Error handling

@@ -19,7 +19,9 @@ case "$(uname -m)" in
   *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
-URL="https://github.com/${REPO}/releases/latest/download/t0k3n-${OS_NAME}-${ARCH_NAME}"
+ARTIFACT="t0k3n-${OS_NAME}-${ARCH_NAME}"
+BASE="https://github.com/${REPO}/releases/latest/download"
+URL="${BASE}/${ARTIFACT}"
 
 echo ""
 echo "Installing t0k3n..."
@@ -35,6 +37,33 @@ if [ "$SIZE" -lt 1048576 ]; then
     echo "Downloaded file is too small (${SIZE} bytes) - not a valid binary" >&2
     exit 1
 fi
+
+# Verify against the published checksum manifest before putting it on PATH.
+SUMS="$(curl -fsSL "${BASE}/SHA256SUMS.txt")" || {
+    rm -f "$TMP_PATH"
+    echo "Could not download ${BASE}/SHA256SUMS.txt - refusing to install an unverified binary" >&2
+    exit 1
+}
+EXPECTED="$(printf '%s\n' "$SUMS" | awk -v a="$ARTIFACT" '$2 == a || $2 == "*"a { print $1 }' | head -n1)"
+if [ -z "$EXPECTED" ]; then
+    rm -f "$TMP_PATH"
+    echo "SHA256SUMS.txt does not list ${ARTIFACT} - refusing to install an unverified binary" >&2
+    exit 1
+fi
+if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL="$(sha256sum "$TMP_PATH" | cut -d' ' -f1)"
+else
+    ACTUAL="$(shasum -a 256 "$TMP_PATH" | cut -d' ' -f1)"
+fi
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+    rm -f "$TMP_PATH"
+    echo "Checksum mismatch for ${ARTIFACT}" >&2
+    echo "  expected: ${EXPECTED}" >&2
+    echo "  actual:   ${ACTUAL}" >&2
+    exit 1
+fi
+echo "  sha256 verified"
+
 chmod +x "$TMP_PATH"
 # rename(2) atomically replaces the binary even while a server is running
 mv -f "$TMP_PATH" "$BIN_PATH"
