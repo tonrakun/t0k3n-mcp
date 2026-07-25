@@ -2065,6 +2065,33 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
 
 ---
 
+### Phase 20 — ハンドラのカテゴリ別分割 v3.4+
+
+`src/server/mod.rs` に 91 個の `#[tool]` ハンドラが同居し 2,831 行に膨れていた。
+トークン削減を掲げるプロダクト自身の最大ファイルという点で、可読性だけでなく
+ドッグフーディング上の問題でもあった。
+
+- [x] `src/server/handlers/` を新設し、`help()` のカテゴリと 1:1 で対応する 15 モジュール
+  （file 20 / write 13 / schema 12 / analysis 10 / git 6 / text 5 / task 5 / memory 4 /
+  web 3 / test 3 / session 3 / notebook 2 / log 2 / debug 2 / cmd 1）へハンドラを移設。
+  カテゴリ対応は help.rs のカタログから機械的に導出し、重複・欠落ゼロを確認済み
+- [x] 各モジュールに `#[tool_router(router = <cat>_router, vis = "pub(crate)")]` を付け、
+  `handlers::tool_router()` で全カテゴリをマージ（rmcp 0.3.2 の `ToolRouter` の
+  `std::ops::Add` を利用）。ケイパビリティゲートはマージ後に `T0k3nServer::new` で適用
+- [x] ハンドラ側は `use crate::server::*;` の 1 行で済むよう、mod.rs の `use` を
+  `pub(crate) use` の再エクスポートに変更。ヘルパー（`err`/`ok_json`/`ok_text`/
+  `delta_key`/`lock_or_recover` 等）と `EffectiveRoot`・構造体フィールドを `pub(crate)` 化
+- [x] `instrument!` は `macro_rules!` の字句スコープに依存するため、`mod handlers;` の宣言を
+  マクロ定義より後ろに置く必要がある。その制約をコメントで明示
+- [x] 登録漏れ検出テスト `merged_router_registers_exactly_the_declared_tools` を追加。
+  全ケイパビリティ有効の状態でマージ後ルーターと `REGISTERED_TOOLS` の集合一致を検証する
+  （カテゴリモジュールを追加してマージし忘れると黙ってツールが消えるため）
+- [x] 結果: mod.rs 2,831 行 → 1,095 行。最大のハンドラファイルは file.rs 435 行。
+  実機確認: 既定 79 / 全ケイパビリティ 91 / `--tools git,debug` 8 / `--disable-commands` で
+  run_command 消失
+
+---
+
 ## 6. 決定事項
 
 | # | 内容 | 決定 |
