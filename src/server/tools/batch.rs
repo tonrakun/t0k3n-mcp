@@ -157,13 +157,9 @@ fn factorable_text(data: &Value) -> Option<String> {
                 .or_else(|| el.get("section"))
                 .or_else(|| el.get("value"))
                 .and_then(|v| v.as_str());
-            match chunk {
-                Some(c) => {
-                    s.push_str(c);
-                    s.push('\n');
-                }
-                None => return None,
-            }
+            // Any element without comparable text makes the whole set unfactorable.
+            s.push_str(chunk?);
+            s.push('\n');
         }
         return if s.is_empty() { None } else { Some(s) };
     }
