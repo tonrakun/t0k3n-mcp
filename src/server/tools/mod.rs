@@ -17,6 +17,7 @@ pub mod deps;
 pub mod diagnostics;
 pub mod diff_schemas;
 pub mod digest;
+#[cfg(feature = "documents")]
 pub mod document;
 pub mod env;
 pub mod format;

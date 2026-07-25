@@ -166,6 +166,17 @@ Reads are always available. Everything else is an explicit capability:
 > tool-schema payload, not the machine. For a genuinely read-only server, pass
 > `--disable-commands` as well.
 
+### Build features
+
+| Feature | Default | Effect |
+|---------|---------|--------|
+| `documents` | on | `convert_document` (PDF/DOCX → Markdown), pulling in `pdf-extract` and `docx-rs` |
+
+Released binaries ship with default features. `cargo build --release --no-default-features`
+drops both parsers from the binary; `convert_document` is then not registered at all rather
+than failing when called. `--list-tools` and `debug_info` report which tools a given build
+omits.
+
 ### Trimming the tool roster
 
 Every registered tool's JSON schema is carried by the MCP client on **every** request, so a

@@ -52,11 +52,10 @@ htmd = "0.1"
 # Markdown parsing
 pulldown-cmark = "0.12"
 
-# PDF conversion
-pdf-extract = "0.7"
-
-# DOCX conversion
-docx-rs = "0.4"
+# PDF / DOCX conversion — behind the default-on `documents` feature so a slim
+# build can drop these two heavyweight parsers (binary size and parser surface).
+pdf-extract = { version = "0.7", optional = true }
+docx-rs = { version = "0.4", optional = true }
 
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -83,6 +82,13 @@ sha2 = "0.10"
 hex = "0.4"
 similar = "3.1.1"
 futures-util = { version = "0.3.33", default-features = false, features = ["std"] }
+
+[features]
+default = ["documents"]
+# `convert_document` (PDF/DOCX → Markdown). Released binaries ship with it on;
+# `--no-default-features` drops pdf-extract and docx-rs entirely, and the tool is
+# then not registered at all rather than failing at call time.
+documents = ["dep:pdf-extract", "dep:docx-rs"]
 
 [profile.release]
 opt-level = 3

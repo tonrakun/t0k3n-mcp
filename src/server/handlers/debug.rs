@@ -53,6 +53,13 @@ impl T0k3nServer {
                 "writes_enabled": self.config.writes_enabled,
                 "commands_enabled": self.config.commands_enabled,
                 "tool_categories": self.config.tool_categories,
+                // Tools a slim (--no-default-features) build omits at compile time,
+                // as opposed to the runtime capability gates above.
+                "compiled_out_tools": if cfg!(feature = "documents") {
+                    Vec::<&str>::new()
+                } else {
+                    DOCUMENT_TOOLS.to_vec()
+                },
                 "content_ledger_git_head": ledger_git_head,
                 "timestamp_unix": timestamp_unix,
                 "dashboard": self.dashboard.is_some(),

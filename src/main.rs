@@ -68,13 +68,22 @@ async fn main() -> Result<()> {
 
     let list_tools = args.iter().any(|a| a == "--list-tools");
     if list_tools {
+        // REGISTERED_TOOLS is the full declared catalog; what a given run actually
+        // serves depends on the capability flags, and a slim build omits some tools
+        // entirely. Say which is which instead of implying all are available.
+        let available = server::REGISTERED_TOOLS
+            .len()
+            .saturating_sub(server::unavailable_tools().len());
         eprintln!(
-            "t0k3n v{} — {} tools registered:",
+            "t0k3n v{} — {} tools, {available} available in this build:",
             env!("CARGO_PKG_VERSION"),
-            server::REGISTERED_TOOLS.len()
+            server::REGISTERED_TOOLS.len(),
         );
         for tool in server::REGISTERED_TOOLS {
-            eprintln!("  {tool}");
+            match server::tool_availability(tool) {
+                Some(note) => eprintln!("  {tool}  ({note})"),
+                None => eprintln!("  {tool}"),
+            }
         }
         return Ok(());
     }

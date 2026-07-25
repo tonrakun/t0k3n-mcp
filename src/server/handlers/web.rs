@@ -1,4 +1,7 @@
-//! Web and document tool handlers — the `web` category of `help()`.
+//! Web fetching tool handlers — part of the `web` category of `help()`.
+//!
+//! `convert_document`, the third tool in that category, lives in [`super::document`]
+//! because it is gated behind the `documents` Cargo feature.
 //!
 //! Registered as `web_router` and merged into the server's router in
 //! [`super::tool_router`].
@@ -35,22 +38,6 @@ impl T0k3nServer {
             let result = read_webpage_section(params, cache).map_err(err)?;
             ok_json(
                 serde_json::json!({ "sections": result.sections, "token_count": result.token_count }),
-            )
-        })
-    }
-
-    #[tool(
-        description = "Convert a PDF or DOCX to Markdown, return TOC and tmp_path. Use read_markdown_section(tmp_path) to read sections."
-    )]
-    async fn convert_document(
-        &self,
-        EffectiveRoot(root): EffectiveRoot,
-        Parameters(params): Parameters<ConvertDocumentParams>,
-    ) -> Result<CallToolResult, McpError> {
-        instrument!(self, "convert_document", {
-            let result = convert_document(&root, params).map_err(err)?;
-            ok_json(
-                serde_json::json!({ "toc": result.toc, "tmp_path": result.tmp_path, "token_count": result.token_count }),
             )
         })
     }

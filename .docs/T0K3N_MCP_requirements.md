@@ -2086,9 +2086,34 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
 - [x] 登録漏れ検出テスト `merged_router_registers_exactly_the_declared_tools` を追加。
   全ケイパビリティ有効の状態でマージ後ルーターと `REGISTERED_TOOLS` の集合一致を検証する
   （カテゴリモジュールを追加してマージし忘れると黙ってツールが消えるため）
-- [x] 結果: mod.rs 2,831 行 → 1,095 行。最大のハンドラファイルは file.rs 435 行。
+- [x] 結果: mod.rs 2,831 行 → 1,091 行。最大のハンドラファイルは file.rs 435 行。
   実機確認: 既定 79 / 全ケイパビリティ 91 / `--tools git,debug` 8 / `--disable-commands` で
   run_command 消失
+
+---
+
+### Phase 21 — documents フィーチャー（重量パーサーの切り離し） v3.4+
+
+`pdf-extract` 0.7 と `docx-rs` 0.4 はバイナリサイズとパーサー攻撃面の両方で重い。
+`convert_document` 専用の依存なので、フィーチャーで切り離せるようにした。
+
+- [x] `[features] default = ["documents"]` / `documents = ["dep:pdf-extract", "dep:docx-rs"]`。
+  `--no-default-features` で両依存がツリーから完全に消える（`cargo tree` で 2→0 を確認）
+- [x] `#[tool_router]` は渡されたトークンからルート一覧を組み立てるため、
+  個々のハンドラに `#[cfg]` を付けてもルート登録は残ってしまう（cfg 除去はマクロ展開後）。
+  そのため `convert_document` を `handlers/document.rs` として独立モジュール化し、
+  モジュールとルーターごと `#[cfg(feature = "documents")]` で落とす方式にした。
+  `help()` のカテゴリ上は引き続き `web` に属する
+- [x] `tool_availability()` / `unavailable_tools()` を追加。`REGISTERED_TOOLS` は
+  「宣言されたカタログ」でありライブルーターではない（書き込み系や診断もゲート次第で
+  登録されない）ため、`--list-tools` が 91 件を無条件に「registered」と表示するのは
+  不正確だった。各行にゲート理由・ビルド不在理由を注記し、ヘッダに
+  「91 tools, N available in this build」を表示する
+- [x] `debug_info` に `compiled_out_tools` を追加（実行時ゲートとコンパイル時除外の区別）
+- [x] ルーター整合テストを slim ビルド対応に（`DOCUMENT_TOOLS` を差し引く）
+- [x] CI に `cargo test --no-default-features` と
+  `cargo clippy --no-default-features -D warnings` を追加（ubuntu のみ）。
+  両構成でテスト 197 件緑・警告 0
 
 ---
 

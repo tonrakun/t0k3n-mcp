@@ -44,7 +44,6 @@ pub(crate) use tools::{
     diagnostics::{ReadTypeDiagnosticsParams, read_type_diagnostics},
     diff_schemas::{DiffSchemasParams, diff_schemas},
     digest::{ProjectDigestParams, project_digest},
-    document::{ConvertDocumentParams, convert_document},
     env::{ReadEnvSchemaParams, read_env_schema},
     format::{FormatCodeParams, format_code},
     fs::{
@@ -110,6 +109,9 @@ pub(crate) use tools::{
         create_file, delete_symbol, insert_symbol,
     },
 };
+
+#[cfg(feature = "documents")]
+pub(crate) use tools::document::{ConvertDocumentParams, convert_document};
 
 pub const REGISTERED_TOOLS: &[&str] = &[
     // File reading
@@ -246,6 +248,37 @@ pub const WRITE_TOOLS: &[&str] = &[
 /// anything reachable from a shell is reachable. `--enable-writes` gates the
 /// structured write tools, not the machine's writability.
 pub const COMMAND_TOOLS: &[&str] = &["run_command"];
+
+/// `convert_document` is compiled only with the `documents` feature (on by default).
+/// Listed here so the registry-vs-router guard test can account for a slim build.
+pub const DOCUMENT_TOOLS: &[&str] = &["convert_document"];
+
+/// Why a declared tool may not be servable, or `None` when it is always available.
+///
+/// `REGISTERED_TOOLS` is the declared catalog, not the live router: some tools need a
+/// capability flag, and a slim build compiles others out. Callers that report the tool
+/// list should say so rather than implying everything in the catalog can be called.
+pub fn tool_availability(tool: &str) -> Option<&'static str> {
+    if !cfg!(feature = "documents") && DOCUMENT_TOOLS.contains(&tool) {
+        return Some("not in this build — needs the `documents` feature");
+    }
+    if WRITE_TOOLS.contains(&tool) {
+        return Some("opt-in — needs --enable-writes");
+    }
+    if tool == "read_type_diagnostics" {
+        return Some("opt-in — needs --enable-diagnostics");
+    }
+    None
+}
+
+/// Tools that cannot be served by this binary at all, whatever the flags.
+pub fn unavailable_tools() -> Vec<&'static str> {
+    if cfg!(feature = "documents") {
+        Vec::new()
+    } else {
+        DOCUMENT_TOOLS.to_vec()
+    }
+}
 
 /// Tools that stay registered under every category profile: without them the agent
 /// cannot discover what else it has or report its own configuration.
@@ -898,6 +931,30 @@ mod tests {
     }
 
     #[test]
+    fn tool_availability_explains_gated_and_compiled_out_tools() {
+        // Always-on tools carry no note.
+        assert_eq!(tool_availability("read_code_skeleton"), None);
+        assert_eq!(tool_availability("run_command"), None);
+        // Capability-gated tools do.
+        assert!(tool_availability("create_file").is_some());
+        assert!(tool_availability("read_type_diagnostics").is_some());
+        // The document tools depend on how this test binary was built.
+        assert_eq!(
+            tool_availability("convert_document").is_some(),
+            !cfg!(feature = "documents")
+        );
+        assert_eq!(
+            unavailable_tools().is_empty(),
+            cfg!(feature = "documents"),
+            "a slim build must report its compiled-out tools"
+        );
+        // Every note must describe a tool that is actually declared.
+        for t in unavailable_tools() {
+            assert!(REGISTERED_TOOLS.contains(&t));
+        }
+    }
+
+    #[test]
     fn known_tool_categories_are_non_empty_and_lowercase() {
         let cats = known_tool_categories();
         assert!(cats.contains(&"git") && cats.contains(&"file"));
@@ -955,7 +1012,13 @@ mod tests {
             c.writes_enabled = true;
         });
         let registered: HashSet<&str> = server.tool_router.map.keys().map(|k| k.as_ref()).collect();
-        let declared: HashSet<&str> = REGISTERED_TOOLS.iter().copied().collect();
+        let mut declared: HashSet<&str> = REGISTERED_TOOLS.iter().copied().collect();
+        // A slim build (--no-default-features) compiles the document tools out entirely.
+        if !cfg!(feature = "documents") {
+            for t in DOCUMENT_TOOLS {
+                declared.remove(*t);
+            }
+        }
 
         let missing: Vec<&&str> = declared.difference(&registered).collect();
         let unexpected: Vec<&&str> = registered.difference(&declared).collect();

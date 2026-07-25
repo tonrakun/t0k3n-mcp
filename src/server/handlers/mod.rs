@@ -11,6 +11,8 @@ use crate::server::*;
 mod analysis;
 mod cmd;
 mod debug;
+#[cfg(feature = "documents")]
+mod document;
 mod file;
 mod git;
 mod log;
@@ -30,7 +32,8 @@ impl T0k3nServer {
     /// Capability gates (`--enable-writes`, `--disable-commands`, `--tools`) are
     /// applied afterwards in [`T0k3nServer::new`], not here.
     pub(crate) fn tool_router() -> ToolRouter<Self> {
-        Self::file_router()
+        #[allow(clippy::let_and_return)]
+        let router = Self::file_router()
             + Self::write_router()
             + Self::git_router()
             + Self::schema_router()
@@ -44,6 +47,9 @@ impl T0k3nServer {
             + Self::session_router()
             + Self::analysis_router()
             + Self::cmd_router()
-            + Self::debug_router()
+            + Self::debug_router();
+        #[cfg(feature = "documents")]
+        let router = router + Self::document_router();
+        router
     }
 }
