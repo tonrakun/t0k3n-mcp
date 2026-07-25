@@ -68,36 +68,6 @@ async fn main() -> Result<()> {
         .or_else(|| std::env::var("T0K3N_ROOT").ok())
         .unwrap_or_else(|| ".".to_string());
 
-    let list_tools = args.iter().any(|a| a == "--list-tools");
-    if list_tools {
-        // REGISTERED_TOOLS is the full declared catalog; what a given run actually
-        // serves depends on the capability flags, and a slim build omits some tools
-        // entirely. Say which is which instead of implying all are available.
-        let available = server::REGISTERED_TOOLS
-            .len()
-            .saturating_sub(server::unavailable_tools().len());
-        eprintln!(
-            "t0k3n v{} — {} tools, {available} available in this build:",
-            env!("CARGO_PKG_VERSION"),
-            server::REGISTERED_TOOLS.len(),
-        );
-        for tool in server::REGISTERED_TOOLS {
-            match server::tool_availability(tool) {
-                Some(note) => eprintln!("  {tool}  ({note})"),
-                None => eprintln!("  {tool}"),
-            }
-        }
-        return Ok(());
-    }
-
-    let refresh_parsers = args.iter().any(|a| a == "--refresh-parsers");
-    if refresh_parsers {
-        tracing::info!("--refresh-parsers: clearing parser cache");
-        if let Err(e) = startup::clear_parser_cache() {
-            tracing::warn!("Failed to clear parser cache: {}", e);
-        }
-    }
-
     // Output format: compact (default, token-efficient text) or json (legacy)
     let format = args
         .windows(2)
@@ -165,6 +135,47 @@ async fn main() -> Result<()> {
                 known.join(", ")
             );
             std::process::exit(2);
+        }
+    }
+
+    // --list-tools answers "what does this invocation serve?", so it runs after the
+    // roster and capability flags are parsed, not before: a listing that ignored
+    // `--tools` reported 84 tools for a session that was about to serve 31.
+    // REGISTERED_TOOLS stays the spine of the output — the catalog is what people
+    // scan — with the reason next to anything this run will not register.
+    if args.iter().any(|a| a == "--list-tools") {
+        let config = server::ServerConfig {
+            root: root.clone(),
+            root_configured,
+            diagnostics_enabled,
+            writes_enabled,
+            commands_enabled,
+            tool_categories: tool_categories.clone(),
+        };
+        let listing: Vec<(&str, Option<String>)> = server::REGISTERED_TOOLS
+            .iter()
+            .map(|t| (*t, server::tool_exclusion_reason(t, &config)))
+            .collect();
+        let served = listing.iter().filter(|(_, reason)| reason.is_none()).count();
+        eprintln!(
+            "t0k3n v{} — {} tools declared, {served} served with these flags:",
+            env!("CARGO_PKG_VERSION"),
+            server::REGISTERED_TOOLS.len(),
+        );
+        for (tool, reason) in &listing {
+            match reason {
+                Some(note) => eprintln!("  {tool}  ({note})"),
+                None => eprintln!("  {tool}"),
+            }
+        }
+        return Ok(());
+    }
+
+    let refresh_parsers = args.iter().any(|a| a == "--refresh-parsers");
+    if refresh_parsers {
+        tracing::info!("--refresh-parsers: clearing parser cache");
+        if let Err(e) = startup::clear_parser_cache() {
+            tracing::warn!("Failed to clear parser cache: {}", e);
         }
     }
 

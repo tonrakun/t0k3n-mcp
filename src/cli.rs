@@ -49,13 +49,17 @@ OPTIONS:
     --no-dashboard            Disable the web dashboard
     --open-browser            Open the dashboard in a browser on startup
     --dashboard-port <port>   Dashboard port (default: 14123)
-    --list-tools              Print all registered tool names and exit
+    --list-tools              Print the tool catalog and exit. Honors the other flags:
+                              anything this invocation will not serve is listed with
+                              the reason (roster, capability gate, or build)
     --refresh-parsers         Clear the tree-sitter parser cache on startup
     --tools <categories>      Register only these help() categories or profiles,
                               comma-separated. Profile: core (file,git,text,debug)
                               (e.g. file,git,analysis). Every tool schema is carried by
                               the client on every request, so a narrower roster saves
-                              tokens. help and debug_info are always kept.
+                              tokens. help and debug_info are always kept, and an
+                              explicit --enable-writes / --enable-diagnostics adds its
+                              tools back even when the roster omits their category.
                               Also settable via T0K3N_TOOLS
     --no-update-check         Do not contact GitHub for a newer release on startup
                               (also via T0K3N_NO_UPDATE_CHECK=1)
@@ -68,7 +72,9 @@ CAPABILITIES:
                               Also via T0K3N_ENABLE_DIAGNOSTICS=1
     --enable-writes           Register the structured write tools (create_file,
                               delete_symbol, insert_symbol, apply_edits, ...).
-                              Opt-in, default off. Also via T0K3N_ENABLE_WRITES=1
+                              Opt-in, default off. Also via T0K3N_ENABLE_WRITES=1.
+                              Wins over --tools: the write category is registered
+                              even under a roster that leaves it out
     --disable-commands        Unregister run_command. Opt-out: shell execution is ON
                               by default. Also via T0K3N_DISABLE_COMMANDS=1
 

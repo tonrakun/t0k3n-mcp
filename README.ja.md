@@ -173,7 +173,7 @@ t0k3n setup
 | `--no-dashboard` | Web ダッシュボードを無効化 |
 | `--open-browser` | 起動時にダッシュボードをブラウザで開く |
 | `--dashboard-port <port>` | ダッシュボードのポート番号（デフォルト: 14123） |
-| `--list-tools` | 登録済みツール一覧を表示して終了 |
+| `--list-tools` | ツールカタログを表示して終了。他のフラグを反映し、その起動で提供されないツールには理由（ロスター・ケイパビリティゲート・ビルド構成）が付く |
 | `--refresh-parsers` | 起動時に tree-sitter パーサーキャッシュをクリア |
 | `--tools <categories>` | 指定した `help()` カテゴリのツールのみ登録（カンマ区切り、`T0K3N_TOOLS` でも可）。詳細は下記 |
 | `--no-update-check` | 起動時の GitHub への新バージョン確認を行わない（`T0K3N_NO_UPDATE_CHECK=1` でも可） |
@@ -227,8 +227,12 @@ t0k3n setup
 プロファイル: `core` = `file,git,text,debug`（構造を読む・履歴を読む・予算を管理する）。
 
 カテゴリ: `file` `write` `git` `schema` `web` `notebook` `test` `log` `text` `memory`
-`task` `session` `analysis` `cmd` `debug`。ケイパビリティのゲートは上位で適用されるため、
-`--enable-writes` なしで `write` を選んでも書き込みツールは登録されない。
+`task` `session` `analysis` `cmd` `debug`。ケイパビリティのゲートとロスターは双方向で折り合う。
+`--enable-writes` なしで `write` を選んでも書き込みツールは登録されない。逆に、明示した
+`--enable-writes` / `--enable-diagnostics` は、そのカテゴリを含まないロスターの下でも該当ツールを
+登録する（`--tools core --enable-writes --enable-diagnostics` は 31 ではなく 45 ツール）。
+オプトインしたフラグが黙って打ち消される方が、驚きとしては悪い。実際に何が登録されるかは、
+渡したフラグそのままで `--list-tools` が表示する。
 
 ### root 未設定で動かす場合
 

@@ -256,22 +256,32 @@ pub const COMMAND_TOOLS: &[&str] = &["run_command"];
 /// Listed here so the registry-vs-router guard test can account for a slim build.
 pub const DOCUMENT_TOOLS: &[&str] = &["convert_document"];
 
-/// Why a declared tool may not be servable, or `None` when it is always available.
+/// Why a declared tool will not be served under `config`, or `None` when it will be.
 ///
-/// `REGISTERED_TOOLS` is the declared catalog, not the live router: some tools need a
-/// capability flag, and a slim build compiles others out. Callers that report the tool
-/// list should say so rather than implying everything in the catalog can be called.
-pub fn tool_availability(tool: &str) -> Option<&'static str> {
+/// `REGISTERED_TOOLS` is the declared catalog, not the live router: a slim build
+/// compiles some tools out, capability flags gate others, and `--tools` trims the
+/// rest. `--list-tools` has to answer "what does *this* invocation serve?" before a
+/// server exists, so the rules live here; `T0k3nServer::new` shares the roster half
+/// via `roster_for`, and `list_tools_agrees_with_the_router` pins the two together.
+pub fn tool_exclusion_reason(tool: &str, config: &ServerConfig) -> Option<String> {
     if !cfg!(feature = "documents") && DOCUMENT_TOOLS.contains(&tool) {
-        return Some("not in this build — needs the `documents` feature");
+        return Some("not in this build — needs the `documents` feature".to_string());
     }
-    if WRITE_TOOLS.contains(&tool) {
-        return Some("opt-in — needs --enable-writes");
+    if WRITE_TOOLS.contains(&tool) && !config.writes_enabled {
+        return Some("opt-in — needs --enable-writes".to_string());
     }
-    if tool == "read_type_diagnostics" {
-        return Some("opt-in — needs --enable-diagnostics");
+    if tool == "read_type_diagnostics" && !config.diagnostics_enabled {
+        return Some("opt-in — needs --enable-diagnostics".to_string());
     }
-    None
+    if COMMAND_TOOLS.contains(&tool) && !config.commands_enabled {
+        return Some("off — --disable-commands".to_string());
+    }
+    match (roster_for(config), config.tool_categories.as_ref()) {
+        (Some(keep), Some(cats)) if !keep.contains(tool) => {
+            Some(format!("not in --tools {}", cats.join(",")))
+        }
+        _ => None,
+    }
 }
 
 /// Tools that cannot be served by this binary at all, whatever the flags.
@@ -325,6 +335,28 @@ pub(crate) fn tools_in_categories(
         }
     }
     keep
+}
+
+/// The tool names a `--tools` roster admits, or `None` when no roster is set.
+///
+/// An explicit capability opt-in is itself a request for those tools, so it outranks
+/// the roster. Without this, `--tools core --enable-writes` registers no write tool at
+/// all — `core` does not include the write category — and the flag looks accepted
+/// while doing nothing. The opt-out capability (`run_command`) is deliberately not
+/// treated this way: not passing `--disable-commands` says nothing about intent, and
+/// re-adding it would quietly widen every narrowed roster.
+pub(crate) fn roster_for(
+    config: &ServerConfig,
+) -> Option<std::collections::HashSet<&'static str>> {
+    let cats = config.tool_categories.as_ref()?;
+    let mut keep = tools_in_categories(cats);
+    if config.writes_enabled {
+        keep.extend(tools_in_categories(&["write".to_string()]));
+    }
+    if config.diagnostics_enabled {
+        keep.insert("read_type_diagnostics");
+    }
+    Some(keep)
 }
 
 /// Names accepted by `--tools`: every help() category (taken from the catalog so
@@ -603,8 +635,9 @@ impl T0k3nServer {
 
         // Optional category profile: every tool schema is carried by the client on
         // every request, so trimming the roster is itself a token optimization.
-        if let Some(cats) = &config.tool_categories {
-            let keep = tools_in_categories(cats);
+        // `roster_for` folds the explicit capability opt-ins back in, so a narrow
+        // roster cannot silently cancel --enable-writes / --enable-diagnostics.
+        if let Some(keep) = roster_for(&config) {
             tool_router
                 .map
                 .retain(|name, _| keep.contains(name.as_ref()));
@@ -967,16 +1000,36 @@ mod tests {
     }
 
     #[test]
-    fn tool_availability_explains_gated_and_compiled_out_tools() {
+    fn tool_exclusion_reason_explains_gated_and_compiled_out_tools() {
+        let default = ServerConfig::default();
         // Always-on tools carry no note.
-        assert_eq!(tool_availability("read_code"), None);
-        assert_eq!(tool_availability("run_command"), None);
-        // Capability-gated tools do.
-        assert!(tool_availability("create_file").is_some());
-        assert!(tool_availability("read_type_diagnostics").is_some());
+        assert_eq!(tool_exclusion_reason("read_code", &default), None);
+        assert_eq!(tool_exclusion_reason("run_command", &default), None);
+        // Capability-gated tools do — until the flag that ungates them is given.
+        assert!(tool_exclusion_reason("create_file", &default).is_some());
+        assert!(tool_exclusion_reason("read_type_diagnostics", &default).is_some());
+        let opened = ServerConfig {
+            writes_enabled: true,
+            diagnostics_enabled: true,
+            commands_enabled: false,
+            ..Default::default()
+        };
+        assert_eq!(tool_exclusion_reason("create_file", &opened), None);
+        assert_eq!(tool_exclusion_reason("read_type_diagnostics", &opened), None);
+        assert!(tool_exclusion_reason("run_command", &opened).is_some());
+        // A roster excludes what it does not select, and says which roster did it.
+        let core = ServerConfig {
+            tool_categories: Some(vec!["core".to_string()]),
+            ..Default::default()
+        };
+        assert_eq!(tool_exclusion_reason("read_git_log", &core), None);
+        assert_eq!(
+            tool_exclusion_reason("read_notebook", &core).as_deref(),
+            Some("not in --tools core")
+        );
         // The document tools depend on how this test binary was built.
         assert_eq!(
-            tool_availability("convert_document").is_some(),
+            tool_exclusion_reason("convert_document", &default).is_some(),
             !cfg!(feature = "documents")
         );
         assert_eq!(
@@ -988,6 +1041,94 @@ mod tests {
         for t in unavailable_tools() {
             assert!(REGISTERED_TOOLS.contains(&t));
         }
+    }
+
+    /// `--list-tools` reports what an invocation will serve without building a server,
+    /// so its answer has to be the router's answer. Drift here is invisible: the list
+    /// stays plausible while describing a roster nobody is running.
+    #[test]
+    fn list_tools_agrees_with_the_router() {
+        let tmp = tempfile::tempdir().unwrap();
+        let configs = [
+            ServerConfig::default(),
+            ServerConfig {
+                tool_categories: Some(vec!["core".to_string()]),
+                ..Default::default()
+            },
+            ServerConfig {
+                tool_categories: Some(vec!["core".to_string()]),
+                writes_enabled: true,
+                diagnostics_enabled: true,
+                ..Default::default()
+            },
+            ServerConfig {
+                tool_categories: Some(vec!["git".to_string(), "write".to_string()]),
+                commands_enabled: false,
+                ..Default::default()
+            },
+        ];
+        for config in configs {
+            let expected: Vec<&str> = REGISTERED_TOOLS
+                .iter()
+                .copied()
+                .filter(|t| tool_exclusion_reason(t, &config).is_none())
+                .collect();
+            let server = test_server(tmp.path(), |c| {
+                c.tool_categories = config.tool_categories.clone();
+                c.writes_enabled = config.writes_enabled;
+                c.diagnostics_enabled = config.diagnostics_enabled;
+                c.commands_enabled = config.commands_enabled;
+            });
+            for t in &expected {
+                assert!(
+                    server.tool_router.map.contains_key(*t),
+                    "--list-tools promises {t} under {:?} but the router drops it",
+                    config.tool_categories
+                );
+            }
+            assert_eq!(
+                server.tool_router.map.len(),
+                expected.len(),
+                "--list-tools and the router disagree on the roster size under {:?}",
+                config.tool_categories
+            );
+        }
+    }
+
+    /// `--tools core --enable-writes` used to register no write tool at all: the
+    /// profile has no write category, and the capability gate cannot re-add what the
+    /// roster already removed. The flag looked accepted while doing nothing.
+    #[test]
+    fn capability_opt_ins_outrank_a_narrow_roster() {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = test_server(tmp.path(), |c| {
+            c.tool_categories = Some(vec!["core".to_string()]);
+            c.writes_enabled = true;
+            c.diagnostics_enabled = true;
+        });
+        for t in WRITE_TOOLS {
+            assert!(
+                server.tool_router.map.contains_key(*t),
+                "{t} must survive a narrow roster when --enable-writes is given"
+            );
+        }
+        // patch_symbol / rename_symbol live in the same category and come back with it.
+        assert!(server.tool_router.map.contains_key("patch_symbol"));
+        assert!(
+            server
+                .tool_router
+                .map
+                .contains_key("read_type_diagnostics"),
+            "--enable-diagnostics must survive a roster that omits its category"
+        );
+        // The roster still trims everything nobody opted into.
+        assert!(!server.tool_router.map.contains_key("read_notebook"));
+
+        // Without the opt-in, the roster keeps trimming as before.
+        let plain = test_server(tmp.path(), |c| {
+            c.tool_categories = Some(vec!["core".to_string()]);
+        });
+        assert!(!plain.tool_router.map.contains_key("patch_symbol"));
     }
 
     #[test]

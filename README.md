@@ -169,7 +169,7 @@ entry instead of stacking duplicates, and leaves every other key in
 | `--no-dashboard` | Disable the web dashboard |
 | `--open-browser` | Open the dashboard in a browser on startup |
 | `--dashboard-port <port>` | Dashboard port (default: 14123) |
-| `--list-tools` | Print all registered tool names and exit |
+| `--list-tools` | Print the tool catalog and exit. Honors the other flags: anything this invocation will not serve carries the reason (roster, capability gate, or build) |
 | `--refresh-parsers` | Clear the tree-sitter parser cache on startup |
 | `--tools <categories>` | Register only these `help()` categories, comma-separated (or `T0K3N_TOOLS`). See below |
 | `--no-update-check` | Do not contact GitHub for a newer release on startup (or `T0K3N_NO_UPDATE_CHECK=1`) |
@@ -226,8 +226,12 @@ Measured on this repository, with `tools/list` serialized compactly:
 Profiles: `core` = `file,git,text,debug` — read structure, read history, manage the budget.
 
 Categories: `file` `write` `git` `schema` `web` `notebook` `test` `log` `text` `memory`
-`task` `session` `analysis` `cmd` `debug`. Capability gates still apply on top — selecting
-`write` without `--enable-writes` registers nothing extra.
+`task` `session` `analysis` `cmd` `debug`. Capability gates and the roster settle each other
+in both directions: selecting `write` without `--enable-writes` registers nothing extra, and
+an explicit `--enable-writes` / `--enable-diagnostics` registers its tools even under a roster
+that leaves their category out — `--tools core --enable-writes --enable-diagnostics` serves 45
+tools, not 31. Opting in and then finding the flag silently cancelled is the worse surprise.
+`--list-tools` prints the resulting roster for exactly the flags you passed.
 
 ### Running without a configured root
 
