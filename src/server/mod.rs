@@ -345,9 +345,7 @@ pub(crate) fn tools_in_categories(
 /// while doing nothing. The opt-out capability (`run_command`) is deliberately not
 /// treated this way: not passing `--disable-commands` says nothing about intent, and
 /// re-adding it would quietly widen every narrowed roster.
-pub(crate) fn roster_for(
-    config: &ServerConfig,
-) -> Option<std::collections::HashSet<&'static str>> {
+pub(crate) fn roster_for(config: &ServerConfig) -> Option<std::collections::HashSet<&'static str>> {
     let cats = config.tool_categories.as_ref()?;
     let mut keep = tools_in_categories(cats);
     if config.writes_enabled {
@@ -1015,7 +1013,10 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(tool_exclusion_reason("create_file", &opened), None);
-        assert_eq!(tool_exclusion_reason("read_type_diagnostics", &opened), None);
+        assert_eq!(
+            tool_exclusion_reason("read_type_diagnostics", &opened),
+            None
+        );
         assert!(tool_exclusion_reason("run_command", &opened).is_some());
         // A roster excludes what it does not select, and says which roster did it.
         let core = ServerConfig {
@@ -1115,10 +1116,7 @@ mod tests {
         // patch_symbol / rename_symbol live in the same category and come back with it.
         assert!(server.tool_router.map.contains_key("patch_symbol"));
         assert!(
-            server
-                .tool_router
-                .map
-                .contains_key("read_type_diagnostics"),
+            server.tool_router.map.contains_key("read_type_diagnostics"),
             "--enable-diagnostics must survive a roster that omits its category"
         );
         // The roster still trims everything nobody opted into.

@@ -156,7 +156,10 @@ async fn main() -> Result<()> {
             .iter()
             .map(|t| (*t, server::tool_exclusion_reason(t, &config)))
             .collect();
-        let served = listing.iter().filter(|(_, reason)| reason.is_none()).count();
+        let served = listing
+            .iter()
+            .filter(|(_, reason)| reason.is_none())
+            .count();
         eprintln!(
             "t0k3n v{} — {} tools declared, {served} served with these flags:",
             env!("CARGO_PKG_VERSION"),
