@@ -104,6 +104,21 @@ jobs:
           sha256sum * > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      # Use the annotated tag's message as the release body when there is one, so the
+      # notes written at tag time are what people actually read. Falls back to
+      # auto-generated notes for a lightweight tag.
+      - name: Extract release notes from the tag
+        id: notes
+        run: |
+          git fetch --force --tags --depth=1 origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          body="$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME")"
+          if [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+            printf '%s\n' "$body" > release-notes.md
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_notes=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
@@ -111,6 +126,7 @@ jobs:
             dist/*
             install.ps1
             install.sh
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.has_notes == 'true' && 'release-notes.md' || '' }}
+          generate_release_notes: ${{ steps.notes.outputs.has_notes != 'true' }}
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
