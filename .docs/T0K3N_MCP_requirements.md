@@ -2041,6 +2041,14 @@ Phase 14 の書き込み基盤（`--enable-writes` ゲート・`writes.rs` 慣�
   課金対象のモデル呼び出しであり、レイテンシと非決定性を伴う。grep の代替ではない」を明記
 - [x] `serde_yaml` 0.9（アーカイブ済み）を維持フォーク `serde_yaml_ng` 0.10 へ移行。
   Cargo のパッケージリネームでエイリアスし、20 箇所の呼び出し側は無変更
+- [x] ツールハンドラ境界での panic 隔離。`instrument!` マクロ（全ハンドラが通る唯一の経路）で
+  `AssertUnwindSafe` + `futures_util::FutureExt::catch_unwind` し、panic をツールエラーへ変換
+  （`panic_to_error`）。長寿命の stdio プロセスである以上、1 ツールの panic で
+  編集セッション全体を落としてはならない。`src` 配下 337 箇所の `unwrap`/`expect` を
+  個別に潰す代わりに、単一地点で致命化を防ぐ方針を採った
+- [x] 上記に伴い、panic 後の Mutex 汚染で「捕捉したのに以降ずっと壊れる」状態を避けるため、
+  `mod.rs` の 13 箇所と `web.rs` のページキャッシュを poisoning 復帰型のロック
+  （`lock_or_recover` / `lock_cache`）に置換
 
 ---
 

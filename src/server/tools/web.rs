@@ -19,17 +19,27 @@ pub struct FetchWebpageResult {
     pub cached: bool,
 }
 
+/// Lock the page cache, recovering from poisoning. A panic elsewhere must not make
+/// the web tools permanently unusable — a stale cache entry is the lesser evil.
+fn lock_cache(
+    cache: &Mutex<HashMap<String, String>>,
+) -> std::sync::MutexGuard<'_, HashMap<String, String>> {
+    cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 pub async fn fetch_webpage(
     params: FetchWebpageParams,
     cache: Arc<Mutex<HashMap<String, String>>>,
 ) -> anyhow::Result<FetchWebpageResult> {
     let cached = {
-        let lock = cache.lock().unwrap();
+        let lock = lock_cache(&cache);
         lock.contains_key(&params.url)
     };
 
     let md = if cached {
-        let lock = cache.lock().unwrap();
+        let lock = lock_cache(&cache);
         lock.get(&params.url).cloned().unwrap()
     } else {
         let client = reqwest::Client::builder()
@@ -41,7 +51,7 @@ pub async fn fetch_webpage(
         let converter = htmd::HtmlToMarkdown::new();
         let md = converter.convert(&html).unwrap_or_else(|_| html.clone());
         {
-            let mut lock = cache.lock().unwrap();
+            let mut lock = lock_cache(&cache);
             lock.insert(params.url.clone(), md.clone());
         }
         md
@@ -74,7 +84,7 @@ pub fn read_webpage_section(
     params: ReadWebpageSectionParams,
     cache: Arc<Mutex<HashMap<String, String>>>,
 ) -> anyhow::Result<ReadWebpageSectionResult> {
-    let lock = cache.lock().unwrap();
+    let lock = lock_cache(&cache);
     let md = lock
         .get(&params.url)
         .ok_or_else(|| anyhow::anyhow!("URL not cached. Call fetch_webpage first."))?

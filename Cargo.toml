@@ -82,6 +82,7 @@ dirs = "5"
 sha2 = "0.10"
 hex = "0.4"
 similar = "3.1.1"
+futures-util = { version = "0.3.33", default-features = false, features = ["std"] }
 
 [profile.release]
 opt-level = 3

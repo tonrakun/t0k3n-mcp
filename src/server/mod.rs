@@ -449,12 +449,55 @@ fn delta_key<P: Serialize>(tool: &str, params: &P) -> String {
     )
 }
 
-/// Wraps a tool body: captures timing, records to dashboard on completion.
+/// Lock a mutex, recovering from poisoning instead of panicking.
+///
+/// Now that tool panics are caught rather than fatal, a poisoned lock would
+/// otherwise turn one panic into a permanently broken server: every later call
+/// touching that mutex would panic on `unwrap()`. The guarded state here is
+/// caches and ledgers — stale entries are recoverable, an unusable server is not.
+fn lock_or_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|poisoned| {
+        tracing::warn!("recovering a poisoned lock after an earlier panic");
+        poisoned.into_inner()
+    })
+}
+
+/// Turn a caught panic payload into a tool error.
+///
+/// The server is a long-lived stdio process shared by a whole editing session: a
+/// panic in one tool (a slice out of bounds in a parser, a poisoned lock, an
+/// `unwrap` on unexpected input) must not take the session down with it.
+fn panic_to_error(tool: &str, payload: Box<dyn std::any::Any + Send>) -> McpError {
+    let detail = payload
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".to_string());
+    tracing::error!("tool {tool} panicked: {detail}");
+    McpError::internal_error(
+        format!(
+            "{tool} panicked: {detail}. This is a bug in t0k3n — the server is still \
+             running, so other tools remain usable. Please report it with the input \
+             that triggered it."
+        ),
+        None,
+    )
+}
+
+/// Wraps a tool body: captures timing, isolates panics, records to dashboard on completion.
 /// The inner async block contains the `?` operators so early-exit errors are still recorded.
 macro_rules! instrument {
     ($self:expr, $name:literal, $body:block) => {{
         let __t = Instant::now();
-        let __r: Result<CallToolResult, McpError> = async $body.await;
+        // AssertUnwindSafe: the shared state behind the panic boundary is either
+        // immutable or a Mutex, and every lock here recovers from poisoning
+        // (`lock_or_recover`), so a caught panic cannot leave a locked-out server.
+        let __fut = std::panic::AssertUnwindSafe(async $body);
+        let __r: Result<CallToolResult, McpError> =
+            match futures_util::FutureExt::catch_unwind(__fut).await {
+                Ok(r) => r,
+                Err(payload) => Err(panic_to_error($name, payload)),
+            };
         if let Some(ref __d) = $self.dashboard {
             let __d = __d.clone();
             let __ms = __t.elapsed().as_millis() as u64;
@@ -1417,7 +1460,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<MemorySaveParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "memory_save", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             ok_text(memory_save(&db, params).map_err(err)?)
         })
     }
@@ -1428,7 +1471,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<MemoryGetParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "memory_get", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             ok_json(memory_get(&db, params).map_err(err)?)
         })
     }
@@ -1439,7 +1482,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<MemoryListParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "memory_list", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             let entries = memory_list(&db, params).map_err(err)?;
             let count = entries.len();
             ok_json(serde_json::json!({ "memories": entries, "count": count }))
@@ -1452,7 +1495,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<MemoryDeleteParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "memory_delete", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             ok_text(memory_delete(&db, params).map_err(err)?)
         })
     }
@@ -1469,7 +1512,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<TaskCreateParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "task_create", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             ok_json(task_create(&db, params).map_err(err)?)
         })
     }
@@ -1480,7 +1523,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<TaskGetParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "task_get", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             ok_json(task_get(&db, params).map_err(err)?)
         })
     }
@@ -1491,7 +1534,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<TaskUpdateParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "task_update", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             ok_json(task_update(&db, params).map_err(err)?)
         })
     }
@@ -1502,7 +1545,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<TaskListParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "task_list", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             let tasks = task_list(&db, params).map_err(err)?;
             let count = tasks.len();
             ok_json(serde_json::json!({ "tasks": tasks, "count": count }))
@@ -1515,7 +1558,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<TaskDeleteParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "task_delete", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             ok_text(task_delete(&db, params).map_err(err)?)
         })
     }
@@ -1532,7 +1575,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<SessionSnapshotParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "session_snapshot", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             ok_json(session_snapshot(&db, params).map_err(err)?)
         })
     }
@@ -1543,7 +1586,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<SessionRestoreParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "session_restore", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             ok_json(session_restore(&db, params).map_err(err)?)
         })
     }
@@ -1554,7 +1597,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<SessionListParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "session_list", {
-            let db = self.db.lock().unwrap();
+            let db = lock_or_recover(&self.db);
             let sessions = session_list(&db, params).map_err(err)?;
             let count = sessions.len();
             ok_json(serde_json::json!({ "sessions": sessions, "count": count }))
@@ -2327,7 +2370,7 @@ impl T0k3nServer {
         Parameters(params): Parameters<DeltaResetParams>,
     ) -> Result<CallToolResult, McpError> {
         instrument!(self, "delta_reset", {
-            let cleared = self.ledger.lock().unwrap().clear(params.pattern.as_deref())
+            let cleared = lock_or_recover(&self.ledger).clear(params.pattern.as_deref())
                 + self
                     .cmd_ledger
                     .lock()
@@ -2575,6 +2618,43 @@ mod tests {
                 "{t} must stay registered under a category profile"
             );
         }
+    }
+
+    #[test]
+    fn lock_or_recover_survives_a_poisoned_mutex() {
+        let m = Arc::new(Mutex::new(5u32));
+        let m2 = m.clone();
+        // Poison the mutex from another thread.
+        let _ = std::thread::spawn(move || {
+            let _guard = m2.lock().unwrap();
+            panic!("poison it");
+        })
+        .join();
+        assert!(m.lock().is_err(), "the mutex should now be poisoned");
+        assert_eq!(*lock_or_recover(&m), 5, "state must still be readable");
+    }
+
+    #[tokio::test]
+    async fn a_panicking_tool_body_becomes_an_error_not_an_abort() {
+        // Mirrors what instrument! does around every tool body.
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {})); // keep the test output clean
+        let fut = std::panic::AssertUnwindSafe(async {
+            panic!("index out of bounds");
+            #[allow(unreachable_code)]
+            Ok::<CallToolResult, McpError>(CallToolResult::success(vec![]))
+        });
+        let result = match futures_util::FutureExt::catch_unwind(fut).await {
+            Ok(r) => r,
+            Err(payload) => Err(panic_to_error("read_code_body", payload)),
+        };
+        std::panic::set_hook(previous);
+
+        let message = result
+            .expect_err("a panic must surface as an error")
+            .message;
+        assert!(message.contains("read_code_body panicked"));
+        assert!(message.contains("index out of bounds"));
     }
 
     #[test]
