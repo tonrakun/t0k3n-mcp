@@ -137,8 +137,29 @@ The default answers produce:
 | `t0k3n` | Start the MCP server (stdio; MCP clients launch it with no subcommand) |
 | `t0k3n upgrade` | Download the latest release and replace the binary in place |
 | `t0k3n setup [dir] [--yes]` | Interactive wizard that writes or merges an MCP config (scope, server name, root, tool roster, format, dashboard, capabilities). `--yes` writes the defaults without prompting |
+| `t0k3n hook [--max-lines N]` | PreToolUse hook for Claude Code — steers built-in `Read`/`Grep`/`Glob` calls to the t0k3n equivalents. `setup` wires it up for you |
 | `t0k3n version` | Print version |
 | `t0k3n help` | Show help |
+
+## Steering the agent off the built-in file tools
+
+The server's `instructions` already ask the agent to prefer t0k3n over the
+client's built-in `Read`/`Grep`/`Glob`, but that is only a request. `t0k3n setup`
+offers to write the settings that actually enforce it, into `.claude/settings.json`:
+
+- **Recommended** — `Grep` and `Glob` are denied outright, and a `PreToolUse`
+  hook judges each `Read`: whole-file reads over the line threshold (200 by
+  default) are denied with a pointer to the right tool (`read_code`,
+  `read_markdown_toc`, `read_json_yaml_keys`, …), while small files, binaries,
+  and reads with an explicit `offset`/`limit` pass through untouched.
+  `Read` is deliberately *not* denied wholesale: the client's edit flow requires
+  a prior read of the file.
+- **Hook only** — no deny rules; the hook decides every `Read`/`Grep`/`Glob` call.
+
+The hook is the `t0k3n` binary itself (`t0k3n hook`), so the generated config has
+no runtime dependency — no node, no jq. Re-running `setup` replaces its own hook
+entry instead of stacking duplicates, and leaves every other key in
+`settings.json` alone.
 
 ## CLI Options
 

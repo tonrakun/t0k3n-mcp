@@ -34,6 +34,12 @@ COMMANDS:
                           .mcp.json in dir with --root set to dir (default: current dir).
                           Non-TTY invocations are non-interactive unless
                           --interactive (-i) is passed to force the wizard.
+    hook [--max-lines N]  PreToolUse hook for Claude Code: reads the hook JSON on
+                          stdin and steers built-in Read/Grep/Glob calls to the
+                          t0k3n equivalents. Whole-file Reads over N lines
+                          (default 200) are denied with a pointer to the right
+                          tool; smaller ones pass through. `setup` wires this up
+                          for you — you rarely run it by hand.
     version               Print version and exit
     help                  Show this help
 
@@ -296,6 +302,27 @@ struct SetupOptions {
     enable_diagnostics: bool,
     disable_commands: bool,
     no_update_check: bool,
+    /// How hard to push the agent off the client's built-in file tools.
+    steering: Steering,
+    /// `settings.json` to write the steering config into (scope-matched to
+    /// `config_path`).
+    settings_path: PathBuf,
+    /// Line count above which the hook denies a whole-file built-in Read.
+    hook_max_lines: usize,
+}
+
+/// The server's `instructions` already ask the agent to prefer t0k3n; these are
+/// the levers that actually enforce it, written into `settings.json`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Steering {
+    /// Nothing written — instructions and CLAUDE.md only.
+    None,
+    /// Grep/Glob denied outright, Read judged per file by the hook. The
+    /// recommended setting: Read stays available for small files, which the
+    /// client's Edit flow depends on.
+    Recommended,
+    /// No deny rules; the hook decides every Read/Grep/Glob call.
+    HookOnly,
 }
 
 impl SetupOptions {
@@ -303,7 +330,10 @@ impl SetupOptions {
         Self {
             server_name: "t0k3n".to_string(),
             config_path: root.join(".mcp.json"),
+            settings_path: root.join(".claude").join("settings.json"),
             root,
+            steering: Steering::None,
+            hook_max_lines: 200,
             tools: None,
             json_format: false,
             no_dashboard: false,
@@ -430,7 +460,117 @@ fn write_config(opts: &SetupOptions) -> Result<()> {
         format!("{}\n", serde_json::to_string_pretty(&root)?),
     )?;
     println!("MCP config written: {}", config_path.display());
+
+    if opts.steering != Steering::None {
+        write_steering_settings(opts, &exe)?;
+        println!("Tool steering written: {}", opts.settings_path.display());
+    }
     Ok(())
+}
+
+// ── built-in tool steering ───────────────────────────────────────────────────
+
+/// Tool names denied outright under `Steering::Recommended`. `Read` is
+/// deliberately absent: the client's Edit flow requires a prior Read, so
+/// denying it wholesale breaks editing. The hook handles Read case by case.
+const DENIED_BUILTINS: &[&str] = &["Grep", "Glob"];
+
+/// Shell-quote the executable path for the hook `command` string, which is run
+/// through a shell and so would otherwise split on spaces.
+fn hook_command(exe: &Path, max_lines: usize) -> String {
+    let path = exe.to_string_lossy();
+    let path = if path.contains(' ') {
+        format!("\"{path}\"")
+    } else {
+        path.into_owned()
+    };
+    format!("{path} hook --max-lines {max_lines}")
+}
+
+/// Merge the deny rules and the PreToolUse hook into `settings.json`, leaving
+/// every other key — and every unrelated hook — untouched.
+fn write_steering_settings(opts: &SetupOptions, exe: &Path) -> Result<()> {
+    let path = &opts.settings_path;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("could not create {}", parent.display()))?;
+    }
+    let mut settings = if path.exists() {
+        let text = std::fs::read_to_string(path)?;
+        if text.trim().is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_str::<serde_json::Value>(&text)
+                .with_context(|| format!("{} is not valid JSON", path.display()))?
+        }
+    } else {
+        serde_json::json!({})
+    };
+    let obj = settings
+        .as_object_mut()
+        .context("settings.json top level must be a JSON object")?;
+
+    if opts.steering == Steering::Recommended {
+        let deny = obj
+            .entry("permissions")
+            .or_insert_with(|| serde_json::json!({}))
+            .as_object_mut()
+            .context("\"permissions\" must be a JSON object")?
+            .entry("deny")
+            .or_insert_with(|| serde_json::json!([]))
+            .as_array_mut()
+            .context("\"permissions.deny\" must be a JSON array")?;
+        for tool in DENIED_BUILTINS {
+            let rule = serde_json::Value::from(*tool);
+            if !deny.contains(&rule) {
+                deny.push(rule);
+            }
+        }
+    }
+
+    let matcher = match opts.steering {
+        // Grep/Glob are already denied above; the hook only judges Read.
+        Steering::Recommended => "Read",
+        _ => "Read|Grep|Glob",
+    };
+    let hooks = obj
+        .entry("hooks")
+        .or_insert_with(|| serde_json::json!({}))
+        .as_object_mut()
+        .context("\"hooks\" must be a JSON object")?
+        .entry("PreToolUse")
+        .or_insert_with(|| serde_json::json!([]))
+        .as_array_mut()
+        .context("\"hooks.PreToolUse\" must be a JSON array")?;
+    let entry = serde_json::json!({
+        "matcher": matcher,
+        "hooks": [{
+            "type": "command",
+            "command": hook_command(exe, opts.hook_max_lines),
+        }],
+    });
+    // Re-running setup replaces our own entry instead of stacking duplicates.
+    match hooks.iter().position(is_t0k3n_hook) {
+        Some(i) => hooks[i] = entry,
+        None => hooks.push(entry),
+    }
+
+    std::fs::write(
+        path,
+        format!("{}\n", serde_json::to_string_pretty(&settings)?),
+    )?;
+    Ok(())
+}
+
+/// Recognise a PreToolUse entry this command previously wrote.
+fn is_t0k3n_hook(entry: &serde_json::Value) -> bool {
+    entry["hooks"].as_array().is_some_and(|handlers| {
+        handlers.iter().any(|h| {
+            h["command"]
+                .as_str()
+                .is_some_and(|c| c.contains("t0k3n") && c.contains(" hook"))
+        })
+    })
 }
 
 // ── setup wizard ─────────────────────────────────────────────────────────────
@@ -621,7 +761,45 @@ fn run_wizard(opts: &mut SetupOptions) -> Result<bool> {
     opts.disable_commands = !ask_yes_no("  run_command (シェル実行) を有効のままにしますか", true)?;
     opts.no_update_check = !ask_yes_no("  起動時に GitHub の更新確認を行いますか", true)?;
 
-    // 8. preview + confirm
+    // 8. steering — the server's instructions are only a request; these are the
+    //    settings.json levers that actually enforce the preference.
+    let steering = ask_choice(
+        "\nクライアントのビルトインツール (Read/Grep/Glob) の抑制:",
+        &[
+            (
+                "推奨",
+                "Grep/Glob は deny、Read は大きいファイルのみフックで拒否",
+            ),
+            ("フックのみ", "deny せず、Read/Grep/Glob をすべてフック判定"),
+            ("しない", "settings.json を変更しない"),
+        ],
+        0,
+    )?;
+    opts.steering = match steering {
+        0 => Steering::Recommended,
+        1 => Steering::HookOnly,
+        _ => Steering::None,
+    };
+    if opts.steering != Steering::None {
+        // Keep the steering scope aligned with where the server was registered.
+        opts.settings_path = if Some(&opts.config_path) == user_config.as_ref() {
+            dirs::home_dir()
+                .context("could not locate the home directory")?
+                .join(".claude")
+                .join("settings.json")
+        } else {
+            opts.root.join(".claude").join("settings.json")
+        };
+        let lines = ask(
+            "  Read を拒否する行数のしきい値 (これ以下は素通し)",
+            &opts.hook_max_lines.to_string(),
+        )?;
+        opts.hook_max_lines = lines
+            .parse()
+            .context("しきい値は行数の数値で指定してください")?;
+    }
+
+    // 9. preview + confirm
     println!("\n── 書き込み内容 ──────────────────────────────");
     println!("{}", opts.config_path.display());
     println!(
@@ -637,6 +815,21 @@ fn run_wizard(opts: &mut SetupOptions) -> Result<bool> {
     );
     if opts.config_path.exists() {
         println!("(既存の設定にマージされます)");
+    }
+    if opts.steering != Steering::None {
+        println!("\n{}", opts.settings_path.display());
+        if opts.steering == Steering::Recommended {
+            println!("  permissions.deny  += {}", DENIED_BUILTINS.join(", "));
+        }
+        println!(
+            "  hooks.PreToolUse  += matcher \"{}\" → {}",
+            if opts.steering == Steering::Recommended {
+                "Read"
+            } else {
+                "Read|Grep|Glob"
+            },
+            hook_command(&std::env::current_exe()?, opts.hook_max_lines)
+        );
     }
     println!("──────────────────────────────────────────────");
     ask_yes_no("この内容で書き込みますか", true)
@@ -737,6 +930,97 @@ mod tests {
         assert!(json["mcpServers"]["t0k3n-web"]["command"].is_string());
         assert_eq!(json["mcpServers"]["t0k3n-web"]["args"][2], "--tools");
         assert_eq!(json["mcpServers"]["t0k3n-web"]["args"][3], "file,git");
+    }
+
+    #[test]
+    fn test_steering_writes_deny_rules_and_hook() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut opts = SetupOptions::defaults(dir.path().to_path_buf());
+        opts.steering = Steering::Recommended;
+        opts.hook_max_lines = 120;
+        write_config(&opts).unwrap();
+
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&opts.settings_path).unwrap()).unwrap();
+        assert_eq!(
+            json["permissions"]["deny"],
+            serde_json::json!(["Grep", "Glob"])
+        );
+        let entry = &json["hooks"]["PreToolUse"][0];
+        assert_eq!(entry["matcher"], "Read");
+        let cmd = entry["hooks"][0]["command"].as_str().unwrap();
+        assert!(cmd.contains("hook --max-lines 120"), "{cmd}");
+    }
+
+    #[test]
+    fn test_steering_hook_only_skips_deny_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut opts = SetupOptions::defaults(dir.path().to_path_buf());
+        opts.steering = Steering::HookOnly;
+        write_config(&opts).unwrap();
+
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&opts.settings_path).unwrap()).unwrap();
+        assert!(json.get("permissions").is_none());
+        assert_eq!(json["hooks"]["PreToolUse"][0]["matcher"], "Read|Grep|Glob");
+    }
+
+    #[test]
+    fn test_steering_merges_and_does_not_duplicate() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut opts = SetupOptions::defaults(dir.path().to_path_buf());
+        opts.steering = Steering::Recommended;
+        std::fs::create_dir_all(opts.settings_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &opts.settings_path,
+            r#"{
+              "model": "opus",
+              "permissions": { "deny": ["Grep"], "allow": ["Bash(ls:*)"] },
+              "hooks": { "PreToolUse": [
+                { "matcher": "Bash", "hooks": [{ "type": "command", "command": "other.sh" }] }
+              ] }
+            }"#,
+        )
+        .unwrap();
+
+        write_config(&opts).unwrap();
+        write_config(&opts).unwrap(); // re-running setup must be idempotent
+
+        let json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&opts.settings_path).unwrap()).unwrap();
+        assert_eq!(json["model"], "opus", "unrelated keys survive");
+        assert_eq!(
+            json["permissions"]["allow"],
+            serde_json::json!(["Bash(ls:*)"])
+        );
+        assert_eq!(
+            json["permissions"]["deny"],
+            serde_json::json!(["Grep", "Glob"])
+        );
+        let hooks = json["hooks"]["PreToolUse"].as_array().unwrap();
+        assert_eq!(hooks.len(), 2, "our entry is replaced, the Bash one kept");
+        assert_eq!(hooks[0]["matcher"], "Bash");
+        assert_eq!(hooks[1]["matcher"], "Read");
+    }
+
+    #[test]
+    fn test_steering_none_leaves_settings_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = SetupOptions::defaults(dir.path().to_path_buf());
+        write_config(&opts).unwrap();
+        assert!(!opts.settings_path.exists());
+    }
+
+    #[test]
+    fn test_hook_command_quotes_paths_with_spaces() {
+        let cmd = hook_command(Path::new("C:\\Program Files\\t0k3n.exe"), 200);
+        assert_eq!(cmd, "\"C:\\Program Files\\t0k3n.exe\" hook --max-lines 200");
+        assert!(is_t0k3n_hook(&serde_json::json!({
+            "hooks": [{ "type": "command", "command": cmd }]
+        })));
+        assert!(!is_t0k3n_hook(&serde_json::json!({
+            "hooks": [{ "type": "command", "command": "other.sh" }]
+        })));
     }
 
     #[test]

@@ -144,8 +144,26 @@ t0k3n setup
 | `t0k3n` | MCP サーバーを起動（stdio、引数なしがデフォルト） |
 | `t0k3n upgrade` | 最新リリースをダウンロードしてその場で自己更新 |
 | `t0k3n setup [dir] [--yes]` | 対話ウィザードで MCP 設定を生成・マージ（書き込み先・サーバー名・ルート・ツールロスター・フォーマット・ダッシュボード・機能フラグ）。`--yes` で全質問をスキップ |
+| `t0k3n hook [--max-lines N]` | Claude Code の PreToolUse フック。ビルトインの `Read`/`Grep`/`Glob` を t0k3n の相当ツールへ誘導する（`setup` が自動で設定する） |
 | `t0k3n version` | バージョンを表示 |
 | `t0k3n help` | ヘルプを表示 |
+
+### ビルトインのファイルツールから矯正する
+
+サーバーの `instructions` はビルトインの `Read`/`Grep`/`Glob` より t0k3n を使うよう
+依頼しているが、これはあくまでお願いにすぎない。`t0k3n setup` は、実際に強制する設定を
+`.claude/settings.json` に書き込むかを尋ねる:
+
+- **推奨** — `Grep` / `Glob` は deny し、`Read` は `PreToolUse` フックが1件ずつ判定する。
+  しきい値（デフォルト 200 行）を超えるファイル全体の読み込みは、適切なツール
+  （`read_code` / `read_markdown_toc` / `read_json_yaml_keys` など）を示して拒否し、
+  小さいファイル・バイナリ・`offset`/`limit` 指定つきの読み込みはそのまま通す。
+  `Read` を丸ごと deny しないのは、クライアントの編集フローが事前の読み込みを要求するため。
+- **フックのみ** — deny ルールを書かず、`Read`/`Grep`/`Glob` をすべてフックで判定する。
+
+フック本体は `t0k3n` バイナリ自身（`t0k3n hook`）なので、生成される設定に node や jq
+などの実行時依存はない。`setup` を再実行しても自分のフックエントリを置き換えるだけで
+重複せず、`settings.json` の他のキーには一切触れない。
 
 ### オプション
 

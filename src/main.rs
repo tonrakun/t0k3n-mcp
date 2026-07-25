@@ -3,6 +3,7 @@ use rmcp::{ServiceExt, transport::stdio};
 
 mod cli;
 mod dashboard;
+mod hook;
 mod security;
 mod server;
 mod startup;
@@ -26,6 +27,7 @@ async fn main() -> Result<()> {
     match args.get(1).map(String::as_str) {
         Some("upgrade") => return cli::upgrade().await,
         Some("setup") => return cli::setup(&args[2..]),
+        Some("hook") => return hook::run(&args[2..]),
         Some("version") => {
             println!("t0k3n {}", env!("CARGO_PKG_VERSION"));
             return Ok(());
