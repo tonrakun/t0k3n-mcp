@@ -15,6 +15,7 @@ pub(crate) use serde::Serialize;
 pub(crate) use crate::dashboard::DashboardState;
 
 mod db;
+mod schema_slim;
 pub mod tools;
 
 use db::Database;
@@ -599,6 +600,13 @@ impl T0k3nServer {
                 tool_router.map.remove(*t);
             }
         }
+        // The client re-sends every remaining schema on every request, so trim the
+        // schemars boilerplate ($schema, the struct-name title) that no MCP client
+        // reads. Done after the gates so unregistered tools cost nothing at all.
+        for route in tool_router.map.values_mut() {
+            schema_slim::slim_schema(std::sync::Arc::make_mut(&mut route.attr.input_schema));
+        }
+
         let tool_count = tool_router.map.len();
 
         // gen4 warm start: load the cross-session content ledger from disk.
@@ -997,6 +1005,46 @@ mod tests {
                  REGISTERED_TOOLS has {expected} entries"
             );
         }
+    }
+
+    /// Schema boilerplate is invisible in normal use — nothing breaks, the context
+    /// window just quietly shrinks — so it can creep back in unnoticed when a
+    /// dependency changes how it derives schemas. Assert against the schemas the
+    /// server actually serves, not against `slim_schema` in isolation.
+    #[test]
+    fn served_schemas_carry_no_schemars_boilerplate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = test_server(tmp.path(), |c| {
+            c.diagnostics_enabled = true;
+            c.writes_enabled = true;
+        });
+
+        for (name, route) in &server.tool_router.map {
+            let rendered = serde_json::to_string(&route.attr.input_schema).unwrap();
+            assert!(
+                !rendered.contains("\"$schema\""),
+                "{name} still advertises a $schema key"
+            );
+            // `"title":` as a schema keyword always appears with a string value at
+            // keyword position; a `title` *argument* appears as a properties key,
+            // which serializes the same way. Check the keyword form specifically by
+            // walking the schema instead of substring-matching the whole blob.
+            let value: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+            assert!(
+                value.get("title").is_none(),
+                "{name} still advertises a struct-name title"
+            );
+        }
+
+        // task_create takes a literal `title` argument: the trim must not have
+        // stripped a real parameter while removing the keyword of the same name.
+        let task_create = &server.tool_router.map["task_create"];
+        assert!(
+            task_create.attr.input_schema["properties"]
+                .get("title")
+                .is_some(),
+            "the `title` argument of task_create must survive the trim"
+        );
     }
 
     /// The router is assembled by merging one router per category module. A category
